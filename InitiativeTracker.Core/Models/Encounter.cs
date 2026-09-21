@@ -104,4 +104,108 @@ public class Encounter
         CurrentCombatantId = activeCombatants[0].Id;
         Round++;
     }
+
+    public Combatant GetCombatant(Guid combatantId)
+    {
+        return Combatants.FirstOrDefault(c => c.Id == combatantId)
+            ?? throw new ArgumentException(
+                "Combatant was not found.",
+                nameof(combatantId));
+    }
+
+    public void AdjustHp(Guid combatantId, int amount)
+    {
+        var combatant = GetCombatant(combatantId);
+
+        if (!combatant.CurrentHp.HasValue)
+        {
+            throw new InvalidOperationException(
+                "Combatant does not currently have HP assigned.");
+        }
+
+        var newHp = combatant.CurrentHp.Value + amount;
+
+        combatant.CurrentHp = ClampHp(
+            newHp,
+            combatant.MaxHp);
+    }
+
+    public void SetCurrentHp(Guid combatantId, int? currentHp)
+    {
+        var combatant = GetCombatant(combatantId);
+
+        if (!currentHp.HasValue)
+        {
+            combatant.CurrentHp = null;
+            return;
+        }
+
+        combatant.CurrentHp = ClampHp(
+            currentHp.Value,
+            combatant.MaxHp);
+    }
+
+    public void SetCombatantStatus(
+        Guid combatantId,
+        CombatantStatus status)
+    {
+        var combatant = GetCombatant(combatantId);
+
+        var wasCurrent =
+            CurrentCombatantId == combatant.Id;
+
+        combatant.Status = status;
+
+        if (IsStarted &&
+            wasCurrent &&
+            !combatant.IsActive)
+        {
+            MoveToNextActiveCombatant(
+                combatant.SortOrder);
+        }
+    }
+
+    private static int ClampHp(
+        int hp,
+        int? maxHp)
+    {
+        hp = Math.Max(0, hp);
+
+        if (maxHp.HasValue)
+        {
+            hp = Math.Min(hp, maxHp.Value);
+        }
+
+        return hp;
+    }
+
+    private void MoveToNextActiveCombatant(
+        int previousSortOrder)
+    {
+        var activeCombatants = Combatants
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.SortOrder)
+            .ToList();
+
+        if (activeCombatants.Count == 0)
+        {
+            CurrentCombatantId = null;
+            return;
+        }
+
+        var nextCombatant = activeCombatants
+            .FirstOrDefault(
+                c => c.SortOrder > previousSortOrder);
+
+        if (nextCombatant is not null)
+        {
+            CurrentCombatantId = nextCombatant.Id;
+            return;
+        }
+
+        CurrentCombatantId =
+            activeCombatants[0].Id;
+
+        Round++;
+    }
 }

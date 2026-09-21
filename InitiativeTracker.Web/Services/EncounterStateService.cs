@@ -1,4 +1,5 @@
-﻿using InitiativeTracker.Core.Models;
+﻿using InitiativeTracker.Core.Enums;
+using InitiativeTracker.Core.Models;
 using InitiativeTracker.Web.Models;
 
 namespace InitiativeTracker.Web.Services;
@@ -59,16 +60,16 @@ public class EncounterStateService
         {
             var orderedCombatants = CurrentEncounter.IsStarted
                 ? CurrentEncounter.Combatants
+                    .Where(c => c.IsActive)
                     .OrderBy(c => c.SortOrder)
                     .ToList()
                 : CurrentEncounter.Combatants
+                    .Where(c => c.IsActive)
                     .OrderByDescending(c => c.Initiative)
                     .ThenBy(c => c.SortOrder)
                     .ToList();
 
-            var activeCombatants = orderedCombatants
-                .Where(c => c.IsActive)
-                .ToList();
+            var activeCombatants = orderedCombatants;
 
             var currentTurnNumber = 0;
 
@@ -100,6 +101,42 @@ public class EncounterStateService
                     })
                     .ToList()
             };
+        }
+    }
+
+    public void AdjustHp(
+    Guid combatantId,
+    int amount)
+    {
+        lock (_lock)
+        {
+            CurrentEncounter.AdjustHp(
+                combatantId,
+                amount);
+        }
+    }
+
+    public void SetCurrentHp(
+        Guid combatantId,
+        int? currentHp)
+    {
+        lock (_lock)
+        {
+            CurrentEncounter.SetCurrentHp(
+                combatantId,
+                currentHp);
+        }
+    }
+
+    public void SetCombatantStatus(
+        Guid combatantId,
+        CombatantStatus status)
+    {
+        lock (_lock)
+        {
+            CurrentEncounter.SetCombatantStatus(
+                combatantId,
+                status);
         }
     }
 }

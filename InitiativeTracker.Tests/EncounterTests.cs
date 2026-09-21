@@ -157,4 +157,89 @@ public class EncounterTests
 
         return encounter;
     }
+
+    [Fact]
+    public void AdjustHp_DamageCannotGoBelowZero()
+    {
+        var encounter = CreateEncounter();
+
+        var penny = encounter.Combatants
+            .Single(c => c.Name == "Penny");
+
+        encounter.AdjustHp(
+            penny.Id,
+            -100);
+
+        Assert.Equal(0, penny.CurrentHp);
+    }
+
+    [Fact]
+    public void AdjustHp_HealingCannotExceedMaxHp()
+    {
+        var encounter = CreateEncounter();
+
+        var penny = encounter.Combatants
+            .Single(c => c.Name == "Penny");
+
+        penny.CurrentHp = 20;
+
+        encounter.AdjustHp(
+            penny.Id,
+            100);
+
+        Assert.Equal(42, penny.CurrentHp);
+    }
+
+    [Fact]
+    public void DefeatingCombatant_RemovesThemFromActiveCount()
+    {
+        var encounter = CreateEncounter();
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        encounter.SetCombatantStatus(
+            dragon.Id,
+            CombatantStatus.Defeated);
+
+        Assert.Equal(2, encounter.ActiveCombatantCount);
+    }
+
+    [Fact]
+    public void DefeatingCurrentCombatant_AdvancesTurn()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+
+        var fijt = encounter.CurrentCombatant!;
+
+        encounter.SetCombatantStatus(
+            fijt.Id,
+            CombatantStatus.Defeated);
+
+        Assert.Equal(
+            "Dragon",
+            encounter.CurrentCombatant?.Name);
+    }
+
+    [Fact]
+    public void RestoreCombatant_ReturnsThemToActiveInitiative()
+    {
+        var encounter = CreateEncounter();
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        encounter.SetCombatantStatus(
+            dragon.Id,
+            CombatantStatus.Defeated);
+
+        encounter.SetCombatantStatus(
+            dragon.Id,
+            CombatantStatus.Active);
+
+        Assert.True(dragon.IsActive);
+        Assert.Equal(3, encounter.ActiveCombatantCount);
+    }
 }

@@ -1,4 +1,5 @@
 using InitiativeTracker.Core.Models;
+using InitiativeTracker.Core.Enums;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -102,6 +103,85 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostReset()
     {
         _encounterState.ResetEncounter();
+
+        await BroadcastEncounterAsync();
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostAdjustHp( Guid id, int amount)
+    {
+        try
+        {
+            _encounterState.AdjustHp(
+                id,
+                amount);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostSetHp( Guid id, int? currentHp)
+    {
+        try
+        {
+            _encounterState.SetCurrentHp(
+                id,
+                currentHp);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (ArgumentException ex)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostDefeat( Guid id)
+    {
+        _encounterState.SetCombatantStatus(
+            id,
+            CombatantStatus.Defeated);
+
+        await BroadcastEncounterAsync();
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostRemove( Guid id)
+    {
+        _encounterState.SetCombatantStatus(
+            id,
+            CombatantStatus.Removed);
+
+        await BroadcastEncounterAsync();
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostRestore( Guid id)
+    {
+        _encounterState.SetCombatantStatus(
+            id,
+            CombatantStatus.Active);
 
         await BroadcastEncounterAsync();
 
