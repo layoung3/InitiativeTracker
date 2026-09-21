@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="InitiativeTracker.Core/InitiativeTracker.Core.csproj" />
+  <Project Path="InitiativeTracker.Tests/InitiativeTracker.Tests.csproj" />
+  <Project Path="InitiativeTracker.Web/InitiativeTracker.Web.csproj" />
+</Solution>
