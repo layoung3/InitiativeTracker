@@ -1,4 +1,4 @@
-using InitiativeTracker.Core.Models;
+using InitiativeTracker.Web.Models;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -13,38 +13,10 @@ public class IndexModel : PageModel
         _encounterState = encounterState;
     }
 
-    public Encounter Encounter => _encounterState.CurrentEncounter;
-
-    public IReadOnlyList<Combatant> OrderedCombatants =>
-        Encounter.IsStarted
-            ? Encounter.Combatants
-                .OrderBy(c => c.SortOrder)
-                .ToList()
-            : Encounter.Combatants
-                .OrderByDescending(c => c.Initiative)
-                .ThenBy(c => c.SortOrder)
-                .ToList();
-
-    public int CurrentTurnNumber
-    {
-        get
-        {
-            if (!Encounter.IsStarted ||
-                Encounter.CurrentCombatant is null)
-            {
-                return 0;
-            }
-
-            var active = OrderedCombatants
-                .Where(c => c.IsActive)
-                .ToList();
-
-            return active.FindIndex(
-                c => c.Id == Encounter.CurrentCombatant.Id) + 1;
-        }
-    }
+    public EncounterDisplayState DisplayState { get; private set; } = new();
 
     public void OnGet()
     {
+        DisplayState = _encounterState.GetDisplayState();
     }
 }

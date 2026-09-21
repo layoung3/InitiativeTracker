@@ -1,9 +1,12 @@
 using InitiativeTracker.Web.Services;
+using InitiativeTracker.Web.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+
+builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<EncounterStateService>();
 
@@ -26,5 +29,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 app.MapRazorPages()
    .WithStaticAssets();
+
+app.MapHub<EncounterHub>("/hubs/encounter");
 
 app.Run();

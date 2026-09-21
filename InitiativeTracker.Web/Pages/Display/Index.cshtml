@@ -9,12 +9,12 @@
 
     <header class="initiative-header">
 
-        <div>
-            @if (Model.Encounter.IsStarted)
+        <div id="roundDisplay">
+            @if (Model.DisplayState.IsStarted)
             {
                 <span>
                     ROUND
-                    <strong>@Model.Encounter.Round</strong>
+                    <strong>@Model.DisplayState.Round</strong>
                 </span>
             }
             else
@@ -23,15 +23,15 @@
             }
         </div>
 
-        <div>
-            @if (Model.Encounter.IsStarted)
+        <div id="turnDisplay">
+            @if (Model.DisplayState.IsStarted)
             {
                 <span>
                     TURN
                     <strong>
-                        @Model.CurrentTurnNumber
+                        @Model.DisplayState.CurrentTurnNumber
                         /
-                        @Model.Encounter.ActiveCombatantCount
+                        @Model.DisplayState.ActiveCombatantCount
                     </strong>
                 </span>
             }
@@ -39,9 +39,10 @@
 
     </header>
 
-    <main class="initiative-list">
+    <main id="initiativeList"
+          class="initiative-list">
 
-        @if (Model.OrderedCombatants.Count == 0)
+        @if (Model.DisplayState.Combatants.Count == 0)
         {
             <div class="empty-display">
                 Waiting for encounter...
@@ -49,17 +50,15 @@
         }
         else
         {
-            foreach (var combatant in Model.OrderedCombatants)
+            foreach (var combatant in Model.DisplayState.Combatants)
             {
-                var isCurrent =
-                    Model.Encounter.CurrentCombatantId == combatant.Id;
-
                 <div class="initiative-row
-                    @(isCurrent ? "current" : "")
-                    @(!combatant.IsActive ? "inactive" : "")">
+                    @(combatant.IsCurrent ? "current" : "")
+                    @(!combatant.IsActive ? "inactive" : "")"
+                     data-combatant-id="@combatant.Id">
 
                     <div class="turn-indicator">
-                        @if (isCurrent)
+                        @if (combatant.IsCurrent)
                         {
                             <span>➜</span>
                         }
@@ -70,7 +69,6 @@
                     </div>
 
                     <div class="combatant-hp">
-
                         @if (combatant.CurrentHp.HasValue ||
                              combatant.MaxHp.HasValue)
                         {
@@ -80,7 +78,6 @@
                                 @(combatant.MaxHp?.ToString() ?? "—")
                             </span>
                         }
-
                     </div>
 
                 </div>
@@ -90,3 +87,10 @@
     </main>
 
 </div>
+
+@section Scripts {
+
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+    <script src="~/js/initiative-display.js"></script>
+
+}
