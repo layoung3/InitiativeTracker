@@ -312,4 +312,87 @@ public class Encounter
         CurrentCombatantId =
             activeCombatants[^1].Id;
     }
+
+    public void ReorderCombatants(
+        IReadOnlyList<Guid> orderedIds)
+    {
+        ArgumentNullException.ThrowIfNull(orderedIds);
+
+        if (orderedIds.Count != Combatants.Count)
+        {
+            throw new ArgumentException(
+                "The new order must include every combatant.",
+                nameof(orderedIds));
+        }
+
+        if (orderedIds.Distinct().Count() != orderedIds.Count)
+        {
+            throw new ArgumentException(
+                "The new order contains duplicate combatants.",
+                nameof(orderedIds));
+        }
+
+        var combatantIds = Combatants
+            .Select(c => c.Id)
+            .ToHashSet();
+
+        if (orderedIds.Any(id => !combatantIds.Contains(id)))
+        {
+            throw new ArgumentException(
+                "The new order contains an unknown combatant.",
+                nameof(orderedIds));
+        }
+
+        for (var i = 0; i < orderedIds.Count; i++)
+        {
+            var combatant = GetCombatant(
+                orderedIds[i]);
+
+            combatant.SortOrder = i;
+        }
+    }
+
+    public void MoveCombatant(
+        Guid combatantId,
+        int direction)
+    {
+        if (direction != -1 &&
+            direction != 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(direction),
+                "Direction must be -1 or 1.");
+        }
+
+        var ordered = Combatants
+            .OrderBy(c => c.SortOrder)
+            .ToList();
+
+        var currentIndex = ordered.FindIndex(
+            c => c.Id == combatantId);
+
+        if (currentIndex < 0)
+        {
+            throw new ArgumentException(
+                "Combatant was not found.",
+                nameof(combatantId));
+        }
+
+        var targetIndex =
+            currentIndex + direction;
+
+        if (targetIndex < 0 ||
+            targetIndex >= ordered.Count)
+        {
+            return;
+        }
+
+        (ordered[currentIndex], ordered[targetIndex]) =
+            (ordered[targetIndex], ordered[currentIndex]);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].SortOrder = i;
+        }
+    }
 }

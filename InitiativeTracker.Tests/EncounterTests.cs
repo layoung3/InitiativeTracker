@@ -339,4 +339,117 @@ public class EncounterTests
             "Fijt",
             restored.CurrentCombatant?.Name);
     }
+
+    [Fact]
+    public void ReorderCombatants_ChangesInitiativeOrder()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+
+        var fijt = encounter.Combatants
+            .Single(c => c.Name == "Fijt");
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        var penny = encounter.Combatants
+            .Single(c => c.Name == "Penny");
+
+        encounter.ReorderCombatants(
+        [
+            penny.Id,
+            dragon.Id,
+            fijt.Id
+        ]);
+
+        var ordered = encounter.Combatants
+            .OrderBy(c => c.SortOrder)
+            .Select(c => c.Name)
+            .ToList();
+
+        Assert.Equal(
+            ["Penny", "Dragon", "Fijt"],
+            ordered);
+    }
+
+    [Fact]
+    public void ReorderCombatants_PreservesCurrentCombatant()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+        encounter.AdvanceTurn();
+
+        Assert.Equal(
+            "Dragon",
+            encounter.CurrentCombatant?.Name);
+
+        var fijt = encounter.Combatants
+            .Single(c => c.Name == "Fijt");
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        var penny = encounter.Combatants
+            .Single(c => c.Name == "Penny");
+
+        encounter.ReorderCombatants(
+        [
+            penny.Id,
+            dragon.Id,
+            fijt.Id
+        ]);
+
+        Assert.Equal(
+            "Dragon",
+            encounter.CurrentCombatant?.Name);
+    }
+
+    [Fact]
+    public void AdvanceTurn_AfterReorder_FollowsNewOrder()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+        encounter.AdvanceTurn();
+
+        var fijt = encounter.Combatants
+            .Single(c => c.Name == "Fijt");
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        var penny = encounter.Combatants
+            .Single(c => c.Name == "Penny");
+
+        encounter.ReorderCombatants(
+        [
+            penny.Id,
+            dragon.Id,
+            fijt.Id
+        ]);
+
+        encounter.AdvanceTurn();
+
+        Assert.Equal(
+            "Fijt",
+            encounter.CurrentCombatant?.Name);
+    }
+
+    [Fact]
+    public void ReorderCombatants_MissingCombatant_ThrowsException()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+
+        var ids = encounter.Combatants
+            .Take(2)
+            .Select(c => c.Id)
+            .ToList();
+
+        Assert.Throws<ArgumentException>(
+            () => encounter.ReorderCombatants(ids));
+    }
 }

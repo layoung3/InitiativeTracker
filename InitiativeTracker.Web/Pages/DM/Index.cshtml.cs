@@ -229,4 +229,55 @@ public class IndexModel : PageModel
 
         return RedirectToPage();
     }
+
+    public async Task<IActionResult> OnPostReorder(
+        List<Guid> orderedIds)
+    {
+        try
+        {
+            _encounterState.ReorderCombatants(
+                orderedIds);
+
+            await BroadcastEncounterAsync();
+
+            return new JsonResult(new
+            {
+                success = true
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
+    }
+
+    public async Task<IActionResult> OnPostMoveCombatant(
+        Guid id,
+        int direction)
+    {
+        try
+        {
+            _encounterState.MoveCombatant(
+                id,
+                direction);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
 }

@@ -1,0 +1,16 @@
+﻿.drag-handle {
+    cursor: grab;
+    touch-action: none;
+}
+
+    .drag-handle:active {
+        cursor: grabbing;
+    }
+
+.sortable-ghost {
+    opacity: 0.35;
+}
+
+.sortable-chosen {
+    outline: 2px dashed var(--bs-primary);
+}

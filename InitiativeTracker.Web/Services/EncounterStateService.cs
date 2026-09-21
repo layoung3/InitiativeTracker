@@ -66,6 +66,24 @@ public class EncounterStateService
         });
     }
 
+    public void ReorderCombatants(
+        IReadOnlyList<Guid> orderedIds)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter.ReorderCombatants(
+                orderedIds));
+    }
+
+    public void MoveCombatant(
+        Guid combatantId,
+        int direction)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter.MoveCombatant(
+                combatantId,
+                direction));
+    }
+
     public void StartCombat()
     {
         ExecuteMutation(

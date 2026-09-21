@@ -6,11 +6,18 @@
     ViewData["Title"] = "DM Controls";
 }
 
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/dm.css"
+          asp-append-version="true" />
+}
+
 <div class="container py-4">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="mb-1">DM Controls</h1>
+
             <div class="text-muted">
                 @if (Model.Encounter.IsStarted)
                 {
@@ -35,23 +42,29 @@
         </a>
     </div>
 
+
     <div asp-validation-summary="All"
-         class="text-danger mb-3"></div>
+         class="text-danger mb-3">
+    </div>
+
 
     @if (!Model.Encounter.IsStarted)
     {
         <div class="card mb-4">
+
             <div class="card-header">
                 Add Combatant
             </div>
 
             <div class="card-body">
+
                 <form method="post"
                       asp-page-handler="AddCombatant">
 
                     <div class="row g-3 align-items-end">
 
                         <div class="col-md-4">
+
                             <label asp-for="CombatantName"
                                    class="form-label">
                                 Name
@@ -59,9 +72,12 @@
 
                             <input asp-for="CombatantName"
                                    class="form-control" />
+
                         </div>
 
+
                         <div class="col-md-2">
+
                             <label asp-for="Initiative"
                                    class="form-label">
                                 Initiative
@@ -70,9 +86,12 @@
                             <input asp-for="Initiative"
                                    type="number"
                                    class="form-control" />
+
                         </div>
 
+
                         <div class="col-md-2">
+
                             <label asp-for="CurrentHp"
                                    class="form-label">
                                 Current HP
@@ -81,9 +100,12 @@
                             <input asp-for="CurrentHp"
                                    type="number"
                                    class="form-control" />
+
                         </div>
 
+
                         <div class="col-md-2">
+
                             <label asp-for="MaxHp"
                                    class="form-label">
                                 Max HP
@@ -92,34 +114,48 @@
                             <input asp-for="MaxHp"
                                    type="number"
                                    class="form-control" />
+
                         </div>
 
+
                         <div class="col-md-2">
+
                             <button type="submit"
                                     class="btn btn-primary w-100">
                                 Add
                             </button>
+
                         </div>
 
                     </div>
+
                 </form>
+
             </div>
+
         </div>
     }
+
 
     <div class="card mb-4">
 
         <div class="card-header d-flex justify-content-between">
-            <span>Initiative</span>
+
+            <span>
+                Initiative
+            </span>
 
             <span>
                 @Model.Encounter.ActiveCombatantCount active
                 /
                 @Model.Encounter.Combatants.Count total
             </span>
+
         </div>
 
-        <div class="list-group list-group-flush">
+
+        <div id="initiativeList"
+             class="list-group list-group-flush">
 
             @if (Model.Encounter.Combatants.Count == 0)
             {
@@ -136,65 +172,147 @@
                         .OrderByDescending(c => c.Initiative)
                         .ThenBy(c => c.SortOrder);
 
+
                 foreach (var combatant in combatants)
                 {
                     var isCurrent =
                         Model.Encounter.CurrentCombatantId
                         == combatant.Id;
 
+
                     <div class="list-group-item
+                        initiative-dm-row
                         @(isCurrent ? "list-group-item-primary" : "")
-                        @(!combatant.IsActive ? "opacity-50" : "")">
+                        @(!combatant.IsActive ? "opacity-50" : "")"
+                         data-combatant-id="@combatant.Id">
 
                         <div class="d-flex
                             flex-column
-                            flex-lg-row
+                            flex-xl-row
                             justify-content-between
                             gap-3">
 
+
+                            @* LEFT SIDE *@
                             <div class="d-flex align-items-center gap-2">
 
+                                @if (Model.Encounter.IsStarted)
+                                {
+                                    <button type="button"
+                                            class="btn
+                                        btn-sm
+                                        btn-link
+                                        text-body-secondary
+                                        p-1
+                                        drag-handle"
+                                            title="Drag to reorder"
+                                            aria-label="Drag to reorder">
+                                        ⋮⋮
+                                    </button>
+
+
+                                    <div class="btn-group btn-group-sm"
+                                         role="group"
+                                         aria-label="Move combatant">
+
+                                        <form method="post"
+                                              asp-page-handler="MoveCombatant">
+
+                                            <input type="hidden"
+                                                   name="id"
+                                                   value="@combatant.Id" />
+
+                                            <button type="submit"
+                                                    name="direction"
+                                                    value="-1"
+                                                    class="btn btn-outline-secondary"
+                                                    title="Move up">
+                                                ↑
+                                            </button>
+
+                                        </form>
+
+
+                                        <form method="post"
+                                              asp-page-handler="MoveCombatant">
+
+                                            <input type="hidden"
+                                                   name="id"
+                                                   value="@combatant.Id" />
+
+                                            <button type="submit"
+                                                    name="direction"
+                                                    value="1"
+                                                    class="btn btn-outline-secondary"
+                                                    title="Move down">
+                                                ↓
+                                            </button>
+
+                                        </form>
+
+                                    </div>
+                                }
+
+
                                 <div style="width: 1.5rem;">
+
                                     @if (isCurrent)
                                     {
                                         <span>➜</span>
                                     }
+
                                 </div>
 
+
                                 <div>
+
                                     <div class="fw-bold fs-5">
                                         @combatant.Name
                                     </div>
 
+
                                     <div class="small text-muted">
+
                                         Initiative:
                                         @combatant.Initiative
+
 
                                         @if (combatant.Status ==
                                              CombatantStatus.Defeated)
                                         {
-                                            <span class="badge text-bg-danger ms-2">
+                                            <span class="badge
+                                                text-bg-danger
+                                                ms-2">
                                                 Defeated
                                             </span>
                                         }
 
+
                                         @if (combatant.Status ==
                                              CombatantStatus.Removed)
                                         {
-                                            <span class="badge text-bg-secondary ms-2">
+                                            <span class="badge
+                                                text-bg-secondary
+                                                ms-2">
                                                 Removed
                                             </span>
                                         }
+
                                     </div>
+
                                 </div>
 
                             </div>
 
+
+                            @* RIGHT SIDE *@
                             <div class="d-flex
                                 flex-column
                                 flex-md-row
+                                flex-wrap
                                 align-items-md-center
                                 gap-2">
+
 
                                 @if (combatant.CurrentHp.HasValue)
                                 {
@@ -203,52 +321,70 @@
                                         gap-1">
 
                                         <form method="post"
-                                              asp-page-handler="AdjustHp">
+                                              asp-page-handler="AdjustHp"
+                                              class="d-flex gap-1">
 
                                             <input type="hidden"
                                                    name="id"
                                                    value="@combatant.Id" />
 
+
                                             <button type="submit"
                                                     name="amount"
                                                     value="-5"
-                                                    class="btn btn-sm btn-outline-danger">
+                                                    class="btn
+                                                btn-sm
+                                                btn-outline-danger">
                                                 -5
                                             </button>
+
 
                                             <button type="submit"
                                                     name="amount"
                                                     value="-1"
-                                                    class="btn btn-sm btn-outline-danger">
+                                                    class="btn
+                                                btn-sm
+                                                btn-outline-danger">
                                                 -1
                                             </button>
 
                                         </form>
 
+
                                         <span class="fw-bold px-2">
+
                                             @combatant.CurrentHp
                                             /
                                             @(combatant.MaxHp?.ToString() ?? "—")
+
                                         </span>
 
+
                                         <form method="post"
-                                              asp-page-handler="AdjustHp">
+                                              asp-page-handler="AdjustHp"
+                                              class="d-flex gap-1">
 
                                             <input type="hidden"
                                                    name="id"
                                                    value="@combatant.Id" />
 
+
                                             <button type="submit"
                                                     name="amount"
                                                     value="1"
-                                                    class="btn btn-sm btn-outline-success">
+                                                    class="btn
+                                                btn-sm
+                                                btn-outline-success">
                                                 +1
                                             </button>
+
 
                                             <button type="submit"
                                                     name="amount"
                                                     value="5"
-                                                    class="btn btn-sm btn-outline-success">
+                                                    class="btn
+                                                btn-sm
+                                                btn-outline-success">
                                                 +5
                                             </button>
 
@@ -256,6 +392,7 @@
 
                                     </div>
                                 }
+
 
                                 <form method="post"
                                       asp-page-handler="SetHp"
@@ -265,19 +402,25 @@
                                            name="id"
                                            value="@combatant.Id" />
 
+
                                     <input type="number"
                                            name="currentHp"
                                            value="@combatant.CurrentHp"
-                                           class="form-control form-control-sm"
+                                           class="form-control
+                                    form-control-sm"
                                            style="width: 5rem;"
                                            min="0" />
 
+
                                     <button type="submit"
-                                            class="btn btn-sm btn-outline-secondary">
+                                            class="btn
+                                        btn-sm
+                                        btn-outline-secondary">
                                         Set HP
                                     </button>
 
                                 </form>
+
 
                                 @if (combatant.IsActive)
                                 {
@@ -288,12 +431,16 @@
                                                name="id"
                                                value="@combatant.Id" />
 
+
                                         <button type="submit"
-                                                class="btn btn-sm btn-outline-danger">
+                                                class="btn
+                                            btn-sm
+                                            btn-outline-danger">
                                             Defeat
                                         </button>
 
                                     </form>
+
 
                                     <form method="post"
                                           asp-page-handler="Remove">
@@ -302,8 +449,11 @@
                                                name="id"
                                                value="@combatant.Id" />
 
+
                                         <button type="submit"
-                                                class="btn btn-sm btn-outline-secondary">
+                                                class="btn
+                                            btn-sm
+                                            btn-outline-secondary">
                                             Remove
                                         </button>
 
@@ -318,8 +468,11 @@
                                                name="id"
                                                value="@combatant.Id" />
 
+
                                         <button type="submit"
-                                                class="btn btn-sm btn-outline-success">
+                                                class="btn
+                                            btn-sm
+                                            btn-outline-success">
                                             Restore
                                         </button>
 
@@ -338,7 +491,10 @@
 
     </div>
 
-    <div class="d-flex gap-2">
+
+    @* ENCOUNTER CONTROLS *@
+    <div class="d-flex flex-wrap gap-2">
+
 
         @if (!Model.Encounter.IsStarted)
         {
@@ -355,44 +511,52 @@
         }
         else
         {
-            @if (Model.Encounter.IsStarted)
-            {
-                <div class="d-flex flex-wrap gap-2">
+            <form method="post"
+                  asp-page-handler="PreviousTurn">
 
-                    <form method="post"
-                          asp-page-handler="PreviousTurn">
+                <button type="submit"
+                        class="btn btn-outline-primary">
+                    ← Previous
+                </button>
 
-                        <button type="submit"
-                                class="btn btn-outline-primary">
-                            ← Previous
-                        </button>
+            </form>
 
-                    </form>
 
-                    <form method="post"
-                          asp-page-handler="NextTurn">
+            <form method="post"
+                  asp-page-handler="NextTurn">
 
-                        <button type="submit"
-                                class="btn btn-primary">
-                            Next Turn →
-                        </button>
+                <button type="submit"
+                        class="btn btn-primary">
+                    Next Turn →
+                </button>
 
-                    </form>
+            </form>
 
-                    <form method="post"
-                          asp-page-handler="Undo">
 
-                        <button type="submit"
-                                class="btn btn-outline-warning"
-                                disabled="@(!Model.CanUndo)">
-                            Undo
-                        </button>
+            <form method="post"
+                  asp-page-handler="Undo">
 
-                    </form>
+                @if (Model.CanUndo)
+                {
+                    <button id="undoButton"
+                            type="submit"
+                            class="btn btn-outline-warning">
+                        Undo
+                    </button>
+                }
+                else
+                {
+                    <button id="undoButton"
+                            type="button"
+                            class="btn btn-outline-warning"
+                            disabled>
+                        Undo
+                    </button>
+                }
 
-                </div>
-            }
+            </form>
         }
+
 
         <form method="post"
               asp-page-handler="Reset"
@@ -407,4 +571,27 @@
 
     </div>
 
+    @if (Model.Encounter.IsStarted)
+    {
+        <form id="reorderForm"
+              method="post"
+              asp-page-handler="Reorder"
+              class="d-none">
+        </form>
+    }
+
 </div>
+
+
+@section Scripts {
+
+    @if (Model.Encounter.IsStarted)
+    {
+        <script src="~/lib/sortablejs/Sortable.min.js"></script>
+
+        <script src="~/js/dm-initiative.js"
+                asp-append-version="true">
+        </script>
+    }
+
+}
