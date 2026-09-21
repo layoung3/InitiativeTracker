@@ -355,15 +355,43 @@
         }
         else
         {
-            <form method="post"
-                  asp-page-handler="NextTurn">
+            @if (Model.Encounter.IsStarted)
+            {
+                <div class="d-flex flex-wrap gap-2">
 
-                <button type="submit"
-                        class="btn btn-primary">
-                    Next Turn
-                </button>
+                    <form method="post"
+                          asp-page-handler="PreviousTurn">
 
-            </form>
+                        <button type="submit"
+                                class="btn btn-outline-primary">
+                            ← Previous
+                        </button>
+
+                    </form>
+
+                    <form method="post"
+                          asp-page-handler="NextTurn">
+
+                        <button type="submit"
+                                class="btn btn-primary">
+                            Next Turn →
+                        </button>
+
+                    </form>
+
+                    <form method="post"
+                          asp-page-handler="Undo">
+
+                        <button type="submit"
+                                class="btn btn-outline-warning"
+                                disabled="@(!Model.CanUndo)">
+                            Undo
+                        </button>
+
+                    </form>
+
+                </div>
+            }
         }
 
         <form method="post"

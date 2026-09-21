@@ -242,4 +242,101 @@ public class EncounterTests
         Assert.True(dragon.IsActive);
         Assert.Equal(3, encounter.ActiveCombatantCount);
     }
+
+    [Fact]
+    public void PreviousTurn_MovesToPreviousCombatant()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+        encounter.AdvanceTurn();
+
+        Assert.Equal(
+            "Dragon",
+            encounter.CurrentCombatant?.Name);
+
+        encounter.PreviousTurn();
+
+        Assert.Equal(
+            "Fijt",
+            encounter.CurrentCombatant?.Name);
+
+        Assert.Equal(1, encounter.Round);
+    }
+
+    [Fact]
+    public void PreviousTurn_FromFirstCombatant_MovesToPreviousRound()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+
+        encounter.AdvanceTurn();
+        encounter.AdvanceTurn();
+        encounter.AdvanceTurn();
+
+        Assert.Equal(2, encounter.Round);
+        Assert.Equal(
+            "Fijt",
+            encounter.CurrentCombatant?.Name);
+
+        encounter.PreviousTurn();
+
+        Assert.Equal(1, encounter.Round);
+        Assert.Equal(
+            "Penny",
+            encounter.CurrentCombatant?.Name);
+    }
+
+    [Fact]
+    public void PreviousTurn_OnFirstTurnOfRoundOne_DoesNothing()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+        encounter.PreviousTurn();
+
+        Assert.Equal(1, encounter.Round);
+        Assert.Equal(
+            "Fijt",
+            encounter.CurrentCombatant?.Name);
+    }
+
+    [Fact]
+    public void Snapshot_RestoresEncounterState()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        var snapshot =
+            encounter.CreateSnapshot();
+
+        encounter.AdjustHp(
+            dragon.Id,
+            -20);
+
+        encounter.SetCombatantStatus(
+            dragon.Id,
+            CombatantStatus.Defeated);
+
+        var restored =
+            Encounter.FromSnapshot(snapshot);
+
+        var restoredDragon =
+            restored.Combatants
+                .Single(c => c.Name == "Dragon");
+
+        Assert.Equal(61, restoredDragon.CurrentHp);
+        Assert.Equal(
+            CombatantStatus.Active,
+            restoredDragon.Status);
+
+        Assert.Equal(
+            "Fijt",
+            restored.CurrentCombatant?.Name);
+    }
 }

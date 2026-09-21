@@ -8,14 +8,53 @@ public class EncounterStateService
 {
     private readonly object _lock = new();
 
+    private const int MaxUndoHistory = 50;
+
+    private readonly List<EncounterSnapshot> _undoHistory = [];
+
     public Encounter CurrentEncounter { get; private set; } = new()
     {
         Name = "Current Encounter"
     };
 
-    public void AddCombatant(string name, int initiative, int? currentHp, int? maxHp)
+    public bool CanUndo
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _undoHistory.Count > 0;
+            }
+        }
+    }
+
+    private void ExecuteMutation(
+        Action mutation)
     {
         lock (_lock)
+        {
+            var snapshot =
+                CurrentEncounter.CreateSnapshot();
+
+            // If this throws, the snapshot is never added.
+            mutation();
+
+            _undoHistory.Add(snapshot);
+
+            if (_undoHistory.Count > MaxUndoHistory)
+            {
+                _undoHistory.RemoveAt(0);
+            }
+        }
+    }
+
+    public void AddCombatant(
+        string name,
+        int initiative,
+        int? currentHp,
+        int? maxHp)
+    {
+        ExecuteMutation(() =>
         {
             CurrentEncounter.AddCombatant(new Combatant
             {
@@ -24,34 +63,36 @@ public class EncounterStateService
                 CurrentHp = currentHp,
                 MaxHp = maxHp
             });
-        }
+        });
     }
 
     public void StartCombat()
     {
-        lock (_lock)
-        {
-            CurrentEncounter.StartCombat();
-        }
+        ExecuteMutation(
+            CurrentEncounter.StartCombat);
     }
 
     public void AdvanceTurn()
     {
-        lock (_lock)
-        {
-            CurrentEncounter.AdvanceTurn();
-        }
+        ExecuteMutation(
+            CurrentEncounter.AdvanceTurn);
+    }
+
+    public void PreviousTurn()
+    {
+        ExecuteMutation(
+            CurrentEncounter.PreviousTurn);
     }
 
     public void ResetEncounter()
     {
-        lock (_lock)
+        ExecuteMutation(() =>
         {
             CurrentEncounter = new Encounter
             {
                 Name = "Current Encounter"
             };
-        }
+        });
     }
 
     public EncounterDisplayState GetDisplayState()
@@ -105,38 +146,57 @@ public class EncounterStateService
     }
 
     public void AdjustHp(
-    Guid combatantId,
-    int amount)
+        Guid combatantId,
+        int amount)
     {
-        lock (_lock)
-        {
+        ExecuteMutation(() =>
             CurrentEncounter.AdjustHp(
                 combatantId,
-                amount);
-        }
+                amount));
     }
 
     public void SetCurrentHp(
         Guid combatantId,
         int? currentHp)
     {
-        lock (_lock)
-        {
+        ExecuteMutation(() =>
             CurrentEncounter.SetCurrentHp(
                 combatantId,
-                currentHp);
-        }
+                currentHp));
     }
 
     public void SetCombatantStatus(
         Guid combatantId,
         CombatantStatus status)
     {
-        lock (_lock)
-        {
+        ExecuteMutation(() =>
             CurrentEncounter.SetCombatantStatus(
                 combatantId,
-                status);
+                status));
+    }
+
+    public bool Undo()
+    {
+        lock (_lock)
+        {
+            if (_undoHistory.Count == 0)
+            {
+                return false;
+            }
+
+            var lastIndex =
+                _undoHistory.Count - 1;
+
+            var snapshot =
+                _undoHistory[lastIndex];
+
+            _undoHistory.RemoveAt(lastIndex);
+
+            CurrentEncounter =
+                Encounter.FromSnapshot(snapshot);
+
+            return true;
         }
     }
+
 }

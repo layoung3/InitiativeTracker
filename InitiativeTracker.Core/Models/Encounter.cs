@@ -208,4 +208,108 @@ public class Encounter
 
         Round++;
     }
+
+    public EncounterSnapshot CreateSnapshot()
+    {
+        return new EncounterSnapshot
+        {
+            Id = Id,
+            Name = Name,
+            Round = Round,
+            IsStarted = IsStarted,
+            CurrentCombatantId = CurrentCombatantId,
+
+            Combatants = Combatants
+                .Select(c => new CombatantSnapshot
+                {
+                    Id = c.Id,
+                    Name = c.Name,
+                    Initiative = c.Initiative,
+                    SortOrder = c.SortOrder,
+                    CurrentHp = c.CurrentHp,
+                    MaxHp = c.MaxHp,
+                    Status = c.Status
+                })
+                .ToList()
+        };
+    }
+
+    public static Encounter FromSnapshot(
+        EncounterSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var encounter = new Encounter
+        {
+            Id = snapshot.Id,
+            Name = snapshot.Name,
+            Round = snapshot.Round,
+            IsStarted = snapshot.IsStarted,
+            CurrentCombatantId = snapshot.CurrentCombatantId
+        };
+
+        encounter.Combatants.AddRange(
+            snapshot.Combatants.Select(c => new Combatant
+            {
+                Id = c.Id,
+                Name = c.Name,
+                Initiative = c.Initiative,
+                SortOrder = c.SortOrder,
+                CurrentHp = c.CurrentHp,
+                MaxHp = c.MaxHp,
+                Status = c.Status
+            }));
+
+        return encounter;
+    }
+
+    public void PreviousTurn()
+    {
+        if (!IsStarted)
+        {
+            throw new InvalidOperationException(
+                "Combat has not been started.");
+        }
+
+        var activeCombatants = Combatants
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.SortOrder)
+            .ToList();
+
+        if (activeCombatants.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "There are no active combatants remaining.");
+        }
+
+        var currentCombatant = CurrentCombatant;
+
+        if (currentCombatant is null)
+        {
+            CurrentCombatantId = activeCombatants[0].Id;
+            return;
+        }
+
+        var currentIndex = activeCombatants.FindIndex(
+            c => c.Id == currentCombatant.Id);
+
+        if (currentIndex > 0)
+        {
+            CurrentCombatantId =
+                activeCombatants[currentIndex - 1].Id;
+
+            return;
+        }
+
+        // Don't allow going backward before Round 1.
+        if (Round <= 1)
+        {
+            return;
+        }
+
+        Round--;
+
+        CurrentCombatantId =
+            activeCombatants[^1].Id;
+    }
 }

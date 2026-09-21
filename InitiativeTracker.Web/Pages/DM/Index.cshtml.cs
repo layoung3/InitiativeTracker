@@ -33,6 +33,8 @@ public class IndexModel : PageModel
     [BindProperty]
     public int? MaxHp { get; set; }
 
+    public bool CanUndo => _encounterState.CanUndo;
+
     public void OnGet()
     {
     }
@@ -196,5 +198,35 @@ public class IndexModel : PageModel
         await _encounterHub.Clients.All.SendAsync(
             "EncounterUpdated",
             displayState);
+    }
+
+    public async Task<IActionResult> OnPostPreviousTurn()
+    {
+        try
+        {
+            _encounterState.PreviousTurn();
+
+            await BroadcastEncounterAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostUndo()
+    {
+        if (_encounterState.Undo())
+        {
+            await BroadcastEncounterAsync();
+        }
+
+        return RedirectToPage();
     }
 }
