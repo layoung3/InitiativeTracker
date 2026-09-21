@@ -1,0 +1,92 @@
+﻿@page "/display"
+@model InitiativeTracker.Web.Pages.Display.IndexModel
+
+@{
+    ViewData["Title"] = "Initiative";
+}
+
+<div class="initiative-display">
+
+    <header class="initiative-header">
+
+        <div>
+            @if (Model.Encounter.IsStarted)
+            {
+                <span>
+                    ROUND
+                    <strong>@Model.Encounter.Round</strong>
+                </span>
+            }
+            else
+            {
+                <span>ENCOUNTER SETUP</span>
+            }
+        </div>
+
+        <div>
+            @if (Model.Encounter.IsStarted)
+            {
+                <span>
+                    TURN
+                    <strong>
+                        @Model.CurrentTurnNumber
+                        /
+                        @Model.Encounter.ActiveCombatantCount
+                    </strong>
+                </span>
+            }
+        </div>
+
+    </header>
+
+    <main class="initiative-list">
+
+        @if (Model.OrderedCombatants.Count == 0)
+        {
+            <div class="empty-display">
+                Waiting for encounter...
+            </div>
+        }
+        else
+        {
+            foreach (var combatant in Model.OrderedCombatants)
+            {
+                var isCurrent =
+                    Model.Encounter.CurrentCombatantId == combatant.Id;
+
+                <div class="initiative-row
+                    @(isCurrent ? "current" : "")
+                    @(!combatant.IsActive ? "inactive" : "")">
+
+                    <div class="turn-indicator">
+                        @if (isCurrent)
+                        {
+                            <span>➜</span>
+                        }
+                    </div>
+
+                    <div class="combatant-name">
+                        @combatant.Name
+                    </div>
+
+                    <div class="combatant-hp">
+
+                        @if (combatant.CurrentHp.HasValue ||
+                             combatant.MaxHp.HasValue)
+                        {
+                            <span>
+                                @(combatant.CurrentHp?.ToString() ?? "—")
+                                /
+                                @(combatant.MaxHp?.ToString() ?? "—")
+                            </span>
+                        }
+
+                    </div>
+
+                </div>
+            }
+        }
+
+    </main>
+
+</div>

@@ -1,0 +1,224 @@
+﻿@page "/dm"
+@model InitiativeTracker.Web.Pages.Dm.IndexModel
+
+@{
+    ViewData["Title"] = "DM Controls";
+}
+
+<div class="container py-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="mb-1">DM Controls</h1>
+            <div class="text-muted">
+                @if (Model.Encounter.IsStarted)
+                {
+                    <span>
+                        Round @Model.Encounter.Round
+                        ·
+                        Current:
+                        <strong>@Model.Encounter.CurrentCombatant?.Name</strong>
+                    </span>
+                }
+                else
+                {
+                    <span>Encounter Setup</span>
+                }
+            </div>
+        </div>
+
+        <a href="/display"
+           target="_blank"
+           class="btn btn-outline-secondary">
+            Open Display
+        </a>
+    </div>
+
+    <div asp-validation-summary="All"
+         class="text-danger mb-3"></div>
+
+    @if (!Model.Encounter.IsStarted)
+    {
+        <div class="card mb-4">
+            <div class="card-header">
+                Add Combatant
+            </div>
+
+            <div class="card-body">
+                <form method="post"
+                      asp-page-handler="AddCombatant">
+
+                    <div class="row g-3 align-items-end">
+
+                        <div class="col-md-4">
+                            <label asp-for="CombatantName"
+                                   class="form-label">
+                                Name
+                            </label>
+
+                            <input asp-for="CombatantName"
+                                   class="form-control" />
+                        </div>
+
+                        <div class="col-md-2">
+                            <label asp-for="Initiative"
+                                   class="form-label">
+                                Initiative
+                            </label>
+
+                            <input asp-for="Initiative"
+                                   type="number"
+                                   class="form-control" />
+                        </div>
+
+                        <div class="col-md-2">
+                            <label asp-for="CurrentHp"
+                                   class="form-label">
+                                Current HP
+                            </label>
+
+                            <input asp-for="CurrentHp"
+                                   type="number"
+                                   class="form-control" />
+                        </div>
+
+                        <div class="col-md-2">
+                            <label asp-for="MaxHp"
+                                   class="form-label">
+                                Max HP
+                            </label>
+
+                            <input asp-for="MaxHp"
+                                   type="number"
+                                   class="form-control" />
+                        </div>
+
+                        <div class="col-md-2">
+                            <button type="submit"
+                                    class="btn btn-primary w-100">
+                                Add
+                            </button>
+                        </div>
+
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between">
+            <span>Initiative</span>
+
+            <span>
+                @Model.Encounter.ActiveCombatantCount active
+            </span>
+        </div>
+
+        <div class="list-group list-group-flush">
+
+            @if (Model.Encounter.Combatants.Count == 0)
+            {
+                <div class="list-group-item text-muted">
+                    No combatants added.
+                </div>
+            }
+            else
+            {
+                var combatants = Model.Encounter.IsStarted
+                    ? Model.Encounter.Combatants
+                        .OrderBy(c => c.SortOrder)
+                    : Model.Encounter.Combatants
+                        .OrderByDescending(c => c.Initiative)
+                        .ThenBy(c => c.SortOrder);
+
+                foreach (var combatant in combatants)
+                {
+                    var isCurrent =
+                        Model.Encounter.CurrentCombatantId == combatant.Id;
+
+                    <div class="list-group-item
+                        d-flex
+                        justify-content-between
+                        align-items-center
+                        @(isCurrent ? "list-group-item-primary" : "")">
+
+                        <div>
+                            @if (isCurrent)
+                            {
+                                <span class="me-2">➜</span>
+                            }
+
+                            <strong>@combatant.Name</strong>
+                        </div>
+
+                        <div class="d-flex gap-4">
+
+                            <span>
+                                Init:
+                                <strong>@combatant.Initiative</strong>
+                            </span>
+
+                            @if (combatant.CurrentHp.HasValue ||
+                                 combatant.MaxHp.HasValue)
+                            {
+                                <span>
+                                    HP:
+                                    <strong>
+                                        @(combatant.CurrentHp?.ToString() ?? "—")
+                                        /
+                                        @(combatant.MaxHp?.ToString() ?? "—")
+                                    </strong>
+                                </span>
+                            }
+
+                        </div>
+                    </div>
+                }
+            }
+
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+
+        @if (!Model.Encounter.IsStarted)
+        {
+            <form method="post"
+                  asp-page-handler="StartCombat">
+
+                <button type="submit"
+                        class="btn btn-success"
+                        disabled="@(Model.Encounter.ActiveCombatantCount == 0)">
+                    Start Combat
+                </button>
+
+            </form>
+        }
+        else
+        {
+            <form method="post"
+                  asp-page-handler="NextTurn">
+
+                <button type="submit"
+                        class="btn btn-primary">
+                    Next Turn
+                </button>
+
+            </form>
+        }
+
+        <form method="post"
+              asp-page-handler="Reset"
+              onsubmit="return confirm('Reset the entire encounter?');">
+
+            <button type="submit"
+                    class="btn btn-outline-danger">
+                Reset
+            </button>
+
+        </form>
+
+    </div>
+
+</div>

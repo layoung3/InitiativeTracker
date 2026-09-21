@@ -1,7 +1,11 @@
+using InitiativeTracker.Web.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+
+builder.Services.AddSingleton<EncounterStateService>();
 
 var app = builder.Build();
 
