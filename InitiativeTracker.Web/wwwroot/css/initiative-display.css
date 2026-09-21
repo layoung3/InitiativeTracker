@@ -1,0 +1,36 @@
+﻿.initiative-display {
+    min-height: calc(100vh - 120px);
+    max-width: 1200px;
+}
+
+.initiative-list {
+    overflow-y: auto;
+}
+
+.initiative-row {
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr) auto;
+    min-height: 4.25rem;
+}
+
+    .initiative-row.current {
+        border-width: 3px !important;
+        font-weight: 700;
+    }
+
+.combatant-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.combatant-hp {
+    white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+    .initiative-row {
+        grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+        min-height: 3.5rem;
+    }
+}

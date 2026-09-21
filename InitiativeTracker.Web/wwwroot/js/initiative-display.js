@@ -13,8 +13,12 @@ connection.onreconnecting(error => {
     console.warn("Initiative display disconnected. Reconnecting...", error);
 });
 
-connection.onreconnected(() => {
-    console.log("Initiative display reconnected.");
+connection.onreconnected(async () => {
+
+    console.log(
+        "Initiative display reconnected.");
+
+    await syncEncounter();
 });
 
 connection.onclose(error => {
@@ -26,10 +30,16 @@ connection.onclose(error => {
 async function startConnection() {
     try {
         await connection.start();
-        console.log("Initiative display connected.");
+
+        console.log(
+            "Initiative display connected.");
+
+        await syncEncounter();
     }
     catch (error) {
-        console.error("Unable to connect to initiative hub.", error);
+        console.error(
+            "Unable to connect to initiative hub.",
+            error);
 
         setTimeout(startConnection, 5000);
     }
@@ -104,17 +114,26 @@ function renderCombatants(combatants) {
         const row =
             document.createElement("div");
 
-        row.classList.add("initiative-row");
-
-        row.dataset.combatantId =
-            combatant.id;
+        row.classList.add(
+            "initiative-row",
+            "align-items-center",
+            "border",
+            "rounded",
+            "px-3",
+            "py-2",
+            "mb-2",
+            "fs-4"
+        );
 
         if (combatant.isCurrent) {
-            row.classList.add("current");
+            row.classList.add(
+                "current",
+                "border-primary"
+            );
         }
 
         if (!combatant.isActive) {
-            row.classList.add("inactive");
+            row.classList.add("opacity-50");
         }
 
         const indicator =
@@ -138,8 +157,7 @@ function renderCombatants(combatants) {
         const hp =
             document.createElement("div");
 
-        hp.className =
-            "combatant-hp";
+        hp.className = "combatant-hp ms-3";
 
         if (combatant.currentHp !== null ||
             combatant.maxHp !== null) {
@@ -178,6 +196,21 @@ function scrollToCurrentCombatant() {
         behavior: "smooth",
         block: "center"
     });
+}
+
+async function syncEncounter() {
+    try {
+        const state =
+            await connection.invoke(
+                "GetEncounterState");
+
+        renderEncounter(state);
+    }
+    catch (error) {
+        console.error(
+            "Unable to synchronize encounter state.",
+            error);
+    }
 }
 
 startConnection();

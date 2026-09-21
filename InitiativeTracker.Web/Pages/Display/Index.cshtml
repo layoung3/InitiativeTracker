@@ -5,9 +5,23 @@
     ViewData["Title"] = "Initiative";
 }
 
-<div class="initiative-display">
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/initiative-display.css"
+          asp-append-version="true" />
+}
 
-    <header class="initiative-header">
+<div class="initiative-display container-fluid mx-auto p-3 p-md-4">
+
+    <header class="initiative-header
+        d-flex
+        justify-content-between
+        align-items-center
+        border-bottom
+        border-2
+        pb-3
+        mb-4
+        fs-4">
 
         <div id="roundDisplay">
             @if (Model.DisplayState.IsStarted)
@@ -53,8 +67,15 @@
             foreach (var combatant in Model.DisplayState.Combatants)
             {
                 <div class="initiative-row
-                    @(combatant.IsCurrent ? "current" : "")
-                    @(!combatant.IsActive ? "inactive" : "")"
+                    align-items-center
+                    border
+                    rounded
+                    px-3
+                    py-2
+                    mb-2
+                    fs-4
+                    @(combatant.IsCurrent ? "current border-primary" : "")
+                    @(!combatant.IsActive ? "opacity-50" : "")"
                      data-combatant-id="@combatant.Id">
 
                     <div class="turn-indicator">
@@ -68,7 +89,7 @@
                         @combatant.Name
                     </div>
 
-                    <div class="combatant-hp">
+                    <div class="combatant-hp ms-3">
                         @if (combatant.CurrentHp.HasValue ||
                              combatant.MaxHp.HasValue)
                         {
