@@ -452,4 +452,93 @@ public class EncounterTests
         Assert.Throws<ArgumentException>(
             () => encounter.ReorderCombatants(ids));
     }
+
+    [Fact]
+    public void AddCombatant_WithMaxHpAndNoCurrentHp_StartsAtMaxHp()
+    {
+        var encounter = new Encounter();
+
+        encounter.AddCombatant(
+            new Combatant
+            {
+                Name = "Goblin",
+                Initiative = 10,
+                MaxHp = 12
+            });
+
+        Assert.Equal(
+            12,
+            encounter.Combatants[0].CurrentHp);
+    }
+
+    [Fact]
+    public void UpdateCombatant_ChangesSetupValues()
+    {
+        var encounter = CreateEncounter();
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        encounter.UpdateCombatant(
+            dragon.Id,
+            "Dragon Updated",
+            25,
+            50,
+            70);
+
+        Assert.Equal(
+            "Dragon Updated",
+            dragon.Name);
+
+        Assert.Equal(
+            25,
+            dragon.Initiative);
+
+        Assert.Equal(
+            50,
+            dragon.CurrentHp);
+
+        Assert.Equal(
+            70,
+            dragon.MaxHp);
+    }
+
+    [Fact]
+    public void UpdateCombatant_AfterCombatStarts_ThrowsException()
+    {
+        var encounter = CreateEncounter();
+
+        encounter.StartCombat();
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        Assert.Throws<InvalidOperationException>(
+            () => encounter.UpdateCombatant(
+                dragon.Id,
+                "Dragon",
+                20,
+                50,
+                60));
+    }
+
+    [Fact]
+    public void DeleteCombatant_RemovesCombatant()
+    {
+        var encounter = CreateEncounter();
+
+        var dragon = encounter.Combatants
+            .Single(c => c.Name == "Dragon");
+
+        encounter.DeleteCombatant(
+            dragon.Id);
+
+        Assert.DoesNotContain(
+            encounter.Combatants,
+            c => c.Id == dragon.Id);
+
+        Assert.Equal(
+            2,
+            encounter.Combatants.Count);
+    }
 }

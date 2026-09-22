@@ -63,8 +63,7 @@
 
                     <div class="row g-3 align-items-end">
 
-                        <div class="col-md-4">
-
+                        <div class="col-md-3">
                             <label asp-for="CombatantName"
                                    class="form-label">
                                 Name
@@ -72,12 +71,24 @@
 
                             <input asp-for="CombatantName"
                                    class="form-control" />
+                        </div>
 
+
+                        <div class="col-md-1">
+                            <label asp-for="Quantity"
+                                   class="form-label">
+                                Qty
+                            </label>
+
+                            <input asp-for="Quantity"
+                                   type="number"
+                                   min="1"
+                                   max="50"
+                                   class="form-control" />
                         </div>
 
 
                         <div class="col-md-2">
-
                             <label asp-for="Initiative"
                                    class="form-label">
                                 Initiative
@@ -86,12 +97,10 @@
                             <input asp-for="Initiative"
                                    type="number"
                                    class="form-control" />
-
                         </div>
 
 
                         <div class="col-md-2">
-
                             <label asp-for="CurrentHp"
                                    class="form-label">
                                 Current HP
@@ -99,13 +108,13 @@
 
                             <input asp-for="CurrentHp"
                                    type="number"
-                                   class="form-control" />
-
+                                   min="0"
+                                   class="form-control"
+                                   placeholder="Max HP" />
                         </div>
 
 
                         <div class="col-md-2">
-
                             <label asp-for="MaxHp"
                                    class="form-label">
                                 Max HP
@@ -113,18 +122,16 @@
 
                             <input asp-for="MaxHp"
                                    type="number"
+                                   min="0"
                                    class="form-control" />
-
                         </div>
 
 
                         <div class="col-md-2">
-
                             <button type="submit"
                                     class="btn btn-primary w-100">
                                 Add
                             </button>
-
                         </div>
 
                     </div>
@@ -195,8 +202,128 @@
 
                             @* LEFT SIDE *@
                             <div class="d-flex align-items-center gap-2">
+                                @if (!Model.Encounter.IsStarted)
+                                {
+                                    <div class="list-group-item">
 
-                                @if (Model.Encounter.IsStarted)
+                                        <div class="d-flex
+                                            flex-column
+                                            flex-xl-row
+                                            gap-2
+                                            align-items-xl-end">
+
+                                            <form method="post"
+                                                  asp-page-handler="UpdateCombatant"
+                                                  class="row
+                                                g-2
+                                                align-items-end
+                                                flex-grow-1">
+
+                                                <input type="hidden"
+                                                       name="id"
+                                                       value="@combatant.Id" />
+
+
+                                                <div class="col-md-4">
+
+                                                    <label class="form-label small">
+                                                        Name
+                                                    </label>
+
+                                                    <input type="text"
+                                                           name="name"
+                                                           value="@combatant.Name"
+                                                           class="form-control
+                                                    form-control-sm"
+                                                           required />
+
+                                                </div>
+
+
+                                                <div class="col-md-2">
+
+                                                    <label class="form-label small">
+                                                        Initiative
+                                                    </label>
+
+                                                    <input type="number"
+                                                           name="initiative"
+                                                           value="@combatant.Initiative"
+                                                           class="form-control
+                                                    form-control-sm" />
+
+                                                </div>
+
+
+                                                <div class="col-md-2">
+
+                                                    <label class="form-label small">
+                                                        Current HP
+                                                    </label>
+
+                                                    <input type="number"
+                                                           name="currentHp"
+                                                           value="@combatant.CurrentHp"
+                                                           min="0"
+                                                           class="form-control
+                                                    form-control-sm" />
+
+                                                </div>
+
+
+                                                <div class="col-md-2">
+
+                                                    <label class="form-label small">
+                                                        Max HP
+                                                    </label>
+
+                                                    <input type="number"
+                                                           name="maxHp"
+                                                           value="@combatant.MaxHp"
+                                                           min="0"
+                                                           class="form-control
+                                                    form-control-sm" />
+
+                                                </div>
+
+
+                                                <div class="col-md-2">
+
+                                                    <button type="submit"
+                                                            class="btn
+                                                        btn-sm
+                                                        btn-outline-primary
+                                                        w-100">
+                                                        Save
+                                                    </button>
+
+                                                </div>
+
+                                            </form>
+
+
+                                            <form method="post"
+                                                  asp-page-handler="DeleteCombatant"
+                                                  onsubmit="return confirm('Delete @combatant.Name?');">
+
+                                                <input type="hidden"
+                                                       name="id"
+                                                       value="@combatant.Id" />
+
+                                                <button type="submit"
+                                                        class="btn
+                                                    btn-sm
+                                                    btn-outline-danger">
+                                                    Delete
+                                                </button>
+
+                                            </form>
+
+                                        </div>
+
+                                    </div>
+                                }
+                                else
                                 {
                                     <button type="button"
                                             class="btn
@@ -495,7 +622,6 @@
     @* ENCOUNTER CONTROLS *@
     <div class="d-flex flex-wrap gap-2">
 
-
         @if (!Model.Encounter.IsStarted)
         {
             <form method="post"
@@ -531,31 +657,31 @@
                 </button>
 
             </form>
-
-
-            <form method="post"
-                  asp-page-handler="Undo">
-
-                @if (Model.CanUndo)
-                {
-                    <button id="undoButton"
-                            type="submit"
-                            class="btn btn-outline-warning">
-                        Undo
-                    </button>
-                }
-                else
-                {
-                    <button id="undoButton"
-                            type="button"
-                            class="btn btn-outline-warning"
-                            disabled>
-                        Undo
-                    </button>
-                }
-
-            </form>
         }
+
+
+        <form method="post"
+              asp-page-handler="Undo">
+
+            @if (Model.CanUndo)
+            {
+                <button id="undoButton"
+                        type="submit"
+                        class="btn btn-outline-warning">
+                    Undo
+                </button>
+            }
+            else
+            {
+                <button id="undoButton"
+                        type="button"
+                        class="btn btn-outline-warning"
+                        disabled>
+                    Undo
+                </button>
+            }
+
+        </form>
 
 
         <form method="post"

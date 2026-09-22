@@ -28,6 +28,12 @@ public class Encounter
     {
         ArgumentNullException.ThrowIfNull(combatant);
 
+        if (IsStarted)
+        {
+            throw new InvalidOperationException(
+                "Combatants cannot be added through encounter setup after combat starts.");
+        }
+
         if (string.IsNullOrWhiteSpace(combatant.Name))
         {
             throw new ArgumentException(
@@ -35,7 +41,38 @@ public class Encounter
                 nameof(combatant));
         }
 
-        combatant.SortOrder = Combatants.Count;
+        if (combatant.MaxHp < 0)
+        {
+            throw new ArgumentException(
+                "Maximum HP cannot be negative.",
+                nameof(combatant));
+        }
+
+        if (combatant.CurrentHp < 0)
+        {
+            throw new ArgumentException(
+                "Current HP cannot be negative.",
+                nameof(combatant));
+        }
+
+        combatant.Name = combatant.Name.Trim();
+
+        if (!combatant.CurrentHp.HasValue &&
+            combatant.MaxHp.HasValue)
+        {
+            combatant.CurrentHp =
+                combatant.MaxHp;
+        }
+
+        if (combatant.CurrentHp.HasValue)
+        {
+            combatant.CurrentHp = ClampHp(
+                combatant.CurrentHp.Value,
+                combatant.MaxHp);
+        }
+
+        combatant.SortOrder =
+            Combatants.Count;
 
         Combatants.Add(combatant);
     }
@@ -389,6 +426,100 @@ public class Encounter
 
         (ordered[currentIndex], ordered[targetIndex]) =
             (ordered[targetIndex], ordered[currentIndex]);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].SortOrder = i;
+        }
+    }
+
+    public void UpdateCombatant(
+        Guid combatantId,
+        string name,
+        int initiative,
+        int? currentHp,
+        int? maxHp)
+    {
+        if (IsStarted)
+        {
+            throw new InvalidOperationException(
+                "Combatant setup cannot be edited after combat starts.");
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException(
+                "Combatant must have a name.",
+                nameof(name));
+        }
+
+        if (currentHp < 0)
+        {
+            throw new ArgumentException(
+                "Current HP cannot be negative.",
+                nameof(currentHp));
+        }
+
+        if (maxHp < 0)
+        {
+            throw new ArgumentException(
+                "Maximum HP cannot be negative.",
+                nameof(maxHp));
+        }
+
+        var combatant =
+            GetCombatant(combatantId);
+
+        combatant.Name =
+            name.Trim();
+
+        combatant.Initiative =
+            initiative;
+
+        combatant.MaxHp =
+            maxHp;
+
+        if (!currentHp.HasValue &&
+            maxHp.HasValue)
+        {
+            combatant.CurrentHp =
+                maxHp;
+        }
+        else if (currentHp.HasValue)
+        {
+            combatant.CurrentHp =
+                ClampHp(
+                    currentHp.Value,
+                    maxHp);
+        }
+        else
+        {
+            combatant.CurrentHp = null;
+        }
+    }
+
+    public void DeleteCombatant(
+        Guid combatantId)
+    {
+        if (IsStarted)
+        {
+            throw new InvalidOperationException(
+                "Combatants cannot be deleted through encounter setup after combat starts.");
+        }
+
+        var combatant =
+            GetCombatant(combatantId);
+
+        Combatants.Remove(combatant);
+
+        NormalizeSortOrder();
+    }
+
+    private void NormalizeSortOrder()
+    {
+        var ordered = Combatants
+            .OrderBy(c => c.SortOrder)
+            .ToList();
 
         for (var i = 0; i < ordered.Count; i++)
         {

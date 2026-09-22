@@ -33,6 +33,9 @@ public class IndexModel : PageModel
     [BindProperty]
     public int? MaxHp { get; set; }
 
+    [BindProperty]
+    public int Quantity { get; set; } = 1;
+
     public bool CanUndo => _encounterState.CanUndo;
 
     public void OnGet()
@@ -41,7 +44,8 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostAddCombatant()
     {
-        if (string.IsNullOrWhiteSpace(CombatantName))
+        if (string.IsNullOrWhiteSpace(
+            CombatantName))
         {
             ModelState.AddModelError(
                 nameof(CombatantName),
@@ -50,22 +54,92 @@ public class IndexModel : PageModel
             return Page();
         }
 
-        if (Encounter.IsStarted)
+        if (Quantity < 1 ||
+            Quantity > 50)
         {
             ModelState.AddModelError(
-                string.Empty,
-                "Adding combatants after combat starts is not supported yet.");
+                nameof(Quantity),
+                "Quantity must be between 1 and 50.");
 
             return Page();
         }
 
-        _encounterState.AddCombatant(
-            CombatantName,
-            Initiative,
-            CurrentHp,
-            MaxHp);
+        try
+        {
+            _encounterState.AddCombatants(
+                CombatantName,
+                Initiative,
+                CurrentHp,
+                MaxHp,
+                Quantity);
 
-        await BroadcastEncounterAsync();
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostUpdateCombatant(
+        Guid id,
+        string name,
+        int initiative,
+        int? currentHp,
+        int? maxHp)
+    {
+        try
+        {
+            _encounterState.UpdateCombatant(
+                id,
+                name,
+                initiative,
+                currentHp,
+                maxHp);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostDeleteCombatant(
+        Guid id)
+    {
+        try
+        {
+            _encounterState.DeleteCombatant(id);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return Page();
+        }
 
         return RedirectToPage();
     }

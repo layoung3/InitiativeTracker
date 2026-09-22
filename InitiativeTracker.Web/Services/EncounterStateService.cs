@@ -48,22 +48,67 @@ public class EncounterStateService
         }
     }
 
-    public void AddCombatant(
+    public void AddCombatants(
+        string name,
+        int initiative,
+        int? currentHp,
+        int? maxHp,
+        int quantity)
+    {
+        if (quantity < 1 ||
+            quantity > 50)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                "Quantity must be between 1 and 50.");
+        }
+
+        ExecuteMutation(() =>
+        {
+            var baseName =
+                name.Trim();
+
+            for (var i = 0; i < quantity; i++)
+            {
+                var combatantName =
+                    quantity == 1
+                        ? baseName
+                        : $"{baseName} {i + 1}";
+
+                CurrentEncounter.AddCombatant(
+                    new Combatant
+                    {
+                        Name = combatantName,
+                        Initiative = initiative,
+                        CurrentHp = currentHp,
+                        MaxHp = maxHp
+                    });
+            }
+        });
+    }
+
+    public void UpdateCombatant(
+        Guid combatantId,
         string name,
         int initiative,
         int? currentHp,
         int? maxHp)
     {
         ExecuteMutation(() =>
-        {
-            CurrentEncounter.AddCombatant(new Combatant
-            {
-                Name = name.Trim(),
-                Initiative = initiative,
-                CurrentHp = currentHp,
-                MaxHp = maxHp
-            });
-        });
+            CurrentEncounter.UpdateCombatant(
+                combatantId,
+                name,
+                initiative,
+                currentHp,
+                maxHp));
+    }
+
+    public void DeleteCombatant(
+        Guid combatantId)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter.DeleteCombatant(
+                combatantId));
     }
 
     public void ReorderCombatants(
