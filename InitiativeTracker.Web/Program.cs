@@ -1,5 +1,7 @@
 using InitiativeTracker.Web.Services;
 using InitiativeTracker.Web.Hubs;
+using InitiativeTracker.Web.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,9 +10,33 @@ builder.Services.AddRazorPages();
 
 builder.Services.AddSignalR();
 
+var dataDirectory = Path.Combine(
+    builder.Environment.ContentRootPath,
+    "App_Data");
+
+Directory.CreateDirectory(dataDirectory);
+
+var databasePath = Path.Combine(
+    dataDirectory,
+    "initiative-tracker.db");
+
+builder.Services.AddDbContextFactory<InitiativeTrackerDbContext>(
+    options =>
+        options.UseSqlite(
+            $"Data Source={databasePath}"));
+
 builder.Services.AddSingleton<EncounterStateService>();
 
 var app = builder.Build();
+
+using (var db =
+       app.Services
+           .GetRequiredService<
+               IDbContextFactory<InitiativeTrackerDbContext>>()
+           .CreateDbContext())
+{
+    db.Database.Migrate();
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

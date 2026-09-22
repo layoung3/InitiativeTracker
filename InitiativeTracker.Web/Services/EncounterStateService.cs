@@ -1,6 +1,9 @@
 ﻿using InitiativeTracker.Core.Enums;
 using InitiativeTracker.Core.Models;
 using InitiativeTracker.Web.Models;
+using System.Text.Json;
+using InitiativeTracker.Web.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace InitiativeTracker.Web.Services;
 
@@ -11,6 +14,20 @@ public class EncounterStateService
     private const int MaxUndoHistory = 50;
 
     private readonly List<EncounterSnapshot> _undoHistory = [];
+
+    private readonly IDbContextFactory<InitiativeTrackerDbContext> _dbContextFactory;
+    private static readonly JsonSerializerOptions JsonOptions =
+        new(JsonSerializerDefaults.Web);
+
+    public EncounterStateService(
+    IDbContextFactory<InitiativeTrackerDbContext>
+        dbContextFactory)
+    {
+        _dbContextFactory =
+            dbContextFactory;
+
+        LoadPersistedState();
+    }
 
     public Encounter CurrentEncounter { get; private set; } = new()
     {
@@ -28,22 +45,141 @@ public class EncounterStateService
         }
     }
 
+    private void LoadPersistedState()
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var persisted =
+            db.EncounterStates
+                .AsNoTracking()
+                .SingleOrDefault(
+                    x => x.Id == 1);
+
+        if (persisted is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var encounterSnapshot =
+                JsonSerializer.Deserialize<EncounterSnapshot>(
+                    persisted.EncounterJson,
+                    JsonOptions);
+
+            if (encounterSnapshot is not null)
+            {
+                CurrentEncounter =
+                    Encounter.FromSnapshot(
+                        encounterSnapshot);
+            }
+
+            var undoHistory =
+                JsonSerializer.Deserialize<
+                    List<EncounterSnapshot>>(
+                        persisted.UndoHistoryJson,
+                        JsonOptions);
+
+            if (undoHistory is not null)
+            {
+                _undoHistory.Clear();
+
+                _undoHistory.AddRange(
+                    undoHistory.TakeLast(
+                        MaxUndoHistory));
+            }
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException(
+                "The saved encounter state could not be loaded.",
+                ex);
+        }
+    }
+
+    private void PersistStateLocked()
+    {
+        var encounterJson =
+            JsonSerializer.Serialize(
+                CurrentEncounter.CreateSnapshot(),
+                JsonOptions);
+
+        var undoHistoryJson =
+            JsonSerializer.Serialize(
+                _undoHistory,
+                JsonOptions);
+
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var persisted =
+            db.EncounterStates
+                .SingleOrDefault(
+                    x => x.Id == 1);
+
+        if (persisted is null)
+        {
+            persisted =
+                new PersistedEncounterState
+                {
+                    Id = 1
+                };
+
+            db.EncounterStates.Add(
+                persisted);
+        }
+
+        persisted.EncounterJson =
+            encounterJson;
+
+        persisted.UndoHistoryJson =
+            undoHistoryJson;
+
+        persisted.UpdatedAtUtc =
+            DateTime.UtcNow;
+
+        db.SaveChanges();
+    }
+
     private void ExecuteMutation(
         Action mutation)
     {
         lock (_lock)
         {
-            var snapshot =
+            var encounterBefore =
                 CurrentEncounter.CreateSnapshot();
 
-            // If this throws, the snapshot is never added.
+            var historyBefore =
+                _undoHistory.ToList();
+
             mutation();
 
-            _undoHistory.Add(snapshot);
+            _undoHistory.Add(
+                encounterBefore);
 
-            if (_undoHistory.Count > MaxUndoHistory)
+            if (_undoHistory.Count >
+                MaxUndoHistory)
             {
                 _undoHistory.RemoveAt(0);
+            }
+
+            try
+            {
+                PersistStateLocked();
+            }
+            catch
+            {
+                CurrentEncounter =
+                    Encounter.FromSnapshot(
+                        encounterBefore);
+
+                _undoHistory.Clear();
+
+                _undoHistory.AddRange(
+                    historyBefore);
+
+                throw;
             }
         }
     }
@@ -247,18 +383,44 @@ public class EncounterStateService
                 return false;
             }
 
+            var encounterBefore =
+                CurrentEncounter.CreateSnapshot();
+
+            var historyBefore =
+                _undoHistory.ToList();
+
             var lastIndex =
                 _undoHistory.Count - 1;
 
             var snapshot =
                 _undoHistory[lastIndex];
 
-            _undoHistory.RemoveAt(lastIndex);
+            _undoHistory.RemoveAt(
+                lastIndex);
 
             CurrentEncounter =
-                Encounter.FromSnapshot(snapshot);
+                Encounter.FromSnapshot(
+                    snapshot);
 
-            return true;
+            try
+            {
+                PersistStateLocked();
+
+                return true;
+            }
+            catch
+            {
+                CurrentEncounter =
+                    Encounter.FromSnapshot(
+                        encounterBefore);
+
+                _undoHistory.Clear();
+
+                _undoHistory.AddRange(
+                    historyBefore);
+
+                throw;
+            }
         }
     }
 
