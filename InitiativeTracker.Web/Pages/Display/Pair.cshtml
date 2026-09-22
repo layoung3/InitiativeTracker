@@ -1,0 +1,80 @@
+﻿@page "/display/pair"
+@model InitiativeTracker.Web.Pages.Display.PairModel
+
+@{
+    ViewData["Title"] = "Pair Display";
+}
+
+<div class="container py-5"
+     style="max-width: 600px;">
+
+    <div class="card">
+
+        <div class="card-body
+            text-center
+            p-5">
+
+            <h1 class="h3 mb-4">
+                Pair Display
+            </h1>
+
+            <p class="text-muted">
+                On the DM device, open
+                <strong>Connected Devices</strong>
+                and approve this display.
+            </p>
+
+
+            <div class="text-muted mt-4">
+                Pairing Code
+            </div>
+
+            <div class="display-2
+                fw-bold
+                font-monospace
+                my-2">
+                @Model.PairingRequest.PairingCode
+            </div>
+
+
+            <div id="pairingStatus"
+                 class="mt-4">
+
+                <div class="spinner-border
+                    spinner-border-sm
+                    me-2"
+                     role="status">
+                </div>
+
+                Waiting for DM approval...
+
+            </div>
+
+
+            <form method="post"
+                  asp-page-handler="Restart"
+                  class="mt-4 d-none"
+                  id="restartPairingForm">
+
+                <button type="submit"
+                        class="btn
+                    btn-outline-primary">
+                    Try Again
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+@section Scripts {
+
+    <script src="~/js/display-pairing.js"
+            asp-append-version="true">
+    </script>
+
+}

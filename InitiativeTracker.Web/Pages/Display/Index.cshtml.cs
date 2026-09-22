@@ -1,9 +1,11 @@
 using InitiativeTracker.Web.Models;
 using InitiativeTracker.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace InitiativeTracker.Web.Pages.Display;
 
+[Authorize(Roles = "DM,Display")]
 public class IndexModel : PageModel
 {
     private readonly EncounterStateService _encounterState;

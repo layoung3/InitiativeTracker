@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using InitiativeTracker.Web.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Authorization;
 
 namespace InitiativeTracker.Web.Pages.Dm;
 
+[Authorize(Roles = "DM")]
 public class IndexModel : PageModel
 {
     private readonly EncounterStateService _encounterState;

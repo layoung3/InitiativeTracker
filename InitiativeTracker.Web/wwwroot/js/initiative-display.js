@@ -27,6 +27,14 @@ connection.onclose(error => {
     setTimeout(startConnection, 5000);
 });
 
+connection.on(
+    "DeviceRevoked",
+    () => {
+
+        window.location.href =
+            "/display/pair";
+    });
+
 async function startConnection() {
     try {
         await connection.start();

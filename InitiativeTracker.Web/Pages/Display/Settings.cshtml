@@ -1,0 +1,39 @@
+﻿@page "/display/settings"
+@model InitiativeTracker.Web.Pages.Display.SettingsModel
+
+@{
+    ViewData["Title"] = "Display Settings";
+}
+
+<div class="container py-5"
+     style="max-width: 600px;">
+
+    <div class="card">
+
+        <div class="card-body p-4">
+
+            <h1 class="h3">
+                Display Settings
+            </h1>
+
+            <p class="text-muted">
+                Disconnecting will forget the current hub
+                and return this display to pairing mode.
+            </p>
+
+            <form method="post"
+                  asp-page-handler="Disconnect"
+                  onsubmit="return confirm('Disconnect this display from the current hub?');">
+
+                <button type="submit"
+                        class="btn btn-danger">
+                    Disconnect From Hub
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>

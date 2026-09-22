@@ -13,6 +13,15 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PersistedEncounterState> EncounterStates =>
         Set<PersistedEncounterState>();
 
+    public DbSet<GameSessionRecord> GameSessions =>
+        Set<GameSessionRecord>();
+
+    public DbSet<RegisteredDevice> RegisteredDevices =>
+        Set<RegisteredDevice>();
+
+    public DbSet<DevicePairingRequest> DevicePairingRequests =>
+        Set<DevicePairingRequest>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -29,6 +38,57 @@ public class InitiativeTrackerDbContext : DbContext
                     .IsRequired();
 
                 entity.Property(x => x.UndoHistoryJson)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity<GameSessionRecord>(
+            entity =>
+            {
+                entity.ToTable("GameSession");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.JoinCode)
+                    .IsRequired();
+
+                entity.Property(x => x.DmPin)
+                    .IsRequired();
+
+                entity.Property(x => x.PlayerJoinToken)
+                    .IsRequired();
+
+                entity.Property(x => x.DisplayToken)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity<RegisteredDevice>(
+            entity =>
+            {
+                entity.ToTable("RegisteredDevice");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name)
+                    .IsRequired();
+
+                entity.Property(x => x.DeviceType)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity<DevicePairingRequest>(
+            entity =>
+            {
+                entity.ToTable("DevicePairingRequest");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.PairingCode)
+                    .IsRequired();
+
+                entity.Property(x => x.DeviceName)
+                    .IsRequired();
+
+                entity.Property(x => x.Status)
                     .IsRequired();
             });
     }
