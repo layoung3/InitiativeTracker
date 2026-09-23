@@ -32,6 +32,7 @@ builder.Services.AddSingleton<GameSessionService>();
 builder.Services.AddSingleton<DeviceRegistryService>();
 builder.Services.AddSingleton<PlayerRegistryService>();
 builder.Services.AddSingleton<TrackerUrlService>();
+builder.Services.AddSingleton<CharacterService>();
 
 builder.Services
     .AddAuthentication(

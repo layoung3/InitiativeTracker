@@ -39,6 +39,20 @@ public class EncounterHub : Hub
                     deviceId));
         }
 
+        var playerClaim =
+            Context.User?
+                .FindFirst("player_id")?
+                .Value;
+
+        if (Guid.TryParse(
+                playerClaim,
+                out var playerId))
+        {
+            await Groups.AddToGroupAsync(
+                Context.ConnectionId,
+                GetPlayerGroup(playerId));
+        }
+
         await base.OnConnectedAsync();
     }
 
@@ -46,5 +60,11 @@ public class EncounterHub : Hub
         Guid deviceId)
     {
         return $"device:{deviceId}";
+    }
+
+    public static string GetPlayerGroup(
+        Guid playerId)
+    {
+        return $"player:{playerId}";
     }
 }

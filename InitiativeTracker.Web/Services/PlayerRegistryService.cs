@@ -1,5 +1,7 @@
 ﻿using InitiativeTracker.Web.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace InitiativeTracker.Web.Services;
 
@@ -20,7 +22,9 @@ public class PlayerRegistryService
 
     public PlayerConnection JoinPlayer(
         Guid sessionId,
-        string name)
+        string name,
+        string? existingProfileToken,
+        out PlayerProfile profile)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -37,36 +41,95 @@ public class PlayerRegistryService
             var now =
                 DateTime.UtcNow;
 
-            var player =
+            PlayerProfile? existingProfile =
+                null;
+
+            if (!string.IsNullOrWhiteSpace(
+                    existingProfileToken))
+            {
+                existingProfile =
+                    db.PlayerProfiles
+                        .SingleOrDefault(
+                            x =>
+                                x.AccessToken ==
+                                existingProfileToken);
+            }
+
+            if (existingProfile is null)
+            {
+                existingProfile =
+                    new PlayerProfile
+                    {
+                        Name =
+                            name.Trim(),
+
+                        AccessToken =
+                            GenerateProfileToken(),
+
+                        CreatedAtUtc =
+                            now,
+
+                        UpdatedAtUtc =
+                            now
+                    };
+
+                db.PlayerProfiles.Add(
+                    existingProfile);
+            }
+            else
+            {
+                existingProfile.Name =
+                    name.Trim();
+
+                existingProfile.UpdatedAtUtc =
+                    now;
+            }
+
+            var connection =
                 new PlayerConnection
                 {
                     SessionId =
-                        sessionId,
+                            sessionId,
+
+                    PlayerProfileId =
+                            existingProfile.Id,
 
                     Name =
-                        name.Trim(),
+                            existingProfile.Name,
 
                     IsActive =
-                        true,
+                            true,
 
                     JoinedAtUtc =
-                        now,
+                            now,
 
                     LastSeenAtUtc =
-                        now
+                            now
                 };
 
             db.PlayerConnections.Add(
-                player);
+                connection);
 
             db.SaveChanges();
 
-            return player;
+            profile =
+                existingProfile;
+
+            return connection;
         }
     }
 
-    public IReadOnlyList<PlayerConnection>
-        GetActivePlayers(
+    private static string GenerateProfileToken()
+    {
+        var bytes =
+            RandomNumberGenerator
+                .GetBytes(32);
+
+        return WebEncoders
+            .Base64UrlEncode(bytes);
+    }
+
+    public IReadOnlyList<PlayerConnection> GetActivePlayers(
             Guid sessionId)
     {
         using var db =
@@ -81,8 +144,7 @@ public class PlayerRegistryService
             .ToList();
     }
 
-    public PlayerConnection?
-        GetPlayer(
+    public PlayerConnection? GetPlayer(
             Guid playerId)
     {
         using var db =
@@ -157,5 +219,22 @@ public class PlayerRegistryService
 
             db.SaveChanges();
         }
+    }
+
+    public PlayerProfile? FindProfileByToken(
+        string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return null;
+        }
+
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        return db.PlayerProfiles
+            .AsNoTracking()
+            .SingleOrDefault(
+                x => x.AccessToken == token);
     }
 }

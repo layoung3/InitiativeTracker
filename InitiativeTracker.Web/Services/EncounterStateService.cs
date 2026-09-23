@@ -16,15 +16,21 @@ public class EncounterStateService
     private readonly List<EncounterSnapshot> _undoHistory = [];
 
     private readonly IDbContextFactory<InitiativeTrackerDbContext> _dbContextFactory;
+
+    private readonly CharacterService _characterService;
+
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web);
 
     public EncounterStateService(
-    IDbContextFactory<InitiativeTrackerDbContext>
-        dbContextFactory)
+    IDbContextFactory<InitiativeTrackerDbContext> dbContextFactory,
+    CharacterService characterService)
     {
         _dbContextFactory =
             dbContextFactory;
+
+        _characterService =
+            characterService;
 
         LoadPersistedState();
     }
@@ -182,6 +188,48 @@ public class EncounterStateService
                 throw;
             }
         }
+    }
+
+    public void AddPlayerCharacter(
+    Guid characterId)
+    {
+        var character =
+            _characterService.GetCharacter(
+                characterId)
+            ?? throw new ArgumentException(
+                "Character was not found.",
+                nameof(characterId));
+
+        ExecuteMutation(() =>
+        {
+            if (CurrentEncounter.Combatants.Any(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character.Id))
+            {
+                throw new InvalidOperationException(
+                    "This character is already in the encounter.");
+            }
+
+            CurrentEncounter.AddCombatant(
+                new Combatant
+                {
+                    Name =
+                        character.Name,
+
+                    Initiative =
+                        0,
+
+                    CurrentHp =
+                        character.CurrentHp,
+
+                    MaxHp =
+                        character.MaxHp,
+
+                    PlayerCharacterId =
+                        character.Id
+                });
+        });
     }
 
     public void AddCombatants(
@@ -422,6 +470,28 @@ public class EncounterStateService
                 throw;
             }
         }
+    }
+
+    public void SetPlayerCharacterInitiative(
+        Guid characterId,
+        int initiative)
+    {
+        ExecuteMutation(() =>
+        {
+            var combatant =
+                CurrentEncounter.Combatants
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId)
+                ?? throw new InvalidOperationException(
+                    "Character is not part of the current encounter.");
+
+            CurrentEncounter
+                .SetCombatantInitiative(
+                    combatant.Id,
+                    initiative);
+        });
     }
 
 }

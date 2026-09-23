@@ -25,6 +25,12 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PlayerConnection> PlayerConnections =>
         Set<PlayerConnection>();
 
+    public DbSet<PlayerProfile> PlayerProfiles =>
+        Set<PlayerProfile>();
+
+    public DbSet<PlayerCharacter> PlayerCharacters =>
+        Set<PlayerCharacter>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -104,6 +110,38 @@ public class InitiativeTrackerDbContext : DbContext
 
                 entity.Property(x => x.Name)
                     .IsRequired();
+            });
+
+        modelBuilder.Entity<PlayerProfile>(
+            entity =>
+            {
+                entity.ToTable("PlayerProfile");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name)
+                    .IsRequired();
+
+                entity.Property(x => x.AccessToken)
+                    .IsRequired();
+
+                entity.HasIndex(x => x.AccessToken)
+                    .IsUnique();
+            });
+
+
+        modelBuilder.Entity<PlayerCharacter>(
+            entity =>
+            {
+                entity.ToTable("PlayerCharacter");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name)
+                    .IsRequired();
+
+                entity.HasIndex(x =>
+                    x.PlayerProfileId);
             });
     }
 }

@@ -8,8 +8,7 @@ namespace InitiativeTracker.Web.Pages.Setup;
 
 public class IndexModel : PageModel
 {
-    private readonly GameSessionService
-        _gameSession;
+    private readonly GameSessionService _gameSession;
 
     public IndexModel(
         GameSessionService gameSession)

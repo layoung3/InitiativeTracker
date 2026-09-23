@@ -74,8 +74,7 @@ public class DevicesModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult>
-        OnPostForgetAsync(Guid id)
+    public async Task<IActionResult> OnPostForgetAsync(Guid id)
     {
         _deviceRegistry
             .ForgetDevice(id);
@@ -91,11 +90,16 @@ public class DevicesModel : PageModel
         return RedirectToPage();
     }
 
-    public IActionResult OnPostRemovePlayer(
-        Guid id)
+    public async Task<IActionResult> OnPostRemovePlayerAsync(Guid id)
     {
-        _playerRegistry.RemovePlayer(
-            id);
+        _playerRegistry.RemovePlayer(id);
+
+        await _encounterHub
+            .Clients
+            .Group(
+                EncounterHub.GetPlayerGroup(id))
+            .SendAsync(
+                "PlayerRemoved");
 
         return RedirectToPage();
     }

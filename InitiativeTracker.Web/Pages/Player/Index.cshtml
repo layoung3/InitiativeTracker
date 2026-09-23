@@ -10,23 +10,145 @@
 
     <div class="card">
 
-        <div class="card-body
-            text-center
-            p-5">
+        <div class="card-body p-5">
 
-            <div class="text-muted mb-2">
-                Connected as
+            <div class="text-center mb-4">
+
+                <div class="text-muted mb-2">
+                    Connected as
+                </div>
+
+                <h1 class="h3 mb-0">
+                    @Model.Player.Name
+                </h1>
+
             </div>
 
-            <h1 class="display-6
-                fw-bold
-                mb-4">
-                @Model.Player.Name
-            </h1>
+
+            @if (Model.Characters.Count == 0)
+            {
+                <div class="alert alert-secondary">
+                    You do not have any characters yet.
+                </div>
+            }
 
 
-            <div class="alert alert-secondary mb-0">
-                Waiting for the DM to assign your character.
+            @foreach (var character in Model.Characters)
+            {
+                var combatant =
+                    Model.Encounter.Combatants
+                        .SingleOrDefault(
+                            x =>
+                                x.PlayerCharacterId ==
+                                character.Id);
+
+                <div class="card mb-3">
+
+                    <div class="card-body">
+
+                        <div class="d-flex
+                                    justify-content-between
+                                    align-items-start">
+
+                            <div>
+
+                                <h2 class="h4 mb-1">
+                                    @character.Name
+                                </h2>
+
+                                <div class="text-muted">
+                                    Level @character.Level
+                                    ·
+                                    HP @character.CurrentHp / @character.MaxHp
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        @if (combatant is not null &&
+                             !Model.Encounter.IsStarted)
+                        {
+                            <hr />
+
+                            <form method="post"
+                                  asp-page-handler="SetInitiative"
+                                  class="row
+                                         g-2
+                                         align-items-end">
+
+                                <input type="hidden"
+                                       name="characterId"
+                                       value="@character.Id" />
+
+                                <div class="col">
+
+                                    <label class="form-label">
+                                        Initiative
+                                    </label>
+
+                                    <input type="number"
+                                           name="initiative"
+                                           value="@combatant.Initiative"
+                                           class="form-control" />
+
+                                </div>
+
+                                <div class="col-auto">
+
+                                    <button type="submit"
+                                            class="btn btn-primary">
+                                        Set Initiative
+                                    </button>
+
+                                </div>
+
+                            </form>
+                        }
+                        else if (combatant is not null)
+                        {
+                            <div class="alert
+                                        alert-success
+                                        mt-3
+                                        mb-0">
+                                In current encounter
+                            </div>
+                        }
+
+                    </div>
+
+                </div>
+            }
+
+
+            <div class="card mt-4">
+
+                <div class="card-body">
+
+                    <h2 class="h5">
+                        Create Character
+                    </h2>
+
+                    <form method="post"
+                          asp-page-handler="CreateCharacter"
+                          class="d-flex gap-2">
+
+                        <input type="text"
+                               name="name"
+                               class="form-control"
+                               placeholder="Character name"
+                               required />
+
+                        <button type="submit"
+                                class="btn btn-outline-primary">
+                            Create
+                        </button>
+
+                    </form>
+
+                </div>
+
             </div>
 
         </div>
@@ -34,3 +156,12 @@
     </div>
 
 </div>
+
+@section Scripts {
+
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+
+    <script src="~/js/player.js"
+            asp-append-version="true"></script>
+
+}

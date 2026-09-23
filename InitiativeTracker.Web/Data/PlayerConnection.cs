@@ -16,4 +16,6 @@ public class PlayerConnection
     public DateTime JoinedAtUtc { get; set; }
 
     public DateTime? LastSeenAtUtc { get; set; }
+
+    public Guid PlayerProfileId { get; set; }
 }

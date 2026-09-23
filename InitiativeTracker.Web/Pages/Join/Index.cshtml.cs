@@ -59,8 +59,7 @@ public class IndexModel : PageModel
         }
     }
 
-    public async Task<IActionResult>
-        OnPostAsync()
+    public async Task<IActionResult> OnPostAsync()
     {
         if (string.IsNullOrWhiteSpace(
                 PlayerName))
@@ -94,12 +93,36 @@ public class IndexModel : PageModel
             return Page();
         }
 
+        var profileToken =
+            Request.Cookies[
+                "InitiativeTracker.PlayerProfile"];
+
         var player =
             _playerRegistry.JoinPlayer(
                 _gameSession
                     .CurrentSession
                     .SessionId,
-                PlayerName);
+                PlayerName,
+                profileToken,
+                out var profile);
+
+        Response.Cookies.Append(
+            "InitiativeTracker.PlayerProfile",
+            profile.AccessToken,
+            new CookieOptions
+            {
+                HttpOnly = true,
+
+                SameSite =
+                    SameSiteMode.Lax,
+
+                Secure =
+                    Request.IsHttps,
+
+                Expires =
+                    DateTimeOffset.UtcNow
+                        .AddYears(1)
+            });
 
         await DeviceAuthenticationService
             .SignInAsync(
@@ -109,7 +132,9 @@ public class IndexModel : PageModel
                 lifetime:
                     TimeSpan.FromHours(12),
                 playerId:
-                    player.Id);
+                    player.Id,
+                playerProfileId:
+                    profile.Id);
 
         return RedirectToPage(
             "/Player/Index");

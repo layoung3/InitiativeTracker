@@ -265,7 +265,8 @@ public class Encounter
                     SortOrder = c.SortOrder,
                     CurrentHp = c.CurrentHp,
                     MaxHp = c.MaxHp,
-                    Status = c.Status
+                    Status = c.Status,
+                    PlayerCharacterId = c.PlayerCharacterId
                 })
                 .ToList()
         };
@@ -294,7 +295,8 @@ public class Encounter
                 SortOrder = c.SortOrder,
                 CurrentHp = c.CurrentHp,
                 MaxHp = c.MaxHp,
-                Status = c.Status
+                Status = c.Status,
+                PlayerCharacterId = c.PlayerCharacterId
             }));
 
         return encounter;
@@ -525,5 +527,22 @@ public class Encounter
         {
             ordered[i].SortOrder = i;
         }
+    }
+
+    public void SetCombatantInitiative(
+        Guid combatantId,
+        int initiative)
+    {
+        if (IsStarted)
+        {
+            throw new InvalidOperationException(
+                "Initiative cannot be changed after combat starts.");
+        }
+
+        var combatant =
+            GetCombatant(combatantId);
+
+        combatant.Initiative =
+            initiative;
     }
 }
