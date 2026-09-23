@@ -104,6 +104,33 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("EncounterState", (string)null);
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("JoinedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSeenAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PlayerConnection", (string)null);
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.RegisteredDevice", b =>
                 {
                     b.Property<Guid>("Id")

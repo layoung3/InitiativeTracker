@@ -1,0 +1,73 @@
+﻿@page "/dm/join"
+@model InitiativeTracker.Web.Pages.Dm.JoinModel
+
+@{
+    ViewData["Title"] = "Join Game";
+}
+
+<div class="container py-4"
+     style="max-width: 800px;">
+
+    <div class="d-flex
+        justify-content-between
+        align-items-center
+        mb-4">
+
+        <div>
+
+            <h1 class="mb-1">
+                Join Game
+            </h1>
+
+            <div class="text-muted">
+                Players can scan the QR code or enter the game code.
+            </div>
+
+        </div>
+
+
+        <a href="/dm"
+           class="btn btn-outline-secondary">
+            Back to DM
+        </a>
+
+    </div>
+
+
+    <div class="card">
+
+        <div class="card-body
+            text-center
+            p-4
+            p-md-5">
+
+
+            <img src="/join/qr"
+                 alt="Player join QR code"
+                 class="img-fluid mb-4"
+                 style="width: min(360px, 80vw);" />
+
+
+            <div class="text-muted mb-2">
+                Game Code
+            </div>
+
+
+            <div class="display-3
+                fw-bold
+                font-monospace
+                mb-3">
+                @Model.Session.JoinCode
+            </div>
+
+
+            <div class="text-muted">
+                Scan with your phone camera
+                or visit the tracker and enter this code.
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

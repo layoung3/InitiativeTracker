@@ -12,7 +12,8 @@ public static class DeviceAuthenticationService
         GameSessionRecord session,
         string role,
         Guid? deviceId = null,
-        TimeSpan? lifetime = null)
+        TimeSpan? lifetime = null,
+        Guid? playerId = null)
     {
         var claims =
             new List<Claim>
@@ -32,6 +33,13 @@ public static class DeviceAuthenticationService
                 new Claim(
                     "device_id",
                     deviceId.Value.ToString()));
+        }
+        if (playerId.HasValue)
+        {
+            claims.Add(
+                new Claim(
+                    "player_id",
+                    playerId.Value.ToString()));
         }
 
         var identity =

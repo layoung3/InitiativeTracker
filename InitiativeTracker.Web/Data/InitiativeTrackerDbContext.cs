@@ -22,6 +22,9 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<DevicePairingRequest> DevicePairingRequests =>
         Set<DevicePairingRequest>();
 
+    public DbSet<PlayerConnection> PlayerConnections =>
+        Set<PlayerConnection>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -89,6 +92,17 @@ public class InitiativeTrackerDbContext : DbContext
                     .IsRequired();
 
                 entity.Property(x => x.Status)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity<PlayerConnection>(
+            entity =>
+            {
+                entity.ToTable("PlayerConnection");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name)
                     .IsRequired();
             });
     }

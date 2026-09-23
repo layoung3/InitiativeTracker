@@ -1,0 +1,36 @@
+﻿@page "/player"
+@model InitiativeTracker.Web.Pages.Player.IndexModel
+
+@{
+    ViewData["Title"] = "Player";
+}
+
+<div class="container py-5"
+     style="max-width: 600px;">
+
+    <div class="card">
+
+        <div class="card-body
+            text-center
+            p-5">
+
+            <div class="text-muted mb-2">
+                Connected as
+            </div>
+
+            <h1 class="display-6
+                fw-bold
+                mb-4">
+                @Model.Player.Name
+            </h1>
+
+
+            <div class="alert alert-secondary mb-0">
+                Waiting for the DM to assign your character.
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

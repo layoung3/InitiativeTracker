@@ -30,6 +30,8 @@ builder.Services.AddDbContextFactory<InitiativeTrackerDbContext>(
 builder.Services.AddSingleton<EncounterStateService>();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.AddSingleton<DeviceRegistryService>();
+builder.Services.AddSingleton<PlayerRegistryService>();
+builder.Services.AddSingleton<TrackerUrlService>();
 
 builder.Services
     .AddAuthentication(
@@ -132,6 +134,43 @@ builder.Services
                 if (!principal.IsInRole("Display"))
                 {
                     return;
+                }
+
+                if (principal.IsInRole("Player"))
+                {
+                    var playerClaim =
+                        principal.FindFirst(
+                            "player_id")?.Value;
+
+                    if (!Guid.TryParse(
+                            playerClaim,
+                            out var playerId))
+                    {
+                        context.RejectPrincipal();
+
+                        await context.HttpContext
+                            .SignOutAsync();
+
+                        return;
+                    }
+
+                    var players =
+                        context.HttpContext
+                            .RequestServices
+                            .GetRequiredService<
+                                PlayerRegistryService>();
+
+                    if (!players.IsActivePlayer(
+                            playerId,
+                            sessionId))
+                    {
+                        context.RejectPrincipal();
+
+                        await context.HttpContext
+                            .SignOutAsync();
+
+                        return;
+                    }
                 }
 
                 var deviceClaim =

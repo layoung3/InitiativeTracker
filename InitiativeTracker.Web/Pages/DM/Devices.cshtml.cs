@@ -17,26 +17,39 @@ public class DevicesModel : PageModel
     private readonly IHubContext<EncounterHub>
         _encounterHub;
 
+    private readonly PlayerRegistryService
+        _playerRegistry;
+
+    private readonly GameSessionService
+        _gameSession;
+
     public DevicesModel(
-        DeviceRegistryService deviceRegistry,
-        IHubContext<EncounterHub> encounterHub)
+    DeviceRegistryService deviceRegistry,
+    PlayerRegistryService playerRegistry,
+    GameSessionService gameSession,
+    IHubContext<EncounterHub> encounterHub)
     {
         _deviceRegistry =
             deviceRegistry;
+
+        _playerRegistry =
+            playerRegistry;
+
+        _gameSession =
+            gameSession;
 
         _encounterHub =
             encounterHub;
     }
 
-    public IReadOnlyList<DevicePairingRequest>
-        PendingRequests
-    { get; private set; }
-        = [];
+    public IReadOnlyList<DevicePairingRequest> PendingRequests
+    { get; private set; } = [];
 
-    public IReadOnlyList<RegisteredDevice>
-        Displays
-    { get; private set; }
-        = [];
+    public IReadOnlyList<RegisteredDevice> Displays
+    { get; private set; } = [];
+
+    public IReadOnlyList<PlayerConnection> Players
+    { get; private set; } = [];
 
     public void OnGet()
     {
@@ -78,6 +91,15 @@ public class DevicesModel : PageModel
         return RedirectToPage();
     }
 
+    public IActionResult OnPostRemovePlayer(
+        Guid id)
+    {
+        _playerRegistry.RemovePlayer(
+            id);
+
+        return RedirectToPage();
+    }
+
     public IActionResult OnPostRename(
         Guid id,
         string name)
@@ -99,5 +121,11 @@ public class DevicesModel : PageModel
         Displays =
             _deviceRegistry
                 .GetTrustedDisplays();
+
+        Players =
+            _playerRegistry.GetActivePlayers(
+                _gameSession
+                    .CurrentSession
+                    .SessionId);
     }
 }

@@ -11,24 +11,81 @@ public class IndexModel : PageModel
     private readonly GameSessionService
         _gameSession;
 
+    private readonly PlayerRegistryService
+        _playerRegistry;
+
     public IndexModel(
-        GameSessionService gameSession)
+        GameSessionService gameSession,
+        PlayerRegistryService playerRegistry)
     {
-        _gameSession = gameSession;
+        _gameSession =
+            gameSession;
+
+        _playerRegistry =
+            playerRegistry;
     }
+
+    [BindProperty]
+    public string PlayerName { get; set; } =
+        string.Empty;
 
     [BindProperty]
     public string JoinCode { get; set; } =
         string.Empty;
 
-    public void OnGet()
+    [BindProperty]
+    public string JoinToken { get; set; } =
+        string.Empty;
+
+    public bool TokenAccepted { get; private set; }
+
+    public void OnGet(
+        string? t)
     {
+        if (!string.IsNullOrWhiteSpace(t) &&
+            _gameSession.ValidatePlayerToken(t))
+        {
+            JoinToken =
+                t;
+
+            TokenAccepted =
+                true;
+        }
+        else if (!string.IsNullOrWhiteSpace(t))
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "This game invitation is invalid or has expired.");
+        }
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public async Task<IActionResult>
+        OnPostAsync()
     {
-        if (!_gameSession.ValidateJoinCode(
-            JoinCode))
+        if (string.IsNullOrWhiteSpace(
+                PlayerName))
+        {
+            ModelState.AddModelError(
+                nameof(PlayerName),
+                "Your name is required.");
+
+            return Page();
+        }
+
+        var joinedWithToken =
+            !string.IsNullOrWhiteSpace(
+                JoinToken) &&
+            _gameSession.ValidatePlayerToken(
+                JoinToken);
+
+        var joinedWithCode =
+            !string.IsNullOrWhiteSpace(
+                JoinCode) &&
+            _gameSession.ValidateJoinCode(
+                JoinCode);
+
+        if (!joinedWithToken &&
+            !joinedWithCode)
         {
             ModelState.AddModelError(
                 nameof(JoinCode),
@@ -37,13 +94,24 @@ public class IndexModel : PageModel
             return Page();
         }
 
+        var player =
+            _playerRegistry.JoinPlayer(
+                _gameSession
+                    .CurrentSession
+                    .SessionId,
+                PlayerName);
+
         await DeviceAuthenticationService
             .SignInAsync(
                 HttpContext,
                 _gameSession.CurrentSession,
-                "Player");
+                "Player",
+                lifetime:
+                    TimeSpan.FromHours(12),
+                playerId:
+                    player.Id);
 
         return RedirectToPage(
-            "/Join/Success");
+            "/Player/Index");
     }
 }
