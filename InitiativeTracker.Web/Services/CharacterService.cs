@@ -150,6 +150,31 @@ public class CharacterService
         }
     }
 
+    public void PermanentlyDeleteCharacter(
+        Guid characterId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId);
+
+            if (character is null)
+            {
+                return;
+            }
+
+            db.PlayerCharacters.Remove(
+                character);
+
+            db.SaveChanges();
+        }
+    }
+
     public IReadOnlyList<PlayerCharacter> GetCharactersForProfiles(
         IReadOnlyCollection<Guid> profileIds)
     {

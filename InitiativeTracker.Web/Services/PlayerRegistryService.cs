@@ -129,6 +129,64 @@ public class PlayerRegistryService
             .Base64UrlEncode(bytes);
     }
 
+    public IReadOnlyList<PlayerProfile> GetAllProfiles()
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        return db.PlayerProfiles
+            .AsNoTracking()
+            .OrderBy(x => x.Name)
+            .ToList();
+    }
+
+    public void PermanentlyDeleteProfile(
+        Guid playerProfileId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var profile =
+                db.PlayerProfiles
+                    .SingleOrDefault(
+                        x => x.Id == playerProfileId);
+
+            if (profile is null)
+            {
+                return;
+            }
+
+            var connections =
+                db.PlayerConnections
+                    .Where(
+                        x =>
+                            x.PlayerProfileId ==
+                            playerProfileId)
+                    .ToList();
+
+            var characters =
+                db.PlayerCharacters
+                    .Where(
+                        x =>
+                            x.PlayerProfileId ==
+                            playerProfileId)
+                    .ToList();
+
+            db.PlayerConnections
+                .RemoveRange(connections);
+
+            db.PlayerCharacters
+                .RemoveRange(characters);
+
+            db.PlayerProfiles.Remove(
+                profile);
+
+            db.SaveChanges();
+        }
+    }
+
     public IReadOnlyList<PlayerConnection> GetActivePlayers(
             Guid sessionId)
     {
