@@ -66,6 +66,127 @@
     {
         <div class="card mb-4">
 
+            <div class="card-header
+                        d-flex
+                        justify-content-between
+                        align-items-center">
+
+                <span>
+                    Player Characters
+                </span>
+
+                <span class="text-muted small">
+                    Connected players
+                </span>
+
+            </div>
+
+
+            <div class="list-group
+                        list-group-flush">
+
+                @if (Model.ConnectedPlayerCharacters.Count == 0)
+                {
+                    <div class="list-group-item
+                                text-muted">
+                        No connected player characters available.
+                    </div>
+                }
+                else
+                {
+                    foreach (var playerGroup
+                        in Model.ConnectedPlayerCharacters
+                            .GroupBy(x => new
+                            {
+                                x.PlayerProfileId,
+                                x.PlayerName
+                            }))
+                    {
+                        <div class="list-group-item">
+
+                            <div class="fw-bold mb-2">
+                                @playerGroup.Key.PlayerName
+                            </div>
+
+
+                            <div class="d-flex
+                                        flex-column
+                                        gap-2">
+
+                                @foreach (var character
+                                          in playerGroup)
+                                {
+                                    <div class="d-flex
+                                                flex-column
+                                                flex-md-row
+                                                justify-content-between
+                                                align-items-md-center
+                                                gap-2">
+
+                                        <div>
+
+                                            <div class="fw-semibold">
+                                                @character.CharacterName
+                                            </div>
+
+                                            <div class="small
+                                                        text-muted">
+
+                                                Level @character.Level
+                                                ·
+                                                HP @character.CurrentHp
+                                                /
+                                                @character.MaxHp
+
+                                            </div>
+
+                                        </div>
+
+
+                                        @if (character.AlreadyAdded)
+                                        {
+                                            <button type="button"
+                                                    class="btn
+                                                           btn-sm
+                                                           btn-outline-success"
+                                                    disabled>
+                                                Added
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <form method="post"
+                                                  asp-page-handler="AddPlayerCharacter">
+
+                                                <input type="hidden"
+                                                       name="characterId"
+                                                       value="@character.CharacterId" />
+
+                                                <button type="submit"
+                                                        class="btn
+                                                               btn-sm
+                                                               btn-outline-primary">
+                                                    Add to Encounter
+                                                </button>
+
+                                            </form>
+                                        }
+
+                                    </div>
+                                }
+
+                            </div>
+
+                        </div>
+                    }
+                }
+
+            </div>
+
+        </div>
+
+        <div class="card mb-4">
+
             <div class="card-header">
                 Add Combatant
             </div>

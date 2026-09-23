@@ -34,4 +34,6 @@ public class CombatantSnapshot
     public CombatantStatus Status { get; set; }
 
     public Guid? PlayerCharacterId { get; set; }
+
+    public Guid? AssignedPlayerProfileId { get; set; }
 }

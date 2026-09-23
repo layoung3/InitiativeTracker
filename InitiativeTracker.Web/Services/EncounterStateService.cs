@@ -213,22 +213,25 @@ public class EncounterStateService
 
             CurrentEncounter.AddCombatant(
                 new Combatant
-                {
-                    Name =
-                        character.Name,
+            {
+                Name =
+                    character.Name,
 
-                    Initiative =
-                        0,
+                Initiative =
+                    0,
 
-                    CurrentHp =
-                        character.CurrentHp,
+                CurrentHp =
+                    character.CurrentHp,
 
-                    MaxHp =
-                        character.MaxHp,
+                MaxHp =
+                    character.MaxHp,
 
-                    PlayerCharacterId =
-                        character.Id
-                });
+                PlayerCharacterId =
+                    character.Id,
+
+                AssignedPlayerProfileId =
+                    character.PlayerProfileId
+            });
         });
     }
 

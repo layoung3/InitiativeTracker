@@ -149,4 +149,25 @@ public class CharacterService
             db.SaveChanges();
         }
     }
+
+    public IReadOnlyList<PlayerCharacter> GetCharactersForProfiles(
+        IReadOnlyCollection<Guid> profileIds)
+    {
+        if (profileIds.Count == 0)
+        {
+            return [];
+        }
+
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        return db.PlayerCharacters
+            .AsNoTracking()
+            .Where(x =>
+                profileIds.Contains(
+                    x.PlayerProfileId) &&
+                x.IsActive)
+            .OrderBy(x => x.Name)
+            .ToList();
+    }
 }

@@ -1,4 +1,5 @@
 using InitiativeTracker.Core.Models;
+using InitiativeTracker.Web.Models;
 using InitiativeTracker.Core.Enums;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -14,12 +15,21 @@ public class IndexModel : PageModel
 {
     private readonly EncounterStateService _encounterState;
     private readonly IHubContext<EncounterHub> _encounterHub;
+    private readonly PlayerRegistryService _playerRegistry;
+    private readonly CharacterService _characterService;
+    private readonly GameSessionService _gameSession;
 
-    public IndexModel(EncounterStateService encounterState, IHubContext<EncounterHub> encounterHub)
+    public IndexModel(EncounterStateService encounterState, IHubContext<EncounterHub> encounterHub, 
+        PlayerRegistryService playerRegistry, CharacterService characterService, GameSessionService gameSession)
     {
         _encounterState = encounterState;
         _encounterHub = encounterHub;
+        _playerRegistry = playerRegistry;
+        _characterService = characterService;
+        _gameSession = gameSession;
     }
+
+    public IReadOnlyList<ConnectedPlayerCharacter> ConnectedPlayerCharacters { get; private set; } = [];
 
     public Encounter Encounter => _encounterState.CurrentEncounter;
 
@@ -42,6 +52,34 @@ public class IndexModel : PageModel
 
     public void OnGet()
     {
+        LoadConnectedPlayerCharacters();
+    }
+
+    public async Task<IActionResult> OnPostAddPlayerCharacterAsync(
+        Guid characterId)
+    {
+        try
+        {
+            _encounterState
+                .AddPlayerCharacter(
+                    characterId);
+
+            await BroadcastEncounterAsync();
+
+            return RedirectToPage();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            LoadConnectedPlayerCharacters();
+
+            return Page();
+        }
     }
 
     public async Task<IActionResult> OnPostAddCombatant()
@@ -355,5 +393,88 @@ public class IndexModel : PageModel
         }
 
         return RedirectToPage();
+    }
+
+    private void LoadConnectedPlayerCharacters()
+    {
+        var sessionId =
+            _gameSession
+                .CurrentSession
+                .SessionId;
+
+        var activeConnections =
+            _playerRegistry
+                .GetActivePlayers(
+                    sessionId);
+
+        var connectedPlayers =
+            activeConnections
+                .GroupBy(
+                    x => x.PlayerProfileId)
+                .Select(
+                    group => group
+                        .OrderByDescending(
+                            x => x.JoinedAtUtc)
+                        .First())
+                .ToList();
+
+        var profileIds =
+            connectedPlayers
+                .Select(
+                    x => x.PlayerProfileId)
+                .ToList();
+
+        var characters =
+            _characterService
+                .GetCharactersForProfiles(
+                    profileIds);
+
+        ConnectedPlayerCharacters =
+            characters
+                .Select(character =>
+                {
+                    var connection =
+                        connectedPlayers
+                            .Single(
+                                x =>
+                                    x.PlayerProfileId ==
+                                    character.PlayerProfileId);
+
+                    var alreadyAdded =
+                        Encounter.Combatants.Any(
+                            x =>
+                                x.PlayerCharacterId ==
+                                character.Id);
+
+                    return new ConnectedPlayerCharacter
+                    {
+                        PlayerProfileId =
+                            connection.PlayerProfileId,
+
+                        PlayerName =
+                            connection.Name,
+
+                        CharacterId =
+                            character.Id,
+
+                        CharacterName =
+                            character.Name,
+
+                        Level =
+                            character.Level,
+
+                        CurrentHp =
+                            character.CurrentHp,
+
+                        MaxHp =
+                            character.MaxHp,
+
+                        AlreadyAdded =
+                            alreadyAdded
+                    };
+                })
+                .OrderBy(x => x.PlayerName)
+                .ThenBy(x => x.CharacterName)
+                .ToList();
     }
 }

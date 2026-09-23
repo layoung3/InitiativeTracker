@@ -25,4 +25,6 @@ public class Combatant
     public bool IsActive => Status == CombatantStatus.Active;
 
     public Guid? PlayerCharacterId { get; set; }
+
+    public Guid? AssignedPlayerProfileId { get; set; }
 }

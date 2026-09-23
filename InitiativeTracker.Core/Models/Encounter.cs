@@ -266,7 +266,8 @@ public class Encounter
                     CurrentHp = c.CurrentHp,
                     MaxHp = c.MaxHp,
                     Status = c.Status,
-                    PlayerCharacterId = c.PlayerCharacterId
+                    PlayerCharacterId = c.PlayerCharacterId,
+                    AssignedPlayerProfileId = c.AssignedPlayerProfileId
                 })
                 .ToList()
         };
@@ -296,7 +297,8 @@ public class Encounter
                 CurrentHp = c.CurrentHp,
                 MaxHp = c.MaxHp,
                 Status = c.Status,
-                PlayerCharacterId = c.PlayerCharacterId
+                PlayerCharacterId = c.PlayerCharacterId,
+                AssignedPlayerProfileId = c.AssignedPlayerProfileId
             }));
 
         return encounter;
