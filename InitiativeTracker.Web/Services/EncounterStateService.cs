@@ -274,6 +274,26 @@ public class EncounterStateService
         });
     }
 
+    public void AssignCombatantController(
+        Guid combatantId,
+        Guid? playerProfileId)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter
+                .AssignCombatantController(
+                    combatantId,
+                    playerProfileId));
+    }
+
+    public void ClearControllerAssignments(
+        Guid playerProfileId)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter
+                .ClearControllerAssignments(
+                    playerProfileId));
+    }
+
     public void UpdateCombatant(
         Guid combatantId,
         string name,

@@ -31,6 +31,8 @@ public class IndexModel : PageModel
 
     public IReadOnlyList<ConnectedPlayerCharacter> ConnectedPlayerCharacters { get; private set; } = [];
 
+    public IReadOnlyList<ConnectedPlayerOption> ConnectedPlayers { get; private set; } = [];
+
     public Encounter Encounter => _encounterState.CurrentEncounter;
 
     [BindProperty]
@@ -52,6 +54,7 @@ public class IndexModel : PageModel
 
     public void OnGet()
     {
+        LoadConnectedPlayers();
         LoadConnectedPlayerCharacters();
     }
 
@@ -395,6 +398,60 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostAssignControllerAsync(
+        Guid combatantId,
+        Guid? playerProfileId)
+    {
+        try
+        {
+            if (playerProfileId.HasValue)
+            {
+                var sessionId =
+                    _gameSession
+                        .CurrentSession
+                        .SessionId;
+
+                var isConnected =
+                    _playerRegistry
+                        .GetActivePlayers(
+                            sessionId)
+                        .Any(
+                            x =>
+                                x.PlayerProfileId ==
+                                playerProfileId.Value);
+
+                if (!isConnected)
+                {
+                    throw new InvalidOperationException(
+                        "That player is no longer connected.");
+                }
+            }
+
+            _encounterState
+                .AssignCombatantController(
+                    combatantId,
+                    playerProfileId);
+
+            await BroadcastEncounterAsync();
+
+            return RedirectToPage();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            LoadConnectedPlayers();
+
+            LoadConnectedPlayerCharacters();
+
+            return Page();
+        }
+    }
+
     private void LoadConnectedPlayerCharacters()
     {
         var sessionId =
@@ -475,6 +532,46 @@ public class IndexModel : PageModel
                 })
                 .OrderBy(x => x.PlayerName)
                 .ThenBy(x => x.CharacterName)
+                .ToList();
+    }
+
+    private void LoadConnectedPlayers()
+    {
+        var sessionId =
+            _gameSession
+                .CurrentSession
+                .SessionId;
+
+        var activeConnections =
+            _playerRegistry
+                .GetActivePlayers(
+                    sessionId);
+
+        ConnectedPlayers =
+            activeConnections
+                .GroupBy(
+                    x => x.PlayerProfileId)
+                .Select(
+                    group =>
+                    {
+                        var latestConnection =
+                            group
+                                .OrderByDescending(
+                                    x => x.JoinedAtUtc)
+                                .First();
+
+                        return new ConnectedPlayerOption
+                        {
+                            PlayerProfileId =
+                                latestConnection
+                                    .PlayerProfileId,
+
+                            PlayerName =
+                                latestConnection.Name
+                        };
+                    })
+                .OrderBy(
+                    x => x.PlayerName)
                 .ToList();
     }
 }

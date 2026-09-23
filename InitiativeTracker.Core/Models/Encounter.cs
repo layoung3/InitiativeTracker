@@ -77,6 +77,31 @@ public class Encounter
         Combatants.Add(combatant);
     }
 
+    public void AssignCombatantController(
+        Guid combatantId,
+        Guid? playerProfileId)
+    {
+        var combatant =
+            GetCombatant(combatantId);
+
+        combatant.AssignedPlayerProfileId =
+            playerProfileId;
+    }
+
+    public void ClearControllerAssignments(
+        Guid playerProfileId)
+    {
+        foreach (var combatant in Combatants)
+        {
+            if (combatant.AssignedPlayerProfileId ==
+                playerProfileId)
+            {
+                combatant.AssignedPlayerProfileId =
+                    null;
+            }
+        }
+    }
+
     public void StartCombat()
     {
         var activeCombatants = Combatants

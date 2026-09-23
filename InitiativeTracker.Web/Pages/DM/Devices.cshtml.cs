@@ -11,35 +11,24 @@ namespace InitiativeTracker.Web.Pages.Dm;
 [Authorize(Roles = "DM")]
 public class DevicesModel : PageModel
 {
-    private readonly DeviceRegistryService
-        _deviceRegistry;
-
-    private readonly IHubContext<EncounterHub>
-        _encounterHub;
-
-    private readonly PlayerRegistryService
-        _playerRegistry;
-
-    private readonly GameSessionService
-        _gameSession;
+    private readonly DeviceRegistryService _deviceRegistry;
+    private readonly IHubContext<EncounterHub> _encounterHub;
+    private readonly PlayerRegistryService _playerRegistry;
+    private readonly GameSessionService _gameSession;
+    private readonly EncounterStateService _encounterState;
 
     public DevicesModel(
     DeviceRegistryService deviceRegistry,
     PlayerRegistryService playerRegistry,
     GameSessionService gameSession,
-    IHubContext<EncounterHub> encounterHub)
+    IHubContext<EncounterHub> encounterHub,
+    EncounterStateService encounterState)
     {
-        _deviceRegistry =
-            deviceRegistry;
-
-        _playerRegistry =
-            playerRegistry;
-
-        _gameSession =
-            gameSession;
-
-        _encounterHub =
-            encounterHub;
+        _deviceRegistry = deviceRegistry;
+        _playerRegistry = playerRegistry;
+        _gameSession = gameSession;
+        _encounterHub = encounterHub;
+        _encounterState = encounterState;
     }
 
     public IReadOnlyList<DevicePairingRequest> PendingRequests
@@ -92,7 +81,25 @@ public class DevicesModel : PageModel
 
     public async Task<IActionResult> OnPostRemovePlayerAsync(Guid id)
     {
+        var player =
+            _playerRegistry.GetPlayer(id);
+
         _playerRegistry.RemovePlayer(id);
+
+        if (player is not null)
+        {
+            _encounterState
+                .ClearControllerAssignments(
+                    player.PlayerProfileId);
+
+            await _encounterHub
+                .Clients
+                .All
+                .SendAsync(
+                    "EncounterUpdated",
+                    _encounterState
+                        .GetDisplayState());
+        }
 
         await _encounterHub
             .Clients

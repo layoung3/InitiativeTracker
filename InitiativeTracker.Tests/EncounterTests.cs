@@ -541,4 +541,101 @@ public class EncounterTests
             2,
             encounter.Combatants.Count);
     }
+
+    [Fact]
+    public void AssignCombatantController_AssignsPlayer()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var combatant =
+            encounter.Combatants.First();
+
+        var playerProfileId =
+            Guid.NewGuid();
+
+        encounter.AssignCombatantController(
+            combatant.Id,
+            playerProfileId);
+
+        Assert.Equal(
+            playerProfileId,
+            combatant.AssignedPlayerProfileId);
+    }
+
+    [Fact]
+    public void AssignCombatantController_CanReassignPlayer()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var combatant =
+            encounter.Combatants.First();
+
+        var firstPlayer =
+            Guid.NewGuid();
+
+        var secondPlayer =
+            Guid.NewGuid();
+
+        encounter.AssignCombatantController(
+            combatant.Id,
+            firstPlayer);
+
+        encounter.AssignCombatantController(
+            combatant.Id,
+            secondPlayer);
+
+        Assert.Equal(
+            secondPlayer,
+            combatant.AssignedPlayerProfileId);
+    }
+
+    [Fact]
+    public void AssignCombatantController_NullReturnsControlToDm()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var combatant =
+            encounter.Combatants.First();
+
+        encounter.AssignCombatantController(
+            combatant.Id,
+            Guid.NewGuid());
+
+        encounter.AssignCombatantController(
+            combatant.Id,
+            null);
+
+        Assert.Null(
+            combatant.AssignedPlayerProfileId);
+    }
+
+    [Fact]
+    public void ClearControllerAssignments_ReturnsPlayersCombatantsToDm()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var player =
+            Guid.NewGuid();
+
+        encounter.AssignCombatantController(
+            encounter.Combatants[0].Id,
+            player);
+
+        encounter.AssignCombatantController(
+            encounter.Combatants[1].Id,
+            player);
+
+        encounter.ClearControllerAssignments(
+            player);
+
+        Assert.All(
+            encounter.Combatants,
+            combatant =>
+                Assert.Null(
+                    combatant.AssignedPlayerProfileId));
+    }
 }
