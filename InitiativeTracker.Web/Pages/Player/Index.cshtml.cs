@@ -29,6 +29,10 @@ public class IndexModel : PageModel
 
     public IReadOnlyList<PlayerCharacter> Characters { get; private set; } = [];
 
+    public IReadOnlyList<Combatant> ControlledCombatants { get; private set; } = [];
+
+    public IReadOnlyList<Combatant> TemporaryControlledCombatants { get; private set; } = [];
+
     public Guid PlayerProfileId { get; private set; }
 
     public Encounter Encounter => _encounterState.CurrentEncounter;
@@ -83,6 +87,31 @@ public class IndexModel : PageModel
             _characterService
                 .GetCharacters(
                     profileId);
+
+        var characterIds =
+            Characters
+                .Select(x => x.Id)
+                .ToHashSet();
+
+        ControlledCombatants =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .Where(
+                    x =>
+                        x.AssignedPlayerProfileId ==
+                        profileId)
+                .OrderBy(x => x.SortOrder)
+                .ToList();
+
+        TemporaryControlledCombatants =
+            ControlledCombatants
+                .Where(
+                    combatant =>
+                        !combatant.PlayerCharacterId.HasValue ||
+                        !characterIds.Contains(
+                            combatant.PlayerCharacterId.Value))
+                .ToList();
 
         return Page();
     }

@@ -14,6 +14,13 @@ playerConnection.on(
             "/join";
     });
 
+playerConnection.on(
+    "EncounterUpdated",
+    () => {
+
+        window.location.reload();
+    });
+
 async function startPlayerConnection() {
 
     try {

@@ -121,6 +121,64 @@
                 </div>
             }
 
+            @if (Model.TemporaryControlledCombatants.Count > 0)
+            {
+                <div class="mt-4">
+
+                    <h2 class="h5 mb-3">
+                        Temporary Controls
+                    </h2>
+
+
+                    @foreach (var combatant in Model.TemporaryControlledCombatants)
+                    {
+                        <div class="card mb-2">
+
+                            <div class="card-body">
+
+                                <div class="d-flex
+                                    justify-content-between
+                                    align-items-center">
+
+                                    <div>
+
+                                        <div class="fw-bold">
+                                            @combatant.Name
+                                        </div>
+
+                                        <div class="small text-muted">
+
+                                            HP
+                                            @(combatant.CurrentHp?.ToString() ?? "—")
+                                            /
+                                            @(combatant.MaxHp?.ToString() ?? "—")
+
+                                            @if (Model.Encounter.IsStarted)
+                                            {
+                                                <span>
+                                                    · Initiative
+                                                    @combatant.Initiative
+                                                </span>
+                                            }
+
+                                        </div>
+
+                                    </div>
+
+
+                                    <span class="badge text-bg-secondary">
+                                        Temporary
+                                    </span>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+                    }
+
+                </div>
+            }
 
             <div class="card mt-4">
 
