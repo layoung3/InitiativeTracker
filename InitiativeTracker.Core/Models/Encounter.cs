@@ -177,19 +177,53 @@ public class Encounter
 
     public void AdjustHp(Guid combatantId, int amount)
     {
-        var combatant = GetCombatant(combatantId);
+        var combatant =
+            GetCombatant(combatantId);
 
         if (!combatant.CurrentHp.HasValue)
         {
-            throw new InvalidOperationException(
-                "Combatant does not currently have HP assigned.");
+            return;
         }
 
-        var newHp = combatant.CurrentHp.Value + amount;
+        if (amount < 0)
+        {
+            var damage =
+                Math.Abs(amount);
 
-        combatant.CurrentHp = ClampHp(
-            newHp,
-            combatant.MaxHp);
+            if (combatant.TemporaryHp > 0)
+            {
+                var absorbed =
+                    Math.Min(
+                        combatant.TemporaryHp,
+                        damage);
+
+                combatant.TemporaryHp -=
+                    absorbed;
+
+                damage -=
+                    absorbed;
+            }
+
+            if (damage > 0)
+            {
+                combatant.CurrentHp =
+                    Math.Max(
+                        0,
+                        combatant.CurrentHp.Value -
+                        damage);
+            }
+        }
+        else
+        {
+            combatant.CurrentHp =
+                combatant.MaxHp.HasValue
+                    ? Math.Min(
+                        combatant.MaxHp.Value,
+                        combatant.CurrentHp.Value +
+                        amount)
+                    : combatant.CurrentHp.Value +
+                      amount;
+        }
     }
 
     public void SetCurrentHp(Guid combatantId, int? currentHp)
@@ -205,6 +239,17 @@ public class Encounter
         combatant.CurrentHp = ClampHp(
             currentHp.Value,
             combatant.MaxHp);
+    }
+
+    public void SetTemporaryHp(
+        Guid combatantId,
+        int temporaryHp)
+    {
+        var combatant =
+            GetCombatant(combatantId);
+
+        combatant.TemporaryHp =
+            Math.Max(0, temporaryHp);
     }
 
     public void SetCombatantStatus(
@@ -290,6 +335,7 @@ public class Encounter
                     SortOrder = c.SortOrder,
                     CurrentHp = c.CurrentHp,
                     MaxHp = c.MaxHp,
+                    TemporaryHp = c.TemporaryHp,
                     Status = c.Status,
                     PlayerCharacterId = c.PlayerCharacterId,
                     AssignedPlayerProfileId = c.AssignedPlayerProfileId
@@ -321,6 +367,7 @@ public class Encounter
                 SortOrder = c.SortOrder,
                 CurrentHp = c.CurrentHp,
                 MaxHp = c.MaxHp,
+                TemporaryHp = c.TemporaryHp,
                 Status = c.Status,
                 PlayerCharacterId = c.PlayerCharacterId,
                 AssignedPlayerProfileId = c.AssignedPlayerProfileId

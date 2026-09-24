@@ -187,11 +187,13 @@ public class EncounterStateService
 
                 throw;
             }
+
+            SyncAllLinkedCharacters();
         }
     }
 
     public void AddPlayerCharacter(
-    Guid characterId)
+        Guid characterId)
     {
         var character =
             _characterService.GetCharacter(
@@ -225,6 +227,9 @@ public class EncounterStateService
 
                 MaxHp =
                     character.MaxHp,
+
+                TemporaryHp =
+                    character.TemporaryHp,
 
                 PlayerCharacterId =
                     character.Id,
@@ -420,19 +425,56 @@ public class EncounterStateService
         int amount)
     {
         ExecuteMutation(() =>
+        {
             CurrentEncounter.AdjustHp(
                 combatantId,
-                amount));
+                amount);
+
+            var combatant =
+                CurrentEncounter.GetCombatant(
+                    combatantId);
+
+            SyncLinkedCharacterHp(
+                combatant);
+        });
     }
 
     public void SetCurrentHp(
         Guid combatantId,
-        int? currentHp)
+        int currentHp)
     {
         ExecuteMutation(() =>
+        {
             CurrentEncounter.SetCurrentHp(
                 combatantId,
-                currentHp));
+                currentHp);
+
+            var combatant =
+                CurrentEncounter.GetCombatant(
+                    combatantId);
+
+            SyncLinkedCharacterHp(
+                combatant);
+        });
+    }
+
+    public void SetTemporaryHp(
+        Guid combatantId,
+        int temporaryHp)
+    {
+        ExecuteMutation(() =>
+        {
+            CurrentEncounter.SetTemporaryHp(
+                combatantId,
+                temporaryHp);
+
+            var combatant =
+                CurrentEncounter.GetCombatant(
+                    combatantId);
+
+            SyncLinkedCharacterHp(
+                combatant);
+        });
     }
 
     public void SetCombatantStatus(
@@ -476,8 +518,6 @@ public class EncounterStateService
             try
             {
                 PersistStateLocked();
-
-                return true;
             }
             catch
             {
@@ -492,6 +532,10 @@ public class EncounterStateService
 
                 throw;
             }
+
+            SyncAllLinkedCharacters();
+
+            return true;
         }
     }
 
@@ -515,6 +559,34 @@ public class EncounterStateService
                     combatant.Id,
                     initiative);
         });
+    }
+
+    private void SyncLinkedCharacterHp(
+        Combatant combatant)
+    {
+        if (!combatant.PlayerCharacterId.HasValue ||
+            !combatant.CurrentHp.HasValue ||
+            !combatant.MaxHp.HasValue)
+        {
+            return;
+        }
+
+        _characterService
+            .UpdateCombatValues(
+                combatant.PlayerCharacterId.Value,
+                combatant.CurrentHp.Value,
+                combatant.MaxHp.Value,
+                combatant.TemporaryHp);
+    }
+
+    private void SyncAllLinkedCharacters()
+    {
+        foreach (var combatant
+                 in CurrentEncounter.Combatants)
+        {
+            SyncLinkedCharacterHp(
+                combatant);
+        }
     }
 
 }

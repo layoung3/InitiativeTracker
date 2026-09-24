@@ -31,6 +31,8 @@ public class CombatantSnapshot
 
     public int? MaxHp { get; set; }
 
+    public int TemporaryHp { get; set; }
+
     public CombatantStatus Status { get; set; }
 
     public Guid? PlayerCharacterId { get; set; }

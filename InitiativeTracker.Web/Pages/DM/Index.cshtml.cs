@@ -252,21 +252,69 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostSetHp( Guid id, int? currentHp)
+    public async Task<IActionResult> OnPostSetHp(
+    Guid id,
+    int? currentHp)
     {
+        if (!currentHp.HasValue)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "Current HP is required.");
+
+            LoadConnectedPlayers();
+            LoadConnectedPlayerCharacters();
+
+            return Page();
+        }
+
         try
         {
             _encounterState.SetCurrentHp(
                 id,
-                currentHp);
+                currentHp.Value);
 
             await BroadcastEncounterAsync();
         }
-        catch (ArgumentException ex)
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
         {
             ModelState.AddModelError(
                 string.Empty,
                 ex.Message);
+
+            LoadConnectedPlayers();
+            LoadConnectedPlayerCharacters();
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostSetTemporaryHpAsync(
+    Guid id,
+    int temporaryHp)
+    {
+        try
+        {
+            _encounterState.SetTemporaryHp(
+                id,
+                temporaryHp);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            LoadConnectedPlayers();
+            LoadConnectedPlayerCharacters();
 
             return Page();
         }

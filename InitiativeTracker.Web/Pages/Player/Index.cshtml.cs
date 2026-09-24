@@ -158,8 +158,7 @@ public class IndexModel : PageModel
                     characterId);
 
         if (character is null ||
-            character.PlayerProfileId !=
-                profileId)
+            character.PlayerProfileId != profileId)
         {
             return Forbid();
         }

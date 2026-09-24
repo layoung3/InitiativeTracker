@@ -156,6 +156,9 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<int>("Strength")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("TemporaryHp")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 

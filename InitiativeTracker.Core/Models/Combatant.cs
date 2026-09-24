@@ -20,6 +20,8 @@ public class Combatant
 
     public int? MaxHp { get; set; }
 
+    public int TemporaryHp { get; set; }
+
     public CombatantStatus Status { get; set; } = CombatantStatus.Active;
 
     public bool IsActive => Status == CombatantStatus.Active;

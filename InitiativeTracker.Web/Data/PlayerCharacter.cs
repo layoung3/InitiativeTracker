@@ -20,6 +20,8 @@ public class PlayerCharacter
 
     public int MaxHp { get; set; }
 
+    public int TemporaryHp { get; set; }
+
     public bool Inspiration { get; set; }
 
     public int Strength { get; set; } = 10;

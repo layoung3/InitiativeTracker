@@ -122,6 +122,11 @@ public class CharacterService
                     0,
                     existing.MaxHp);
 
+            existing.TemporaryHp =
+                Math.Max(
+                    0,
+                    character.TemporaryHp);
+
             existing.Inspiration =
                 character.Inspiration;
 
@@ -144,6 +149,48 @@ public class CharacterService
                 Math.Max(1, character.Charisma);
 
             existing.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void UpdateCombatValues(
+        Guid characterId,
+        int currentHp,
+        int maxHp,
+        int temporaryHp)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            character.MaxHp =
+                Math.Max(
+                    0,
+                    maxHp);
+
+            character.CurrentHp =
+                Math.Clamp(
+                    currentHp,
+                    0,
+                    character.MaxHp);
+
+            character.TemporaryHp =
+                Math.Max(
+                    0,
+                    temporaryHp);
+
+            character.UpdatedAtUtc =
                 DateTime.UtcNow;
 
             db.SaveChanges();
