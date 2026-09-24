@@ -539,6 +539,93 @@ public class EncounterStateService
         }
     }
 
+    public void AdjustHpForController(
+        Guid playerProfileId,
+        Guid combatantId,
+        int amount)
+    {
+        ExecuteMutation(() =>
+        {
+            var combatant =
+                CurrentEncounter.GetCombatant(
+                    combatantId);
+
+            EnsureControlledBy(
+                combatant,
+                playerProfileId);
+
+            CurrentEncounter.AdjustHp(
+                combatantId,
+                amount);
+        });
+    }
+
+    public void SetCurrentHpForController(
+        Guid playerProfileId,
+        Guid combatantId,
+        int currentHp)
+    {
+        ExecuteMutation(() =>
+        {
+            var combatant =
+                CurrentEncounter.GetCombatant(
+                    combatantId);
+
+            EnsureControlledBy(
+                combatant,
+                playerProfileId);
+
+            CurrentEncounter.SetCurrentHp(
+                combatantId,
+                currentHp);
+        });
+    }
+
+    public void SetTemporaryHpForController(
+        Guid playerProfileId,
+        Guid combatantId,
+        int temporaryHp)
+    {
+        ExecuteMutation(() =>
+        {
+            var combatant =
+                CurrentEncounter.GetCombatant(
+                    combatantId);
+
+            EnsureControlledBy(
+                combatant,
+                playerProfileId);
+
+            CurrentEncounter.SetTemporaryHp(
+                combatantId,
+                temporaryHp);
+        });
+    }
+
+    public void AdvanceTurnForController(
+        Guid playerProfileId)
+    {
+        ExecuteMutation(() =>
+        {
+            if (!CurrentEncounter.IsStarted)
+            {
+                throw new InvalidOperationException(
+                    "Combat has not started.");
+            }
+
+            var current =
+                CurrentEncounter.CurrentCombatant
+                ?? throw new InvalidOperationException(
+                    "There is no current combatant.");
+
+            EnsureControlledBy(
+                current,
+                playerProfileId);
+
+            CurrentEncounter.AdvanceTurn();
+        });
+    }
+
     public void SetPlayerCharacterInitiative(
         Guid characterId,
         int initiative)
@@ -559,6 +646,18 @@ public class EncounterStateService
                     combatant.Id,
                     initiative);
         });
+    }
+
+    private static void EnsureControlledBy(
+        Combatant combatant,
+        Guid playerProfileId)
+    {
+        if (combatant.AssignedPlayerProfileId !=
+            playerProfileId)
+        {
+            throw new InvalidOperationException(
+                "You do not control this combatant.");
+        }
     }
 
     private void SyncLinkedCharacterHp(

@@ -116,6 +116,18 @@ public class IndexModel : PageModel
         return Page();
     }
 
+    private bool TryGetPlayerProfileId(
+        out Guid playerProfileId)
+    {
+        var claim =
+            User.FindFirst(
+                "player_profile_id")?.Value;
+
+        return Guid.TryParse(
+            claim,
+            out playerProfileId);
+    }
+
     public IActionResult OnPostCreateCharacter(
         string name)
     {
@@ -177,5 +189,150 @@ public class IndexModel : PageModel
                     .GetDisplayState());
 
         return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostAdjustHpAsync(
+        Guid combatantId,
+        int amount)
+    {
+        if (!TryGetPlayerProfileId(
+                out var profileId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            _encounterState
+                .AdjustHpForController(
+                    profileId,
+                    combatantId,
+                    amount);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            return RedirectToPage();
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostSetHpAsync(
+        Guid combatantId,
+        int? currentHp)
+    {
+        if (!TryGetPlayerProfileId(
+                out var profileId))
+        {
+            return Unauthorized();
+        }
+
+        if (!currentHp.HasValue)
+        {
+            return RedirectToPage();
+        }
+
+        try
+        {
+            _encounterState
+                .SetCurrentHpForController(
+                    profileId,
+                    combatantId,
+                    currentHp.Value);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostSetTemporaryHpAsync(
+        Guid combatantId,
+        int temporaryHp)
+    {
+        if (!TryGetPlayerProfileId(
+                out var profileId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            _encounterState
+                .SetTemporaryHpForController(
+                    profileId,
+                    combatantId,
+                    temporaryHp);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+        }
+
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostEndTurnAsync()
+    {
+        if (!TryGetPlayerProfileId(
+                out var profileId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            _encounterState
+                .AdvanceTurnForController(
+                    profileId);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+        }
+
+        return RedirectToPage();
+    }
+
+    private async Task BroadcastEncounterAsync()
+    {
+        var displayState =
+            _encounterState
+                .GetDisplayState();
+
+        await _encounterHub
+            .Clients
+            .All
+            .SendAsync(
+                "EncounterUpdated",
+                displayState);
     }
 }
