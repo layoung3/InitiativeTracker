@@ -500,6 +500,38 @@ public class IndexModel : PageModel
         }
     }
 
+    public async Task<IActionResult> OnPostSetVisibilityAsync(
+        Guid combatantId,
+        bool isHiddenFromPublic,
+        bool isHpHiddenFromPublic)
+    {
+        try
+        {
+            _encounterState
+                .SetCombatantVisibility(
+                    combatantId,
+                    isHiddenFromPublic,
+                    isHpHiddenFromPublic);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            LoadConnectedPlayers();
+            LoadConnectedPlayerCharacters();
+
+            return Page();
+        }
+
+        return RedirectToPage();
+    }
+
     private void LoadConnectedPlayerCharacters()
     {
         var sessionId =

@@ -38,4 +38,8 @@ public class CombatantSnapshot
     public Guid? PlayerCharacterId { get; set; }
 
     public Guid? AssignedPlayerProfileId { get; set; }
+
+    public bool IsHiddenFromPublic { get; set; }
+
+    public bool IsHpHiddenFromPublic { get; set; }
 }

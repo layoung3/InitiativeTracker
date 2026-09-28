@@ -338,7 +338,9 @@ public class Encounter
                     TemporaryHp = c.TemporaryHp,
                     Status = c.Status,
                     PlayerCharacterId = c.PlayerCharacterId,
-                    AssignedPlayerProfileId = c.AssignedPlayerProfileId
+                    AssignedPlayerProfileId = c.AssignedPlayerProfileId,
+                    IsHiddenFromPublic = c.IsHiddenFromPublic,
+                    IsHpHiddenFromPublic = c.IsHpHiddenFromPublic,
                 })
                 .ToList()
         };
@@ -370,7 +372,9 @@ public class Encounter
                 TemporaryHp = c.TemporaryHp,
                 Status = c.Status,
                 PlayerCharacterId = c.PlayerCharacterId,
-                AssignedPlayerProfileId = c.AssignedPlayerProfileId
+                AssignedPlayerProfileId = c.AssignedPlayerProfileId,
+                IsHiddenFromPublic = c.IsHiddenFromPublic,
+                IsHpHiddenFromPublic = c.IsHpHiddenFromPublic,
             }));
 
         return encounter;
@@ -618,5 +622,20 @@ public class Encounter
 
         combatant.Initiative =
             initiative;
+    }
+
+    public void SetCombatantVisibility(
+        Guid combatantId,
+        bool isHiddenFromPublic,
+        bool isHpHiddenFromPublic)
+    {
+        var combatant =
+            GetCombatant(combatantId);
+
+        combatant.IsHiddenFromPublic =
+            isHiddenFromPublic;
+
+        combatant.IsHpHiddenFromPublic =
+            isHpHiddenFromPublic;
     }
 }

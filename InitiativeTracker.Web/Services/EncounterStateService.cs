@@ -374,48 +374,68 @@ public class EncounterStateService
     {
         lock (_lock)
         {
-            var orderedCombatants = CurrentEncounter.IsStarted
-                ? CurrentEncounter.Combatants
+            var publicCombatants =
+                CurrentEncounter.Combatants
                     .Where(c => c.IsActive)
-                    .OrderBy(c => c.SortOrder)
-                    .ToList()
-                : CurrentEncounter.Combatants
-                    .Where(c => c.IsActive)
-                    .OrderByDescending(c => c.Initiative)
-                    .ThenBy(c => c.SortOrder)
-                    .ToList();
+                    .Where(c =>
+                        !c.IsHiddenFromPublic ||
+                        c.AssignedPlayerProfileId.HasValue);
 
-            var activeCombatants = orderedCombatants;
+            var orderedCombatants =
+                CurrentEncounter.IsStarted
+                    ? publicCombatants
+                        .OrderBy(c => c.SortOrder)
+                        .ToList()
+                    : publicCombatants
+                        .OrderByDescending(c => c.Initiative)
+                        .ThenBy(c => c.SortOrder)
+                        .ToList();
 
             var currentTurnNumber = 0;
 
             if (CurrentEncounter.CurrentCombatantId.HasValue)
             {
                 currentTurnNumber =
-                    activeCombatants.FindIndex(
-                        c => c.Id == CurrentEncounter.CurrentCombatantId.Value)
+                    orderedCombatants.FindIndex(
+                        c =>
+                            c.Id ==
+                            CurrentEncounter
+                                .CurrentCombatantId
+                                .Value)
                     + 1;
             }
 
             return new EncounterDisplayState
             {
                 IsStarted = CurrentEncounter.IsStarted,
-                Round = CurrentEncounter.Round,
-                CurrentTurnNumber = currentTurnNumber,
-                ActiveCombatantCount = activeCombatants.Count,
 
-                Combatants = orderedCombatants
-                    .Select(c => new CombatantDisplayState
-                    {
-                        Id = c.Id,
-                        Name = c.Name,
-                        Initiative = c.Initiative,
-                        CurrentHp = c.CurrentHp,
-                        MaxHp = c.MaxHp,
-                        IsActive = c.IsActive,
-                        IsCurrent = CurrentEncounter.CurrentCombatantId == c.Id
-                    })
-                    .ToList()
+                Round = CurrentEncounter.Round,
+
+                CurrentTurnNumber = currentTurnNumber,
+
+                ActiveCombatantCount = orderedCombatants.Count,
+
+                Combatants =
+                    orderedCombatants
+                        .Select(c =>
+                        {
+                            var isPlayerControlled = c.AssignedPlayerProfileId.HasValue;
+
+                            var hideHp = c.IsHpHiddenFromPublic && !isPlayerControlled;
+
+                            return new CombatantDisplayState
+                            {
+                                Id = c.Id,
+                                Name = c.Name,
+                                Initiative = c.Initiative,
+                                CurrentHp = hideHp ? null : c.CurrentHp,
+                                MaxHp = hideHp ? null : c.MaxHp,
+                                TemporaryHp = hideHp ? null : c.TemporaryHp,
+                                IsActive = c.IsActive,
+                                IsCurrent = CurrentEncounter.CurrentCombatantId == c.Id
+                            };
+                        })
+                        .ToList()
             };
         }
     }
@@ -646,6 +666,19 @@ public class EncounterStateService
                     combatant.Id,
                     initiative);
         });
+    }
+
+    public void SetCombatantVisibility(
+        Guid combatantId,
+        bool isHiddenFromPublic,
+        bool isHpHiddenFromPublic)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter
+                .SetCombatantVisibility(
+                    combatantId,
+                    isHiddenFromPublic,
+                    isHpHiddenFromPublic));
     }
 
     private static void EnsureControlledBy(

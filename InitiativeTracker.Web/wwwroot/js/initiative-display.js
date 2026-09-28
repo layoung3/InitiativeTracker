@@ -83,15 +83,34 @@ function renderHeader(state) {
             <strong>${state.round}</strong>
         </span>`;
 
-    turnDisplay.innerHTML =
-        `<span>
-            TURN
-            <strong>
-                ${state.currentTurnNumber}
-                /
-                ${state.activeCombatantCount}
-            </strong>
-        </span>`;
+    /*
+        currentTurnNumber will be 0 when the actual
+        current combatant is hidden from the public display.
+
+        In that case we deliberately do not show:
+
+            TURN 0 / 4
+    */
+    if (state.currentTurnNumber > 0) {
+
+        turnDisplay.innerHTML =
+            `<span>
+                TURN
+                <strong>
+                    ${state.currentTurnNumber}
+                    /
+                    ${state.activeCombatantCount}
+                </strong>
+            </span>`;
+    }
+    else {
+
+        turnDisplay.innerHTML =
+            `<span>
+                TURN
+                <strong>—</strong>
+            </span>`;
+    }
 }
 
 function renderCombatants(combatants) {
@@ -101,7 +120,8 @@ function renderCombatants(combatants) {
 
     initiativeList.innerHTML = "";
 
-    if (!combatants || combatants.length === 0) {
+    if (!combatants ||
+        combatants.length === 0) {
 
         const emptyDisplay =
             document.createElement("div");
@@ -112,10 +132,12 @@ function renderCombatants(combatants) {
         emptyDisplay.textContent =
             "Waiting for encounter...";
 
-        initiativeList.appendChild(emptyDisplay);
+        initiativeList.appendChild(
+            emptyDisplay);
 
         return;
     }
+
 
     for (const combatant of combatants) {
 
@@ -133,17 +155,26 @@ function renderCombatants(combatants) {
             "fs-4"
         );
 
+
         if (combatant.isCurrent) {
+
             row.classList.add(
                 "current",
                 "border-primary"
             );
         }
 
+
         if (!combatant.isActive) {
-            row.classList.add("opacity-50");
+
+            row.classList.add(
+                "opacity-50");
         }
 
+
+        /*
+         * TURN INDICATOR
+         */
         const indicator =
             document.createElement("div");
 
@@ -151,8 +182,14 @@ function renderCombatants(combatants) {
             "turn-indicator";
 
         indicator.textContent =
-            combatant.isCurrent ? "➜" : "";
+            combatant.isCurrent
+                ? "➜"
+                : "";
 
+
+        /*
+         * NAME
+         */
         const name =
             document.createElement("div");
 
@@ -162,13 +199,29 @@ function renderCombatants(combatants) {
         name.textContent =
             combatant.name;
 
+
+        /*
+         * HP
+         *
+         * If CurrentHp and MaxHp are both null,
+         * the server intentionally hid HP.
+         *
+         * In that case we do not render an HP
+         * value at all.
+         */
         const hp =
             document.createElement("div");
 
-        hp.className = "combatant-hp ms-3";
+        hp.className =
+            "combatant-hp ms-3";
 
-        if (combatant.currentHp !== null ||
-            combatant.maxHp !== null) {
+
+        const hpIsVisible =
+            combatant.currentHp !== null ||
+            combatant.maxHp !== null;
+
+
+        if (hpIsVisible) {
 
             const current =
                 combatant.currentHp ?? "—";
@@ -176,16 +229,62 @@ function renderCombatants(combatants) {
             const max =
                 combatant.maxHp ?? "—";
 
-            hp.textContent =
+
+            const hpValue =
+                document.createElement("span");
+
+            hpValue.textContent =
                 `${current} / ${max}`;
+
+            hp.appendChild(
+                hpValue);
+
+
+            /*
+             * TEMPORARY HP
+             */
+            if (combatant.temporaryHp !== null &&
+                combatant.temporaryHp > 0) {
+
+                const tempHp =
+                    document.createElement("span");
+
+                tempHp.className =
+                    "badge text-bg-info ms-2";
+
+                tempHp.textContent =
+                    `+${combatant.temporaryHp} Temp`;
+
+                hp.appendChild(
+                    tempHp);
+            }
         }
 
-        row.appendChild(indicator);
-        row.appendChild(name);
-        row.appendChild(hp);
 
-        initiativeList.appendChild(row);
+        row.appendChild(
+            indicator);
+
+        row.appendChild(
+            name);
+
+        /*
+         * Only add the HP element if HP
+         * information is actually visible.
+         *
+         * This prevents an empty HP area from
+         * appearing for HP-hidden enemies.
+         */
+        if (hpIsVisible) {
+
+            row.appendChild(
+                hp);
+        }
+
+
+        initiativeList.appendChild(
+            row);
     }
+
 
     scrollToCurrentCombatant();
 }

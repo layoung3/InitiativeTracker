@@ -638,4 +638,61 @@ public class EncounterTests
                 Assert.Null(
                     combatant.AssignedPlayerProfileId));
     }
+
+    [Fact]
+    public void SetCombatantVisibility_CanHideCombatant()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var combatant =
+            encounter.Combatants.First();
+
+        encounter.SetCombatantVisibility(
+            combatant.Id,
+            true,
+            false);
+
+        Assert.True(
+            combatant.IsHiddenFromPublic);
+    }
+
+    [Fact]
+    public void SetCombatantVisibility_CanHideHp()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var combatant =
+            encounter.Combatants.First();
+
+        encounter.SetCombatantVisibility(
+            combatant.Id,
+            false,
+            true);
+
+        Assert.True(
+            combatant.IsHpHiddenFromPublic);
+    }
+
+    [Fact]
+    public void SetCombatantVisibility_CanHideCombatantAndHp()
+    {
+        var encounter =
+            CreateEncounter();
+
+        var combatant =
+            encounter.Combatants.First();
+
+        encounter.SetCombatantVisibility(
+            combatant.Id,
+            true,
+            true);
+
+        Assert.True(
+            combatant.IsHiddenFromPublic);
+
+        Assert.True(
+            combatant.IsHpHiddenFromPublic);
+    }
 }

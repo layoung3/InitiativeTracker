@@ -484,6 +484,74 @@
                                             }
 
                                         </div>
+                                        <div class="row g-2 mt-2">
+
+                                            <div class="col-sm-6">
+
+                                                <form method="post"
+                                                      asp-page-handler="SetHp">
+
+                                                    <input type="hidden"
+                                                           name="combatantId"
+                                                           value="@combatant.Id" />
+
+                                                    <label class="form-label small">
+                                                        Current HP
+                                                    </label>
+
+                                                    <div class="input-group">
+
+                                                        <input type="number"
+                                                               name="currentHp"
+                                                               value="@combatant.CurrentHp"
+                                                               min="0"
+                                                               class="form-control" />
+
+                                                        <button type="submit"
+                                                                class="btn btn-outline-secondary">
+                                                            Set
+                                                        </button>
+
+                                                    </div>
+
+                                                </form>
+
+                                            </div>
+
+
+                                            <div class="col-sm-6">
+
+                                                <form method="post"
+                                                      asp-page-handler="SetTemporaryHp">
+
+                                                    <input type="hidden"
+                                                           name="combatantId"
+                                                           value="@combatant.Id" />
+
+                                                    <label class="form-label small">
+                                                        Temporary HP
+                                                    </label>
+
+                                                    <div class="input-group">
+
+                                                        <input type="number"
+                                                               name="temporaryHp"
+                                                               value="@combatant.TemporaryHp"
+                                                               min="0"
+                                                               class="form-control" />
+
+                                                        <button type="submit"
+                                                                class="btn btn-outline-info">
+                                                            Set
+                                                        </button>
+
+                                                    </div>
+
+                                                </form>
+
+                                            </div>
+
+                                        </div>
 
                                     </div>
                                 }

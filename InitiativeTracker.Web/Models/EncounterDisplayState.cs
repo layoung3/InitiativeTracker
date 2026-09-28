@@ -25,6 +25,8 @@ public class CombatantDisplayState
 
     public int? MaxHp { get; set; }
 
+    public int? TemporaryHp { get; set; }
+
     public bool IsActive { get; set; }
 
     public bool IsCurrent { get; set; }

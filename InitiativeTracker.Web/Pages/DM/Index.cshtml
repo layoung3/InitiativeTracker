@@ -14,7 +14,13 @@
 
 <div class="container py-4">
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex
+        flex-column
+        flex-lg-row
+        justify-content-between
+        align-items-lg-center
+        gap-3
+        mb-4">
 
         <div>
 
@@ -47,7 +53,9 @@
         </div>
 
 
-        <div class="d-flex gap-2">
+        <div class="d-flex
+            flex-wrap
+            gap-2">
 
             <a href="/dm/join"
                class="btn btn-outline-success">
@@ -391,9 +399,38 @@
 
                                         <div class="col-md-4">
 
-                                            <label class="form-label small">
-                                                Name
-                                            </label>
+                                            <div class="d-flex
+                                                justify-content-between
+                                                align-items-center
+                                                mb-1">
+
+                                                <label class="form-label
+                                                    small
+                                                    mb-0">
+                                                    Name
+                                                </label>
+
+
+                                                <div class="d-flex gap-1">
+
+                                                    @if (combatant.IsHiddenFromPublic)
+                                                    {
+                                                        <span class="badge text-bg-dark">
+                                                            Hidden
+                                                        </span>
+                                                    }
+
+                                                    @if (combatant.IsHpHiddenFromPublic)
+                                                    {
+                                                        <span class="badge text-bg-secondary">
+                                                            HP Hidden
+                                                        </span>
+                                                    }
+
+                                                </div>
+
+                                            </div>
+
 
                                             <input type="text"
                                                    name="name"
@@ -488,7 +525,14 @@
 
 
                                 @* Controller Assignment *@
-                                <div class="border-top pt-3">
+                                <div class="border-top
+                                    pt-3
+                                    d-flex
+                                    flex-column
+                                    flex-lg-row
+                                    justify-content-between
+                                    align-items-lg-center
+                                    gap-3">
 
                                     <form method="post"
                                           asp-page-handler="AssignController"
@@ -557,6 +601,61 @@
                                             btn-sm
                                             btn-outline-secondary">
                                             Assign
+                                        </button>
+
+                                    </form>
+
+                                    <form method="post"
+                                          asp-page-handler="SetVisibility"
+                                          class="d-flex
+                                        flex-wrap
+                                        align-items-center
+                                        gap-2">
+
+                                        <input type="hidden"
+                                               name="combatantId"
+                                               value="@combatant.Id" />
+
+
+                                        <div class="form-check">
+
+                                            <input type="checkbox"
+                                                   name="isHiddenFromPublic"
+                                                   value="true"
+                                                   class="form-check-input"
+                                                   id="hidden-@combatant.Id"
+                                                   checked="@combatant.IsHiddenFromPublic" />
+
+                                            <label class="form-check-label small"
+                                                   for="hidden-@combatant.Id">
+                                                Hidden
+                                            </label>
+
+                                        </div>
+
+
+                                        <div class="form-check">
+
+                                            <input type="checkbox"
+                                                   name="isHpHiddenFromPublic"
+                                                   value="true"
+                                                   class="form-check-input"
+                                                   id="hideHp-@combatant.Id"
+                                                   checked="@combatant.IsHpHiddenFromPublic" />
+
+                                            <label class="form-check-label small"
+                                                   for="hideHp-@combatant.Id">
+                                                Hide HP
+                                            </label>
+
+                                        </div>
+
+
+                                        <button type="submit"
+                                                class="btn
+                                            btn-sm
+                                            btn-outline-secondary">
+                                            Save Visibility
                                         </button>
 
                                     </form>
@@ -664,8 +763,31 @@
 
                                     <div>
 
-                                        <div class="fw-bold fs-5">
-                                            @combatant.Name
+                                        <div class="d-flex
+                                            flex-wrap
+                                            align-items-center
+                                            gap-1">
+
+                                            <span class="fw-bold fs-5">
+                                                @combatant.Name
+                                            </span>
+
+
+                                            @if (combatant.IsHiddenFromPublic)
+                                            {
+                                                <span class="badge text-bg-dark">
+                                                    Hidden
+                                                </span>
+                                            }
+
+
+                                            @if (combatant.IsHpHiddenFromPublic)
+                                            {
+                                                <span class="badge text-bg-secondary">
+                                                    HP Hidden
+                                                </span>
+                                            }
+
                                         </div>
 
 
@@ -913,76 +1035,146 @@
                                     }
 
 
-                                    @* Controller Assignment *@
-                                    <form method="post"
-                                          asp-page-handler="AssignController"
-                                          class="d-flex
-                                        align-items-center
-                                        gap-1">
 
-                                        <input type="hidden"
-                                               name="combatantId"
-                                               value="@combatant.Id" />
+                                </div>
 
+                            </div>
 
-                                        <span class="small text-muted">
-                                            Controller:
-                                        </span>
+                            @* MANAGEMENT FOOTER *@
+                            <div class="border-top
+                                mt-3
+                                pt-3
+                                d-flex
+                                flex-column
+                                flex-lg-row
+                                justify-content-between
+                                align-items-lg-center
+                                gap-3">
 
+                                @* Controller Assignment *@
+                                <form method="post"
+                                      asp-page-handler="AssignController"
+                                      class="d-flex
+                                    flex-column
+                                    flex-sm-row
+                                    align-items-sm-center
+                                    gap-2">
 
-                                        <select name="playerProfileId"
-                                                class="form-select
-                                            form-select-sm"
-                                                style="width: auto;
-                                            min-width: 8rem;">
+                                    <input type="hidden"
+                                           name="combatantId"
+                                           value="@combatant.Id" />
 
-                                            @if (!combatant.AssignedPlayerProfileId.HasValue)
+                                    <label class="form-label
+                                        mb-sm-0
+                                        text-muted
+                                        small">
+                                        Controlled by
+                                    </label>
+
+                                    <select name="playerProfileId"
+                                            class="form-select
+                                        form-select-sm"
+                                            style="max-width: 14rem;">
+
+                                        @if (!combatant.AssignedPlayerProfileId.HasValue)
+                                        {
+                                            <option value=""
+                                                    selected>
+                                                DM
+                                            </option>
+                                        }
+                                        else
+                                        {
+                                            <option value="">
+                                                DM
+                                            </option>
+                                        }
+
+                                        @foreach (var player
+                                                  in Model.ConnectedPlayers)
+                                        {
+                                            if (combatant.AssignedPlayerProfileId ==
+                                                player.PlayerProfileId)
                                             {
-                                                <option value=""
+                                                <option value="@player.PlayerProfileId"
                                                         selected>
-                                                    DM
+                                                    @player.PlayerName
                                                 </option>
                                             }
                                             else
                                             {
-                                                <option value="">
-                                                    DM
+                                                <option value="@player.PlayerProfileId">
+                                                    @player.PlayerName
                                                 </option>
                                             }
+                                        }
+
+                                    </select>
+
+                                    <button type="submit"
+                                            class="btn
+                                        btn-sm
+                                        btn-outline-secondary">
+                                        Assign
+                                    </button>
+
+                                </form>
 
 
-                                            @foreach (var player
-                                                      in Model.ConnectedPlayers)
-                                            {
-                                                if (combatant.AssignedPlayerProfileId ==
-                                                    player.PlayerProfileId)
-                                                {
-                                                    <option value="@player.PlayerProfileId"
-                                                            selected>
-                                                        @player.PlayerName
-                                                    </option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="@player.PlayerProfileId">
-                                                        @player.PlayerName
-                                                    </option>
-                                                }
-                                            }
+                                @* Public Visibility *@
+                                <form method="post"
+                                      asp-page-handler="SetVisibility"
+                                      class="d-flex
+                                    flex-wrap
+                                    align-items-center
+                                    gap-2">
 
-                                        </select>
+                                    <input type="hidden"
+                                           name="combatantId"
+                                           value="@combatant.Id" />
+
+                                    <div class="form-check">
+
+                                        <input type="checkbox"
+                                               name="isHiddenFromPublic"
+                                               value="true"
+                                               class="form-check-input"
+                                               id="combat-hidden-@combatant.Id"
+                                               checked="@combatant.IsHiddenFromPublic" />
+
+                                        <label class="form-check-label small"
+                                               for="combat-hidden-@combatant.Id">
+                                            Hidden
+                                        </label>
+
+                                    </div>
 
 
-                                        <button type="submit"
-                                                class="btn
-                                            btn-sm
-                                            btn-outline-secondary">
-                                            Set
-                                        </button>
+                                    <div class="form-check">
 
-                                    </form>
+                                        <input type="checkbox"
+                                               name="isHpHiddenFromPublic"
+                                               value="true"
+                                               class="form-check-input"
+                                               id="combat-hide-hp-@combatant.Id"
+                                               checked="@combatant.IsHpHiddenFromPublic" />
 
-                                </div>
+                                        <label class="form-check-label small"
+                                               for="combat-hide-hp-@combatant.Id">
+                                            Hide HP
+                                        </label>
+
+                                    </div>
+
+
+                                    <button type="submit"
+                                            class="btn
+                                        btn-sm
+                                        btn-outline-secondary">
+                                        Save Visibility
+                                    </button>
+
+                                </form>
 
                             </div>
 
