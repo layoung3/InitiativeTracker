@@ -1,0 +1,202 @@
+﻿.character-sheet {
+    max-width: 1400px;
+}
+
+.character-header {
+    overflow: hidden;
+}
+
+.character-portrait-placeholder {
+    width: 5rem;
+    height: 5rem;
+    flex: 0 0 5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50%;
+    background: var(--bs-secondary-bg);
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.ability-score {
+    min-height: 7rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+    text-align: center;
+}
+
+.ability-name {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--bs-secondary-color);
+}
+
+.ability-modifier {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.ability-value {
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--bs-secondary-color);
+}
+
+.character-stat-box {
+    height: 100%;
+    padding: 1rem 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+    text-align: center;
+}
+
+.character-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.character-stat-label {
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+.character-details dt {
+    color: var(--bs-secondary-color);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.character-details dd {
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+    .character-details dd:last-child {
+        margin-bottom: 0;
+    }
+
+.character-combat-bar {
+    position: fixed;
+
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    z-index: 1030;
+
+    border-top: 1px solid var(--bs-border-color);
+
+    background: var(--bs-body-bg);
+
+    box-shadow:
+        0 -0.25rem 0.75rem
+        rgba(0, 0, 0, 0.08);
+}
+
+.character-combat-bar-content {
+    max-width: 1400px;
+
+    min-height: 4.5rem;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 1rem;
+
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+.saving-throw-row,
+.skill-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.save-proficiency,
+.skill-proficiency {
+    width: 1rem;
+    flex: 0 0 1rem;
+    text-align: center;
+}
+
+.skill-list {
+    font-size: 0.9rem;
+}
+
+.skill-row {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
+.skill-name {
+    line-height: 1.1;
+}
+
+.skill-bonus {
+    min-width: 2.5rem;
+    flex: 0 0 auto;
+    font-size: 1.05rem;
+    font-weight: 700;
+    text-align: right;
+}
+
+@media (max-width: 991.98px) {
+
+    .skill-list {
+        font-size: 1rem;
+    }
+
+    .skill-row {
+        padding-top: 0.7rem;
+        padding-bottom: 0.7rem;
+    }
+}
+
+
+/*
+ * Keep the fixed combat bar from covering
+ * the bottom of the character sheet.
+ */
+.character-sheet {
+    padding-bottom: 6rem !important;
+}
+
+
+/* Mobile */
+
+@media (max-width: 767.98px) {
+
+    .character-portrait-placeholder {
+        width: 4rem;
+        height: 4rem;
+        flex-basis: 4rem;
+        font-size: 1.5rem;
+    }
+
+    .ability-score {
+        min-height: 6rem;
+    }
+
+    .ability-modifier {
+        font-size: 1.5rem;
+    }
+
+    .character-stat-box {
+        padding: 0.75rem 0.25rem;
+    }
+}

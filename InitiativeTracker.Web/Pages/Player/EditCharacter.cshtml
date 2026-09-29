@@ -1,0 +1,586 @@
+﻿@page "/player/character/{id:guid}/edit"
+@model InitiativeTracker.Web.Pages.Player.EditCharacterModel
+@using InitiativeTracker.Web.Data.Enums
+
+@{
+    ViewData["Title"] = "Edit Character";
+}
+
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/player-character.css"
+          asp-append-version="true" />
+}
+
+
+<div class="container
+    py-3
+    py-lg-4
+    character-sheet">
+
+
+    <div class="d-flex
+        justify-content-between
+        align-items-center
+        gap-3
+        mb-3">
+
+        <div>
+
+            <h1 class="h3 mb-1">
+                Edit Character
+            </h1>
+
+            <div class="text-muted">
+                @Model.Input.Name
+            </div>
+
+        </div>
+
+
+        <a asp-page="/Player/Character"
+           asp-route-id="@Model.Input.Id"
+           class="btn
+            btn-outline-secondary">
+            Cancel
+        </a>
+
+    </div>
+
+
+    <div asp-validation-summary="ModelOnly"
+         class="alert
+        alert-danger
+        mb-3">
+    </div>
+
+
+    @if (Model.IsInEncounter)
+    {
+        <div class="alert
+            alert-info">
+
+            This character is currently in an encounter.
+            Current HP, Max HP, and Temporary HP should be
+            managed from the live character sheet during combat.
+
+        </div>
+    }
+
+
+    <form method="post">
+
+        <input type="hidden"
+               asp-for="Input.Id" />
+
+
+        @* ========================================================
+           BASIC INFORMATION
+           ======================================================== *@
+
+        <div class="card mb-3">
+
+            <div class="card-header">
+                Character
+            </div>
+
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+
+                    <div class="col-12 col-md-6">
+
+                        <label asp-for="Input.Name"
+                               class="form-label">
+                            Name
+                        </label>
+
+                        <input asp-for="Input.Name"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-6 col-md-2">
+
+                        <label asp-for="Input.Level"
+                               class="form-label">
+                            Level
+                        </label>
+
+                        <input asp-for="Input.Level"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-6 col-md-2">
+
+                        <label asp-for="Input.MovementSpeed"
+                               class="form-label">
+                            Speed
+                        </label>
+
+                        <div class="input-group">
+
+                            <input asp-for="Input.MovementSpeed"
+                                   type="number"
+                                   min="0"
+                                   class="form-control" />
+
+                            <span class="input-group-text">
+                                ft.
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="col-6 col-md-2">
+
+                        <label asp-for="Input.ProficiencyBonus"
+                               class="form-label">
+                            Proficiency
+                        </label>
+
+                        <input asp-for="Input.ProficiencyBonus"
+                               type="number"
+                               min="0"
+                               class="form-control" />
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        @* ========================================================
+           HIT POINTS
+           ======================================================== *@
+
+        <div class="card mb-3">
+
+            <div class="card-header">
+                Hit Points
+            </div>
+
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+
+                    <div class="col-4">
+
+                        <label asp-for="Input.CurrentHp"
+                               class="form-label">
+                            Current
+                        </label>
+
+                        <input asp-for="Input.CurrentHp"
+                               type="number"
+                               min="0"
+                               class="form-control"
+                               disabled="@Model.IsInEncounter" />
+
+                    </div>
+
+
+                    <div class="col-4">
+
+                        <label asp-for="Input.MaxHp"
+                               class="form-label">
+                            Maximum
+                        </label>
+
+                        <input asp-for="Input.MaxHp"
+                               type="number"
+                               min="0"
+                               class="form-control"
+                               disabled="@Model.IsInEncounter" />
+
+                    </div>
+
+
+                    <div class="col-4">
+
+                        <label asp-for="Input.TemporaryHp"
+                               class="form-label">
+                            Temporary
+                        </label>
+
+                        <input asp-for="Input.TemporaryHp"
+                               type="number"
+                               min="0"
+                               class="form-control"
+                               disabled="@Model.IsInEncounter" />
+
+                    </div>
+
+                </div>
+
+
+                <div class="form-check mt-3">
+
+                    <input asp-for="Input.Inspiration"
+                           class="form-check-input" />
+
+                    <label asp-for="Input.Inspiration"
+                           class="form-check-label">
+                        Inspiration
+                    </label>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        @* ========================================================
+           ABILITY SCORES
+           ======================================================== *@
+
+        <div class="card mb-3">
+
+            <div class="card-header">
+                Ability Scores
+            </div>
+
+
+            <div class="card-body">
+
+                <div class="row
+                    row-cols-2
+                    row-cols-md-3
+                    row-cols-lg-6
+                    g-3">
+
+
+                    <div class="col">
+
+                        <label asp-for="Input.Strength"
+                               class="form-label">
+                            STR
+                        </label>
+
+                        <input asp-for="Input.Strength"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col">
+
+                        <label asp-for="Input.Dexterity"
+                               class="form-label">
+                            DEX
+                        </label>
+
+                        <input asp-for="Input.Dexterity"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col">
+
+                        <label asp-for="Input.Constitution"
+                               class="form-label">
+                            CON
+                        </label>
+
+                        <input asp-for="Input.Constitution"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col">
+
+                        <label asp-for="Input.Intelligence"
+                               class="form-label">
+                            INT
+                        </label>
+
+                        <input asp-for="Input.Intelligence"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col">
+
+                        <label asp-for="Input.Wisdom"
+                               class="form-label">
+                            WIS
+                        </label>
+
+                        <input asp-for="Input.Wisdom"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col">
+
+                        <label asp-for="Input.Charisma"
+                               class="form-label">
+                            CHA
+                        </label>
+
+                        <input asp-for="Input.Charisma"
+                               type="number"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        @* ========================================================
+           SAVING THROWS
+           ======================================================== *@
+
+        <div class="card mb-3">
+
+            <div class="card-header">
+                Saving Throw Proficiencies
+            </div>
+
+
+            <div class="card-body">
+
+                <div class="row
+                    row-cols-2
+                    row-cols-md-3
+                    row-cols-lg-6
+                    g-2">
+
+                    <div class="col">
+                        <div class="form-check">
+                            <input asp-for="Input.StrengthSaveProficient"
+                                   class="form-check-input" />
+                            <label asp-for="Input.StrengthSaveProficient"
+                                   class="form-check-label">
+                                Strength
+                            </label>
+                        </div>
+                    </div>
+
+
+                    <div class="col">
+                        <div class="form-check">
+                            <input asp-for="Input.DexteritySaveProficient"
+                                   class="form-check-input" />
+                            <label asp-for="Input.DexteritySaveProficient"
+                                   class="form-check-label">
+                                Dexterity
+                            </label>
+                        </div>
+                    </div>
+
+
+                    <div class="col">
+                        <div class="form-check">
+                            <input asp-for="Input.ConstitutionSaveProficient"
+                                   class="form-check-input" />
+                            <label asp-for="Input.ConstitutionSaveProficient"
+                                   class="form-check-label">
+                                Constitution
+                            </label>
+                        </div>
+                    </div>
+
+
+                    <div class="col">
+                        <div class="form-check">
+                            <input asp-for="Input.IntelligenceSaveProficient"
+                                   class="form-check-input" />
+                            <label asp-for="Input.IntelligenceSaveProficient"
+                                   class="form-check-label">
+                                Intelligence
+                            </label>
+                        </div>
+                    </div>
+
+
+                    <div class="col">
+                        <div class="form-check">
+                            <input asp-for="Input.WisdomSaveProficient"
+                                   class="form-check-input" />
+                            <label asp-for="Input.WisdomSaveProficient"
+                                   class="form-check-label">
+                                Wisdom
+                            </label>
+                        </div>
+                    </div>
+
+
+                    <div class="col">
+                        <div class="form-check">
+                            <input asp-for="Input.CharismaSaveProficient"
+                                   class="form-check-input" />
+                            <label asp-for="Input.CharismaSaveProficient"
+                                   class="form-check-label">
+                                Charisma
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        @* ========================================================
+           SKILLS
+           ======================================================== *@
+
+        <div class="card mb-3">
+
+            <div class="card-header">
+                Skills
+            </div>
+
+
+            <div class="list-group list-group-flush">
+
+                @for (var i = 0;
+                      i < Model.SkillInputs.Count;
+                      i++)
+                {
+                    <input type="hidden"
+                           asp-for="SkillInputs[i].Skill" />
+
+
+                    <div class="list-group-item">
+
+                        <div class="row
+                            g-2
+                            align-items-end">
+
+
+                            <div class="col-12 col-md-4">
+
+                                <div class="fw-semibold">
+                                    @Model.GetSkillName(
+                                        Model.SkillInputs[i].Skill)
+                                </div>
+
+                                <div class="small text-muted">
+                                    @Model.GetSkillAbilityName(
+                                        Model.SkillInputs[i].Skill)
+                                </div>
+
+                            </div>
+
+
+                            <div class="col-12 col-sm-4 col-md-3">
+
+                                <label class="form-label small">
+                                    Proficiency
+                                </label>
+
+                                <select asp-for="SkillInputs[i].ProficiencyLevel"
+                                        asp-items="Html.GetEnumSelectList<SkillProficiencyLevel>()"
+                                        class="form-select">
+                                </select>
+
+                            </div>
+
+
+                            <div class="col-6 col-sm-4 col-md-2">
+
+                                <label class="form-label small">
+                                    Additional
+                                </label>
+
+                                <input asp-for="SkillInputs[i].AdditionalBonus"
+                                       type="number"
+                                       class="form-control" />
+
+                            </div>
+
+
+                            <div class="col-6 col-sm-4 col-md-3">
+
+                                <label class="form-label small">
+                                    Override
+                                </label>
+
+                                <input asp-for="SkillInputs[i].OverrideBonus"
+                                       type="number"
+                                       class="form-control"
+                                       placeholder="None" />
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                }
+
+            </div>
+
+
+            <div class="card-footer small text-muted">
+
+                Additional bonuses are added to the normal
+                ability/proficiency calculation. Override replaces
+                the final calculated bonus entirely.
+
+            </div>
+
+        </div>
+
+
+        <div class="d-flex
+            flex-column
+            flex-sm-row
+            justify-content-end
+            gap-2">
+
+            <a asp-page="/Player/Character"
+               asp-route-id="@Model.Input.Id"
+               class="btn
+                btn-outline-secondary">
+                Cancel
+            </a>
+
+            <button type="submit"
+                    class="btn
+                btn-primary">
+                Save Character
+            </button>
+
+        </div>
+
+    </form>
+
+</div>

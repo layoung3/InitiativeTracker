@@ -1,0 +1,960 @@
+﻿@page "/player/character/{id:guid}"
+@model InitiativeTracker.Web.Pages.Player.CharacterModel
+@using InitiativeTracker.Web.Data.Enums
+
+@{
+    ViewData["Title"] = Model.Character.Name;
+}
+
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/player-character.css"
+          asp-append-version="true" />
+}
+
+
+<div class="container py-3 py-lg-4 character-sheet">
+
+    @* ============================================================
+       HEADER
+       ============================================================ *@
+
+    <div class="card mb-3 character-header">
+
+        <div class="card-body">
+
+            <div class="d-flex
+                flex-column
+                flex-md-row
+                align-items-md-center
+                gap-3">
+
+
+                @* Portrait *@
+                <div class="character-portrait-placeholder">
+
+                    <span>
+                        @Model.Character.Name.Substring(0, 1).ToUpper()
+                    </span>
+
+                </div>
+
+
+                @* Character identity *@
+                <div class="flex-grow-1">
+
+                    <h1 class="h2 mb-1">
+                        @Model.Character.Name
+                    </h1>
+
+                    <div class="d-flex
+                        flex-wrap
+                        align-items-center
+                        gap-2
+                        text-muted">
+
+                        <span>
+                            Level @Model.Character.Level
+                        </span>
+
+                        <span>·</span>
+
+                        <span>
+                            Speed @Model.Character.MovementSpeed ft.
+                        </span>
+
+                        <span>·</span>
+
+                        <span>
+                            Proficiency +@Model.Character.ProficiencyBonus
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="d-flex
+                    flex-wrap
+                    gap-2">
+
+                    <a href="/player"
+                       class="btn
+                        btn-outline-secondary">
+                        ← Characters
+                    </a>
+
+                    @*
+                        We'll enable this in the next
+                        checkpoint.
+                    *@
+                    <a asp-page="/Player/EditCharacter"
+                       asp-route-id="@Model.Character.Id"
+                       class="btn btn-outline-primary">
+                        Edit Character
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    @* ============================================================
+       MOBILE / DESKTOP MAIN GRID
+       ============================================================ *@
+
+    <div class="row g-3">
+
+
+        @* ========================================================
+           ABILITY SCORES
+           ======================================================== *@
+
+        <div class="col-12
+            col-lg-3
+            order-2
+            order-lg-1">
+
+            <div class="card mb-3">
+
+                <div class="card-header">
+                    Ability Scores
+                </div>
+
+
+                <div class="card-body">
+
+                    <div class="row
+                        row-cols-3
+                        row-cols-lg-2
+                        g-2">
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    STR
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Strength)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Strength
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    DEX
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Dexterity)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Dexterity
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    CON
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Constitution)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Constitution
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    INT
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Intelligence)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Intelligence
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    WIS
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Wisdom)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Wisdom
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    CHA
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Charisma)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Charisma
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="card">
+
+                <div class="card-header">
+                    Saving Throws
+                </div>
+
+
+                <div class="list-group
+                    list-group-flush">
+
+                    <div class="list-group-item
+                        saving-throw-row">
+
+                        <div class="d-flex
+                            align-items-center
+                            gap-2">
+
+                            @if (Model.Character.StrengthSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">
+                                    ●
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency
+                                    text-muted"
+                                      title="Not proficient">
+                                    ○
+                                </span>
+                            }
+
+                            <span class="fw-semibold">
+                                Strength
+                            </span>
+
+                            <span class="text-muted
+                                small">
+                                STR
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Strength,
+                                    Model.Character.StrengthSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.DexteritySaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Dexterity
+                            </span>
+
+                            <span class="text-muted small">
+                                DEX
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Dexterity,
+                                    Model.Character.DexteritySaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.ConstitutionSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Constitution
+                            </span>
+
+                            <span class="text-muted small">
+                                CON
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Constitution,
+                                    Model.Character.ConstitutionSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.IntelligenceSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Intelligence
+                            </span>
+
+                            <span class="text-muted small">
+                                INT
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Intelligence,
+                                    Model.Character.IntelligenceSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.WisdomSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Wisdom
+                            </span>
+
+                            <span class="text-muted small">
+                                WIS
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Wisdom,
+                                    Model.Character.WisdomSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.CharismaSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Charisma
+                            </span>
+
+                            <span class="text-muted small">
+                                CHA
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Charisma,
+                                    Model.Character.CharismaSaveProficient))
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        @* ========================================================
+           MAIN CHARACTER INFORMATION
+           ======================================================== *@
+
+        <div class="col-12
+            col-lg-6
+            order-1
+            order-lg-2">
+
+            @* Combat / vitals *@
+            <div class="card mb-3">
+
+                <div class="card-header">
+                    Combat
+                </div>
+
+
+                <div class="card-body">
+
+                    <div class="row g-2">
+
+
+                        <div class="col-6 col-md-3">
+
+                            <div class="character-stat-box">
+
+                                <div class="character-stat-value">
+                                    @Model.Character.CurrentHp
+                                </div>
+
+                                <div class="character-stat-label">
+                                    Current HP
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-6 col-md-3">
+
+                            <div class="character-stat-box">
+
+                                <div class="character-stat-value">
+                                    @Model.Character.MaxHp
+                                </div>
+
+                                <div class="character-stat-label">
+                                    Max HP
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-6 col-md-3">
+
+                            <div class="character-stat-box">
+
+                                <div class="character-stat-value">
+                                    @Model.Character.TemporaryHp
+                                </div>
+
+                                <div class="character-stat-label">
+                                    Temp HP
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-6 col-md-3">
+
+                            <div class="character-stat-box">
+
+                                <div class="character-stat-value">
+                                    +@Model.Character.ProficiencyBonus
+                                </div>
+
+                                <div class="character-stat-label">
+                                    Proficiency
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="mt-3">
+
+                        <div class="d-flex
+                            justify-content-between
+                            align-items-center">
+
+                            <span>
+                                Inspiration
+                            </span>
+
+                            @if (Model.Character.Inspiration)
+                            {
+                                <span class="badge
+                                    text-bg-primary">
+                                    Available
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge
+                                    text-bg-secondary">
+                                    None
+                                </span>
+                            }
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            @* Inventory placeholder *@
+            <div class="card">
+
+                <div class="card-header
+                    d-flex
+                    justify-content-between
+                    align-items-center">
+
+                    <span>
+                        Inventory
+                    </span>
+
+                    <span class="badge
+                        text-bg-secondary">
+                        Coming next
+                    </span>
+
+                </div>
+
+
+                <div class="card-body text-muted">
+
+                    Character equipment, carried items,
+                    currency, quantities, and notes will
+                    live here.
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        @* ========================================================
+           CHARACTER DETAILS
+           ======================================================== *@
+
+        <div class="col-12
+            col-lg-3
+            order-3
+            order-lg-3">
+
+            <div class="card mb-3">
+
+                <div class="card-header
+                    d-flex
+                    justify-content-between
+                    align-items-center">
+
+                    <span>
+                        Skills
+                    </span>
+
+                    <span class="small text-muted">
+                        Bonus
+                    </span>
+
+                </div>
+
+
+                <div class="list-group
+                    list-group-flush
+                    skill-list">
+
+                    @foreach (var skill
+                              in Model.Skills
+                                  .OrderBy(
+                                      x =>
+                                          Model.GetSkillName(
+                                              x.Skill)))
+                    {
+                        var bonus =
+                            Model.GetSkillBonus(
+                                skill);
+
+
+                        <div class="list-group-item
+                            skill-row">
+
+                            <div class="d-flex
+                                align-items-center
+                                gap-2
+                                min-width-0">
+
+                                <div class="skill-proficiency">
+
+                                    @switch (skill.ProficiencyLevel)
+                                    {
+                                        case SkillProficiencyLevel.Expertise:
+
+                                            <span title="Expertise">
+                                                ◆
+                                            </span>
+
+                                            break;
+
+
+                                        case SkillProficiencyLevel.Proficient:
+
+                                            <span title="Proficient">
+                                                ●
+                                            </span>
+
+                                            break;
+
+
+                                        default:
+
+                                            <span class="text-muted"
+                                                  title="Not proficient">
+                                                ○
+                                            </span>
+
+                                            break;
+                                    }
+
+                                </div>
+
+
+                                <div>
+
+                                    <div class="fw-semibold
+                                        skill-name">
+                                        @Model.GetSkillName(
+                                            skill.Skill)
+                                    </div>
+
+                                    <div class="small
+                                        text-muted">
+
+                                        @Model.GetSkillAbilityName(
+                                            skill.Skill)
+
+
+                                        @if (skill.AdditionalBonus != 0)
+                                        {
+                                            <span>
+                                                ·
+                                                @(skill.AdditionalBonus > 0
+                                                    ? $"+{skill.AdditionalBonus}"
+                                                    : skill.AdditionalBonus.ToString())
+                                                bonus
+                                            </span>
+                                        }
+
+
+                                        @if (skill.OverrideBonus.HasValue)
+                                        {
+                                            <span>
+                                                · Override
+                                            </span>
+                                        }
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="skill-bonus">
+                                @Model.FormatBonus(
+                                    bonus)
+                            </div>
+
+                        </div>
+                    }
+
+                </div>
+
+
+                <div class="card-footer
+                    small
+                    text-muted">
+
+                    <span class="me-3">
+                        ○ None
+                    </span>
+
+                    <span class="me-3">
+                        ● Proficient
+                    </span>
+
+                    <span>
+                        ◆ Expertise
+                    </span>
+
+                </div>
+
+            </div>
+
+            <div class="card mb-3">
+
+                <div class="card-header">
+                    Character Details
+                </div>
+
+
+                <div class="card-body">
+
+                    <dl class="mb-0 character-details">
+
+                        <dt>
+                            Level
+                        </dt>
+
+                        <dd>
+                            @Model.Character.Level
+                        </dd>
+
+                        <dt>
+                            Movement Speed
+                        </dt>
+
+                        <dd>
+                            @Model.Character.MovementSpeed ft.
+                        </dd>
+
+                        <dt>
+                            Proficiency Bonus
+                        </dt>
+
+                        <dd>
+                            +@Model.Character.ProficiencyBonus
+                        </dd>
+
+                    </dl>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="card">
+
+                <div class="card-header">
+                    Party
+                </div>
+
+
+                <div class="card-body text-muted">
+
+                    Shared party information and party
+                    inventory will appear here later.
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+@if (Model.EncounterCombatant is not null &&
+     Model.IsEncounterStarted &&
+     Model.IsControlled)
+{
+    <div class="character-combat-bar">
+
+        <div class="container
+            character-combat-bar-content">
+
+            @if (Model.IsCurrent)
+            {
+                <div>
+
+                    <div class="fw-bold">
+                        Your Turn
+                    </div>
+
+                    <div class="small text-muted">
+                        Round @Model.EncounterRound
+                    </div>
+
+                </div>
+
+
+                <form method="post"
+                      asp-page-handler="EndTurn"
+                      asp-route-id="@Model.Character.Id">
+
+                    <button type="submit"
+                            class="btn
+                        btn-primary">
+                        End Turn →
+                    </button>
+
+                </form>
+            }
+            else
+            {
+                <div>
+
+                    <div class="fw-semibold">
+                        In Combat
+                    </div>
+
+                    <div class="small text-muted">
+                        Round @Model.EncounterRound
+                        · Waiting for your turn
+                    </div>
+
+                </div>
+            }
+
+        </div>
+
+    </div>
+}
+
+@section Scripts {
+
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+
+    <script src="~/js/player.js"
+            asp-append-version="true">
+    </script>
+
+}

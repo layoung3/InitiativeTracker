@@ -31,6 +31,9 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PlayerCharacter> PlayerCharacters =>
         Set<PlayerCharacter>();
 
+    public DbSet<PlayerCharacterSkill> PlayerCharacterSkills =>
+        Set<PlayerCharacterSkill>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -142,6 +145,30 @@ public class InitiativeTrackerDbContext : DbContext
 
                 entity.HasIndex(x =>
                     x.PlayerProfileId);
+            });
+
+        modelBuilder.Entity<PlayerCharacterSkill>(
+            entity =>
+            {
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.HasIndex(
+                        x => new
+                        {
+                            x.PlayerCharacterId,
+                            x.Skill
+                        })
+                    .IsUnique();
+
+                entity.HasOne(
+                        x => x.PlayerCharacter)
+                    .WithMany(
+                        x => x.Skills)
+                    .HasForeignKey(
+                        x => x.PlayerCharacterId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
             });
     }
 }

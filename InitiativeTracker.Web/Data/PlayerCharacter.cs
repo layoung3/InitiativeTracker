@@ -16,6 +16,8 @@ public class PlayerCharacter
 
     public int ProficiencyBonus { get; set; } = 2;
 
+    public int MovementSpeed { get; set; } = 30;
+
     public int CurrentHp { get; set; }
 
     public int MaxHp { get; set; }
@@ -35,6 +37,20 @@ public class PlayerCharacter
     public int Wisdom { get; set; } = 10;
 
     public int Charisma { get; set; } = 10;
+
+    public bool StrengthSaveProficient { get; set; }
+
+    public bool DexteritySaveProficient { get; set; }
+
+    public bool ConstitutionSaveProficient { get; set; }
+
+    public bool IntelligenceSaveProficient { get; set; }
+
+    public bool WisdomSaveProficient { get; set; }
+
+    public bool CharismaSaveProficient { get; set; }
+
+    public ICollection<PlayerCharacterSkill> Skills{ get; set;} = new List<PlayerCharacterSkill>();
 
     public bool IsActive { get; set; } = true;
 

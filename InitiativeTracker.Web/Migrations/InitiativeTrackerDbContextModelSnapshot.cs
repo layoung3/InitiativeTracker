@@ -113,7 +113,13 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<int>("Charisma")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("CharismaSaveProficient")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Constitution")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ConstitutionSaveProficient")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -125,6 +131,9 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<int>("Dexterity")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("DexteritySaveProficient")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ImagePath")
                         .HasColumnType("TEXT");
 
@@ -134,6 +143,9 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<int>("Intelligence")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IntelligenceSaveProficient")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
@@ -141,6 +153,9 @@ namespace InitiativeTracker.Web.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("MaxHp")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MovementSpeed")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
@@ -156,6 +171,9 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<int>("Strength")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("StrengthSaveProficient")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("TemporaryHp")
                         .HasColumnType("INTEGER");
 
@@ -165,11 +183,43 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<int>("Wisdom")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("WisdomSaveProficient")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PlayerProfileId");
 
                     b.ToTable("PlayerCharacter", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSkill", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AdditionalBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("OverrideBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("PlayerCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProficiencyLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Skill")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterId", "Skill")
+                        .IsUnique();
+
+                    b.ToTable("PlayerCharacterSkills");
                 });
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerConnection", b =>
@@ -256,6 +306,22 @@ namespace InitiativeTracker.Web.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("RegisteredDevice", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSkill", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
+                        .WithMany("Skills")
+                        .HasForeignKey("PlayerCharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlayerCharacter");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacter", b =>
+                {
+                    b.Navigation("Skills");
                 });
 #pragma warning restore 612, 618
         }

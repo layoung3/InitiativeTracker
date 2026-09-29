@@ -5,6 +5,12 @@
     ViewData["Title"] = "Player";
 }
 
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/player.css"
+          asp-append-version="true" />
+}
+
 <div class="container py-5"
      style="max-width: 600px;">
 
@@ -52,304 +58,295 @@
                     Model.Encounter.CurrentCombatantId ==
                         combatant.Id;
 
-                <div class="card mb-3">
+                var displayCurrentHp =
+                    combatant?.CurrentHp ??
+                    character.CurrentHp;
+
+                var displayMaxHp =
+                    combatant?.MaxHp ??
+                    character.MaxHp;
+
+                var displayTemporaryHp =
+                    combatant?.TemporaryHp ??
+                    character.TemporaryHp;
+
+                var hpPercent =
+                    displayMaxHp > 0
+                        ? Math.Clamp(
+                            (int)Math.Round(
+                                displayCurrentHp * 100.0 /
+                                displayMaxHp),
+                            0,
+                            100)
+                        : 0;
+
+
+                <div class="card mb-3 player-character-card">
 
                     <div class="card-body">
 
+                        @* ====================================================
+                           CHARACTER SUMMARY
+                           ==================================================== *@
+
                         <div class="d-flex
+                                    flex-column
+                                    flex-sm-row
                                     justify-content-between
-                                    align-items-start">
+                                    gap-3">
 
-                            <div>
+                            <div class="d-flex
+                                        align-items-center
+                                        gap-3">
 
-                                <h2 class="h4 mb-1">
-                                    @character.Name
-                                </h2>
-
-                                <div class="text-muted">
-                                    Level @character.Level
-                                    ·
-                                    HP @character.CurrentHp / @character.MaxHp
+                                <div class="player-character-avatar">
+                                    @character.Name.Substring(0, 1).ToUpper()
                                 </div>
+
+
+                                <div>
+
+                                    <div class="d-flex
+                                                flex-wrap
+                                                align-items-center
+                                                gap-2">
+
+                                        <h2 class="h4 mb-0">
+                                            @character.Name
+                                        </h2>
+
+
+                                        @if (isCurrent &&
+                                             isControlled)
+                                        {
+                                            <span class="badge
+                                                         text-bg-primary">
+                                                Your Turn
+                                            </span>
+                                        }
+                                        else if (combatant is not null &&
+                                                 Model.Encounter.IsStarted)
+                                        {
+                                            <span class="badge
+                                                         text-bg-success">
+                                                In Encounter
+                                            </span>
+                                        }
+
+                                    </div>
+
+
+                                    <div class="text-muted small mt-1">
+
+                                        Level @character.Level
+
+                                        <span class="mx-1">
+                                            ·
+                                        </span>
+
+                                        HP
+                                        @displayCurrentHp
+                                        /
+                                        @displayMaxHp
+
+                                        @if (displayTemporaryHp > 0)
+                                        {
+                                            <span class="badge
+                                                         text-bg-info
+                                                         ms-1">
+                                                +@displayTemporaryHp Temp
+                                            </span>
+                                        }
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="d-flex
+                                        align-items-start">
+
+                                <a asp-page="/Player/Character"
+                                   asp-route-id="@character.Id"
+                                   class="btn
+                                          btn-outline-primary">
+                                    Character Sheet
+                                </a>
 
                             </div>
 
                         </div>
 
 
+                        @* HP BAR *@
+                        @if (displayMaxHp > 0)
+                        {
+                            <div class="progress
+                                        mt-3"
+                                 role="progressbar"
+                                 aria-label="Character health"
+                                 aria-valuenow="@displayCurrentHp"
+                                 aria-valuemin="0"
+                                 aria-valuemax="@displayMaxHp"
+                                 style="height: 0.5rem;">
+
+                                <div class="progress-bar"
+                                     style="width: @hpPercent%;">
+                                </div>
+
+                            </div>
+                        }
+
+
+                        @* ====================================================
+                           PRE-COMBAT INITIATIVE
+                           ==================================================== *@
+
                         @if (combatant is not null &&
                              !Model.Encounter.IsStarted)
                         {
-                            <hr />
-
-                            <form method="post"
-                                  asp-page-handler="SetInitiative"
-                                  class="row
-                                         g-2
-                                         align-items-end">
-
-                                <input type="hidden"
-                                       name="characterId"
-                                       value="@character.Id" />
-
-                                <div class="col">
-
-                                    <label class="form-label">
-                                        Initiative
-                                    </label>
-
-                                    <input type="number"
-                                           name="initiative"
-                                           value="@combatant.Initiative"
-                                           class="form-control" />
-
-                                </div>
-
-                                <div class="col-auto">
-
-                                    <button type="submit"
-                                            class="btn btn-primary">
-                                        Set Initiative
-                                    </button>
-
-                                </div>
-
-                            </form>
-                        }
-                        else if (combatant is not null)
-                        {
-                            <hr />
-
-
-                            @if (isCurrent)
-                            {
-                                <div class="alert
-                                            alert-primary
-                                            fw-bold">
-                                    Your Turn
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="alert
-                                            alert-success
-                                            py-2">
-                                    In current encounter
-                                </div>
-                            }
-
-
-                            @if (!isControlled)
-                            {
-                                <div class="text-muted small">
-                                    Currently controlled by another player or the DM.
-                                </div>
-                            }
-                            else
-                            {
-                                @if (combatant.CurrentHp.HasValue)
-                                {
-                                    <div class="mb-3">
-
-                                        <div class="d-flex
-                                                    justify-content-between
-                                                    align-items-center
-                                                    mb-2">
-
-                                            <strong>
-                                                HP
-                                            </strong>
-
-                                            <span class="fs-5 fw-bold">
-                                                @combatant.CurrentHp
-                                                /
-                                                @(combatant.MaxHp?.ToString() ?? "—")
-                                            </span>
-
-                                        </div>
-
-
-                                        @if (combatant.TemporaryHp > 0)
-                                        {
-                                            <div class="mb-2">
-                                                <span class="badge text-bg-info">
-                                                    Temporary HP:
-                                                    @combatant.TemporaryHp
-                                                </span>
-                                            </div>
-                                        }
-
-
-                                        <div class="d-flex
-                                                    flex-wrap
-                                                    gap-1
-                                                    mb-3">
-
-                                            <form method="post"
-                                                  asp-page-handler="AdjustHp">
-
-                                                <input type="hidden"
-                                                       name="combatantId"
-                                                       value="@combatant.Id" />
-
-                                                <button type="submit"
-                                                        name="amount"
-                                                        value="-5"
-                                                        class="btn
-                                                               btn-outline-danger">
-                                                    -5
-                                                </button>
-
-                                            </form>
-
-
-                                            <form method="post"
-                                                  asp-page-handler="AdjustHp">
-
-                                                <input type="hidden"
-                                                       name="combatantId"
-                                                       value="@combatant.Id" />
-
-                                                <button type="submit"
-                                                        name="amount"
-                                                        value="-1"
-                                                        class="btn
-                                                               btn-outline-danger">
-                                                    -1
-                                                </button>
-
-                                            </form>
-
-
-                                            <form method="post"
-                                                  asp-page-handler="AdjustHp">
-
-                                                <input type="hidden"
-                                                       name="combatantId"
-                                                       value="@combatant.Id" />
-
-                                                <button type="submit"
-                                                        name="amount"
-                                                        value="1"
-                                                        class="btn
-                                                               btn-outline-success">
-                                                    +1
-                                                </button>
-
-                                            </form>
-
-
-                                            <form method="post"
-                                                  asp-page-handler="AdjustHp">
-
-                                                <input type="hidden"
-                                                       name="combatantId"
-                                                       value="@combatant.Id" />
-
-                                                <button type="submit"
-                                                        name="amount"
-                                                        value="5"
-                                                        class="btn
-                                                               btn-outline-success">
-                                                    +5
-                                                </button>
-
-                                            </form>
-
-                                        </div>
-
-
-                                        <div class="row g-2">
-
-                                            <div class="col-sm-6">
-
-                                                <form method="post"
-                                                      asp-page-handler="SetHp">
-
-                                                    <input type="hidden"
-                                                           name="combatantId"
-                                                           value="@combatant.Id" />
-
-                                                    <label class="form-label small">
-                                                        Current HP
-                                                    </label>
-
-                                                    <div class="input-group">
-
-                                                        <input type="number"
-                                                               name="currentHp"
-                                                               value="@combatant.CurrentHp"
-                                                               min="0"
-                                                               class="form-control" />
-
-                                                        <button type="submit"
-                                                                class="btn
-                                                                       btn-outline-secondary">
-                                                            Set
-                                                        </button>
-
-                                                    </div>
-
-                                                </form>
-
-                                            </div>
-
-
-                                            <div class="col-sm-6">
-
-                                                <form method="post"
-                                                      asp-page-handler="SetTemporaryHp">
-
-                                                    <input type="hidden"
-                                                           name="combatantId"
-                                                           value="@combatant.Id" />
-
-                                                    <label class="form-label small">
-                                                        Temporary HP
-                                                    </label>
-
-                                                    <div class="input-group">
-
-                                                        <input type="number"
-                                                               name="temporaryHp"
-                                                               value="@combatant.TemporaryHp"
-                                                               min="0"
-                                                               class="form-control" />
-
-                                                        <button type="submit"
-                                                                class="btn
-                                                                       btn-outline-info">
-                                                            Set
-                                                        </button>
-
-                                                    </div>
-
-                                                </form>
-
-                                            </div>
-
-                                        </div>
+                            <div class="border-top
+                                        mt-3
+                                        pt-3">
+
+                                <form method="post"
+                                      asp-page-handler="SetInitiative"
+                                      class="row
+                                             g-2
+                                             align-items-end">
+
+                                    <input type="hidden"
+                                           name="characterId"
+                                           value="@character.Id" />
+
+
+                                    <div class="col">
+
+                                        <label class="form-label small">
+                                            Initiative
+                                        </label>
+
+                                        <input type="number"
+                                               name="initiative"
+                                               value="@combatant.Initiative"
+                                               class="form-control" />
 
                                     </div>
-                                }
 
 
-                                @if (isCurrent)
-                                {
-                                    <form method="post"
-                                          asp-page-handler="EndTurn">
+                                    <div class="col-auto">
 
                                         <button type="submit"
                                                 class="btn
-                                                       btn-primary
-                                                       btn-lg
-                                                       w-100">
-                                            End Turn →
+                                                       btn-primary">
+                                            Set Initiative
                                         </button>
 
-                                    </form>
+                                    </div>
+
+                                </form>
+
+                            </div>
+                        }
+
+
+                        @* ====================================================
+                           ACTIVE ENCOUNTER
+                           ==================================================== *@
+
+                        @if (combatant is not null &&
+                             Model.Encounter.IsStarted)
+                        {
+                            <div class="border-top
+                                        mt-3
+                                        pt-3">
+
+                                @if (!isControlled)
+                                {
+                                    <div class="text-muted small">
+                                        This character is currently controlled
+                                        by the DM or another player.
+                                    </div>
                                 }
-                            }
+                                else
+                                {
+                                    @if (combatant.CurrentHp.HasValue)
+                                    {
+                                        <div class="d-flex
+                                                    flex-column
+                                                    flex-lg-row
+                                                    justify-content-between
+                                                    align-items-lg-center
+                                                    gap-3">
+
+                                            @* QUICK HP *@
+                                            <div>
+
+                                                <div class="small
+                                                            text-muted
+                                                            mb-1">
+                                                    Quick HP
+                                                </div>
+
+                                                <div class="d-flex
+                                                            flex-wrap
+                                                            align-items-center
+                                                            gap-1">
+
+                                                    @foreach (var amount
+                                                              in new[] { -5, -1, 1, 5 })
+                                                    {
+                                                        <form method="post"
+                                                              asp-page-handler="AdjustHp">
+
+                                                            <input type="hidden"
+                                                                   name="combatantId"
+                                                                   value="@combatant.Id" />
+
+                                                            <button type="submit"
+                                                                    name="amount"
+                                                                    value="@amount"
+                                                                    class="btn
+                                                                           btn-sm
+                                                                           @(amount < 0
+                                                                               ? "btn-outline-danger"
+                                                                               : "btn-outline-success")">
+
+                                                                @(amount > 0
+                                                                    ? $"+{amount}"
+                                                                    : amount.ToString())
+
+                                                            </button>
+
+                                                        </form>
+                                                    }
+
+                                                </div>
+
+                                            </div>
+
+
+                                            @if (isCurrent)
+                                            {
+                                                <form method="post"
+                                                      asp-page-handler="EndTurn">
+
+                                                    <button type="submit"
+                                                            class="btn
+                                                                   btn-primary">
+                                                        End Turn →
+                                                    </button>
+
+                                                </form>
+                                            }
+
+                                        </div>
+                                    }
+                                }
+
+                            </div>
                         }
 
                     </div>

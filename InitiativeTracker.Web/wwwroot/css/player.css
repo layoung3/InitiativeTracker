@@ -1,0 +1,21 @@
+﻿.player-character-card {
+    overflow: hidden;
+}
+
+.player-character-avatar {
+    width: 3.5rem;
+    height: 3.5rem;
+    flex: 0 0 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50%;
+    background: var(--bs-secondary-bg);
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.player-character-card .progress {
+    background: var(--bs-secondary-bg);
+}
