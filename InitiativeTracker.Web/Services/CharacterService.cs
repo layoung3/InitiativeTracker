@@ -565,4 +565,181 @@ public class CharacterService
             db.SaveChanges();
         }
     }
+
+    public void AdjustCharacterHp(
+        Guid characterId,
+        int amount)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            if (amount < 0)
+            {
+                var damage =
+                    Math.Abs(amount);
+
+                if (character.TemporaryHp > 0)
+                {
+                    var absorbed =
+                        Math.Min(
+                            character.TemporaryHp,
+                            damage);
+
+                    character.TemporaryHp -=
+                        absorbed;
+
+                    damage -=
+                        absorbed;
+                }
+
+                if (damage > 0)
+                {
+                    character.CurrentHp =
+                        Math.Max(
+                            0,
+                            character.CurrentHp -
+                            damage);
+                }
+            }
+            else
+            {
+                character.CurrentHp =
+                    Math.Min(
+                        character.MaxHp,
+                        character.CurrentHp +
+                        amount);
+            }
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void SetCharacterCurrentHp(
+        Guid characterId,
+        int currentHp)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            character.CurrentHp =
+                Math.Clamp(
+                    currentHp,
+                    0,
+                    character.MaxHp);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void SetCharacterTemporaryHp(
+        Guid characterId,
+        int temporaryHp)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            character.TemporaryHp =
+                Math.Max(
+                    0,
+                    temporaryHp);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void SetCharacterInspiration(
+        Guid characterId,
+        bool inspiration)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            character.Inspiration =
+                inspiration;
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void SetCharacterExhaustion(
+        Guid characterId,
+        int exhaustionLevel)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x => x.Id == characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            character.ExhaustionLevel =
+                Math.Clamp(
+                    exhaustionLevel,
+                    0,
+                    6);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
 }

@@ -134,6 +134,9 @@ namespace InitiativeTracker.Web.Migrations
                     b.Property<bool>("DexteritySaveProficient")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ExhaustionLevel")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ImagePath")
                         .HasColumnType("TEXT");
 

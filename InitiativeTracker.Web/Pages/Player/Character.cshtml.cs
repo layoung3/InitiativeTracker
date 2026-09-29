@@ -59,6 +59,22 @@ public class CharacterModel : PageModel
             .CurrentEncounter
             .Round;
 
+    public int DisplayCurrentHp =>
+        EncounterCombatant?.CurrentHp ??
+        Character.CurrentHp;
+
+    public int DisplayMaxHp =>
+        EncounterCombatant?.MaxHp ??
+        Character.MaxHp;
+
+    public int DisplayTemporaryHp =>
+        EncounterCombatant?.TemporaryHp ??
+        Character.TemporaryHp;
+
+    public bool CanChangeLiveHp =>
+        EncounterCombatant is null ||
+        IsControlled;
+
 
     public IActionResult OnGet(Guid id)
     {
@@ -336,5 +352,241 @@ public class CharacterModel : PageModel
                 "EncounterUpdated",
                 _encounterState
                     .GetDisplayState());
+    }
+
+    public async Task<IActionResult>OnPostAdjustHpAsync(Guid id, int amount)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out var profileId);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        var combatant =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character!.Id);
+
+        if (combatant is null)
+        {
+            _characterService
+                .AdjustCharacterHp(
+                    character.Id,
+                    amount);
+        }
+        else
+        {
+            _encounterState
+                .AdjustHpForController(
+                    profileId,
+                    combatant.Id,
+                    amount);
+
+            await BroadcastEncounterAsync();
+        }
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public async Task<IActionResult>OnPostSetHpAsync(Guid id, int? currentHp)
+    {
+        if (!currentHp.HasValue)
+        {
+            return RedirectToPage(
+                new
+                {
+                    id
+                });
+        }
+
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out var profileId);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        var combatant =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character!.Id);
+
+        if (combatant is null)
+        {
+            _characterService
+                .SetCharacterCurrentHp(
+                    character.Id,
+                    currentHp.Value);
+        }
+        else
+        {
+            _encounterState
+                .SetCurrentHpForController(
+                    profileId,
+                    combatant.Id,
+                    currentHp.Value);
+
+            await BroadcastEncounterAsync();
+        }
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public async Task<IActionResult>OnPostSetTemporaryHpAsync(Guid id, int temporaryHp)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out var profileId);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        var combatant =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character!.Id);
+
+        if (combatant is null)
+        {
+            _characterService
+                .SetCharacterTemporaryHp(
+                    character.Id,
+                    temporaryHp);
+        }
+        else
+        {
+            _encounterState
+                .SetTemporaryHpForController(
+                    profileId,
+                    combatant.Id,
+                    temporaryHp);
+
+            await BroadcastEncounterAsync();
+        }
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostSetInspiration(Guid id, bool inspiration)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        _characterService
+            .SetCharacterInspiration(
+                character!.Id,
+                inspiration);
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostSetExhaustion(Guid id, int exhaustionLevel)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        _characterService
+            .SetCharacterExhaustion(
+                character!.Id,
+                exhaustionLevel);
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    private IActionResult? ValidateOwnedCharacter(
+        Guid characterId,
+        out PlayerCharacter? character,
+        out Guid playerProfileId)
+    {
+        character =
+            null;
+
+        playerProfileId =
+            Guid.Empty;
+
+        if (!TryGetPlayerProfileId(
+                out playerProfileId))
+        {
+            return Unauthorized();
+        }
+
+        character =
+            _characterService
+                .GetCharacter(
+                    characterId);
+
+        if (character is null)
+        {
+            return NotFound();
+        }
+
+        if (character.PlayerProfileId !=
+            playerProfileId)
+        {
+            return Forbid();
+        }
+
+        return null;
     }
 }

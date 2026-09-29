@@ -26,6 +26,8 @@ public class PlayerCharacter
 
     public bool Inspiration { get; set; }
 
+    public int ExhaustionLevel { get; set; }
+
     public int Strength { get; set; } = 10;
 
     public int Dexterity { get; set; } = 10;
