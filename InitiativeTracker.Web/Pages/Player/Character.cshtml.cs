@@ -4,6 +4,7 @@ using InitiativeTracker.Web.Data.Enums;
 using InitiativeTracker.Web.Hubs;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.SignalR;
@@ -27,6 +28,7 @@ public class CharacterModel : PageModel
         _encounterHub = encounterHub;
     }
 
+    public string? OpenEditor{ get; private set; }
 
     public PlayerCharacter Character { get; private set; } = null!;
 
@@ -76,8 +78,10 @@ public class CharacterModel : PageModel
         IsControlled;
 
 
-    public IActionResult OnGet(Guid id)
+    public IActionResult OnGet(Guid id, string? editor=null)
     {
+        OpenEditor = editor;
+
         if (!TryGetPlayerProfileId(
                 out var profileId))
         {
@@ -397,7 +401,7 @@ public class CharacterModel : PageModel
         return RedirectToPage(
             new
             {
-                id
+                id, editor = "hp"
             });
     }
 
@@ -453,7 +457,7 @@ public class CharacterModel : PageModel
         return RedirectToPage(
             new
             {
-                id
+                id, editor = "hp"
             });
     }
 
@@ -500,11 +504,11 @@ public class CharacterModel : PageModel
         return RedirectToPage(
             new
             {
-                id
+                id, editor = "temp"
             });
     }
 
-    public IActionResult OnPostSetInspiration(Guid id, bool inspiration)
+    public IActionResult OnPostToggleInspiration(Guid id)
     {
         var ownershipResult =
             ValidateOwnedCharacter(
@@ -520,7 +524,7 @@ public class CharacterModel : PageModel
         _characterService
             .SetCharacterInspiration(
                 character!.Id,
-                inspiration);
+                !character.Inspiration);
 
         return RedirectToPage(
             new

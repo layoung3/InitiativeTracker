@@ -542,183 +542,291 @@
 
                 <div class="card-body">
 
-                    <div class="row g-2">
+                    <div class="combat-summary-grid">
 
+                        @* ========================================================
+                           HIT POINTS
+                           ======================================================== *@
 
-                        <div class="col-6 col-md-3">
+                        @if (Model.CanChangeLiveHp)
+                        {
+                            <button type="button"
+                                    class="combat-stat-tile
+                                combat-stat-action
+                                combat-hp-tile
+                                @(Model.OpenEditor == "hp"
+                                    ? ""
+                                    : "collapsed")"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#hpEditor"
+                                    aria-expanded="@(Model.OpenEditor == "hp"
+                                                                            ? "true"
+                                                                            : "false")"
+                                    aria-controls="hpEditor">
 
-                            <div class="character-stat-box">
-
-                                <div class="character-stat-value">
+                                <span class="combat-stat-value">
                                     @Model.DisplayCurrentHp
-                                </div>
-
-                                <div class="character-stat-label">
-                                    Current HP
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="col-6 col-md-3">
-
-                            <div class="character-stat-box">
-
-                                <div class="character-stat-value">
+                                    <span class="combat-stat-divider">/</span>
                                     @Model.DisplayMaxHp
-                                </div>
+                                </span>
 
-                                <div class="character-stat-label">
-                                    Max HP
-                                </div>
+                                <span class="combat-stat-label">
+                                    Hit Points
+                                </span>
+
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="combat-stat-tile
+                                combat-hp-tile">
+
+                                <span class="combat-stat-value">
+                                    @Model.DisplayCurrentHp
+                                    <span class="combat-stat-divider">/</span>
+                                    @Model.DisplayMaxHp
+                                </span>
+
+                                <span class="combat-stat-label">
+                                    Hit Points
+                                </span>
 
                             </div>
+                        }
 
-                        </div>
 
+                        @* ========================================================
+                           TEMPORARY HP
+                           ======================================================== *@
 
-                        <div class="col-6 col-md-3">
+                        @if (Model.CanChangeLiveHp)
+                        {
+                            <button type="button"
+                                    class="combat-stat-tile
+                                combat-stat-action
+                                combat-temp-hp
+                                @(Model.OpenEditor == "temp"
+                                    ? ""
+                                    : "collapsed")"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#temporaryHpEditor"
+                                    aria-expanded="@(Model.OpenEditor == "temp"
+                                                                    ? "true"
+                                                                    : "false")"
+                                    aria-controls="temporaryHpEditor">
 
-                            <div class="character-stat-box">
-
-                                <div class="character-stat-value">
+                                <span class="combat-stat-value">
                                     @Model.DisplayTemporaryHp
-                                </div>
+                                </span>
 
-                                <div class="character-stat-label">
+                                <span class="combat-stat-label">
                                     Temp HP
-                                </div>
+                                </span>
+
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="combat-stat-tile
+                                combat-temp-hp">
+
+                                <span class="combat-stat-value">
+                                    @Model.DisplayTemporaryHp
+                                </span>
+
+                                <span class="combat-stat-label">
+                                    Temp HP
+                                </span>
 
                             </div>
+                        }
 
-                        </div>
 
+                        @* ========================================================
+                           INSPIRATION
+                           ======================================================== *@
 
-                        <div class="col-6 col-md-3">
+                        <form method="post"
+                              asp-page-handler="ToggleInspiration"
+                              asp-route-id="@Model.Character.Id"
+                              class="combat-inspiration-form">
 
-                            <div class="character-stat-box">
+                            <button type="submit"
+                                    class="combat-stat-tile
+                                combat-stat-action
+                                inspiration-stat
+                                @(Model.Character.Inspiration
+                                    ? "is-active"
+                                    : "")"
+                                    title="Toggle Inspiration"
+                                    aria-label="Toggle Inspiration">
 
-                                <div class="character-stat-value">
-                                    +@Model.Character.ProficiencyBonus
-                                </div>
+                                <span class="inspiration-star">
 
-                                <div class="character-stat-label">
-                                    Proficiency
-                                </div>
+                                    <svg class="inspiration-star-icon"
+                                         viewBox="0 0 24 24"
+                                         role="img"
+                                         aria-hidden="true">
 
-                            </div>
+                                        <polygon points="
+                                        12,2.5
+                                        14.9,8.4
+                                        21.5,9.3
+                                        16.7,13.9
+                                        17.8,20.5
+                                        12,17.4
+                                        6.2,20.5
+                                        7.3,13.9
+                                        2.5,9.3
+                                        9.1,8.4"
+                                                 fill="@(Model.Character.Inspiration ? "currentColor" : "none")"
+                                                 stroke="currentColor"
+                                                 stroke-width="1.75"
+                                                 stroke-linejoin="round" />
 
-                        </div>
+                                    </svg>
+
+                                </span>
+
+                                <span class="combat-stat-label">
+                                    Inspiration
+                                </span>
+
+                            </button>
+
+                        </form>
 
                     </div>
 
 
+                    @* ============================================================
+                       HP EDITOR
+                       ============================================================ *@
+
                     @if (Model.CanChangeLiveHp)
                     {
-                        <div class="border-top
-                            mt-3
-                            pt-3">
+                        <div id="combatEditors">
+                            <div class="collapse
+                                @(Model.OpenEditor == "hp"
+                                    ? "show"
+                                    : "")
+                                mt-3"
+                                 id="hpEditor"
+                                 data-bs-parent="#combatEditors">
+
+                                <div class="combat-editor">
+
+                                    <div class="d-flex
+                                        flex-column
+                                        flex-sm-row
+                                        justify-content-between
+                                        gap-3">
+
+                                        <div>
+
+                                            <div class="small
+                                                fw-semibold
+                                                mb-2">
+                                                Adjust Hit Points
+                                            </div>
 
 
-                            @* QUICK HP *@
-                            <div class="mb-3">
+                                            <div class="d-flex
+                                                flex-wrap
+                                                gap-1">
 
-                                <div class="small
-                                    text-muted
-                                    mb-2">
-                                    Quick HP
-                                </div>
+                                                @foreach (var amount
+                                                          in new[]
+                                                          {
+                                                          -5, -1, 1, 5
+                                                          })
+                                                {
+                                                    <form method="post"
+                                                          asp-page-handler="AdjustHp"
+                                                          asp-route-id="@Model.Character.Id">
+
+                                                        <button type="submit"
+                                                                name="amount"
+                                                                value="@amount"
+                                                                class="btn
+                                                            @(amount < 0
+                                                                ? "btn-outline-danger"
+                                                                : "btn-outline-success")">
+
+                                                            @(amount > 0
+                                                                ? $"+{amount}"
+                                                                : amount.ToString())
+
+                                                        </button>
+
+                                                    </form>
+                                                }
+
+                                            </div>
+
+                                        </div>
 
 
-                                <div class="d-flex
-                                    flex-wrap
-                                    gap-1">
-
-                                    @foreach (var amount
-                                              in new[]
-                                              {
-                                      -5,
-                                      -1,
-                                      1,
-                                      5
-                                              })
-                                    {
                                         <form method="post"
-                                              asp-page-handler="AdjustHp"
+                                              asp-page-handler="SetHp"
                                               asp-route-id="@Model.Character.Id">
 
-                                            <button type="submit"
-                                                    name="amount"
-                                                    value="@amount"
-                                                    class="btn
-                                                @(amount < 0
-                                                    ? "btn-outline-danger"
-                                                    : "btn-outline-success")">
+                                            <label class="form-label small">
+                                                Set Current HP
+                                            </label>
 
-                                                @(amount > 0
-                                                    ? $"+{amount}"
-                                                    : amount.ToString())
 
-                                            </button>
+                                            <div class="input-group">
+
+                                                <input type="number"
+                                                       name="currentHp"
+                                                       value="@Model.DisplayCurrentHp"
+                                                       min="0"
+                                                       class="form-control"
+                                                       style="max-width: 7rem;" />
+
+                                                <button type="submit"
+                                                        class="btn
+                                                    btn-outline-secondary">
+                                                    Set
+                                                </button>
+
+                                            </div>
 
                                         </form>
-                                    }
+
+                                    </div>
 
                                 </div>
 
                             </div>
 
 
-                            <div class="row g-2">
+                            @* ========================================================
+                           TEMP HP EDITOR
+                           ======================================================== *@
 
-                                @* CURRENT HP *@
-                                <div class="col-12 col-sm-6">
+                            <div class="collapse
+                                @(Model.OpenEditor == "temp"
+                                    ? "show"
+                                    : "")
+                                mt-3"
+                                 id="temporaryHpEditor"
+                                 data-bs-parent="#combatEditors">
 
-                                    <form method="post"
-                                          asp-page-handler="SetHp"
-                                          asp-route-id="@Model.Character.Id">
-
-                                        <label class="form-label small">
-                                            Current HP
-                                        </label>
-
-
-                                        <div class="input-group">
-
-                                            <input type="number"
-                                                   name="currentHp"
-                                                   value="@Model.DisplayCurrentHp"
-                                                   min="0"
-                                                   class="form-control" />
-
-                                            <button type="submit"
-                                                    class="btn
-                                                btn-outline-secondary">
-                                                Set
-                                            </button>
-
-                                        </div>
-
-                                    </form>
-
-                                </div>
-
-
-                                @* TEMP HP *@
-                                <div class="col-12 col-sm-6">
+                                <div class="combat-editor">
 
                                     <form method="post"
                                           asp-page-handler="SetTemporaryHp"
                                           asp-route-id="@Model.Character.Id">
 
                                         <label class="form-label small">
-                                            Temporary HP
+                                            Set Temporary HP
                                         </label>
 
 
-                                        <div class="input-group">
+                                        <div class="input-group"
+                                             style="max-width: 14rem;">
 
                                             <input type="number"
                                                    name="temporaryHp"
@@ -739,162 +847,109 @@
                                 </div>
 
                             </div>
-
                         </div>
                     }
-                    else
+
+
+                    @if (!Model.CanChangeLiveHp)
                     {
-                        <div class="alert
-                            alert-secondary
-                            mt-3
-                            mb-0">
-
-                            This character's combat controls are currently
-                            assigned to another player or the DM.
-
+                        <div class="small
+                            text-muted
+                            mt-2">
+                            Combat controls are currently assigned to
+                            another player or the DM.
                         </div>
                     }
 
 
-                    @* ========================================================
-           CHARACTER STATE
-           ======================================================== *@
+                    @* ============================================================
+                       EXHAUSTION
+                       ============================================================ *@
 
-                    <div class="border-top
-                        mt-3
-                        pt-3">
+                    <div class="combat-state-row">
 
-                        <div class="row g-3">
+                        <div>
 
-
-                            @* INSPIRATION *@
-                            <div class="col-12 col-md-6">
-
-                                <div class="d-flex
-                                    justify-content-between
-                                    align-items-center
-                                    gap-2">
-
-                                    <div>
-
-                                        <div class="fw-semibold">
-                                            Inspiration
-                                        </div>
-
-                                        <div class="small text-muted">
-                                            Character inspiration
-                                        </div>
-
-                                    </div>
-
-
-                                    <form method="post"
-                                          asp-page-handler="SetInspiration"
-                                          asp-route-id="@Model.Character.Id">
-
-                                        @if (Model.Character.Inspiration)
-                                        {
-                                            <button type="submit"
-                                                    name="inspiration"
-                                                    value="false"
-                                                    class="btn
-                                                btn-primary">
-                                                ● Available
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <button type="submit"
-                                                    name="inspiration"
-                                                    value="true"
-                                                    class="btn
-                                                btn-outline-secondary">
-                                                ○ None
-                                            </button>
-                                        }
-
-                                    </form>
-
-                                </div>
-
+                            <div class="fw-semibold">
+                                Exhaustion
                             </div>
 
-
-                            @* EXHAUSTION *@
-                            <div class="col-12 col-md-6">
-
-                                <form method="post"
-                                      asp-page-handler="SetExhaustion"
-                                      asp-route-id="@Model.Character.Id">
-
-                                    <label class="form-label
-                                        fw-semibold">
-                                        Exhaustion
-                                    </label>
-
-
-                                    <div class="input-group">
-
-                                        <input type="number"
-                                               name="exhaustionLevel"
-                                               value="@Model.Character.ExhaustionLevel"
-                                               min="0"
-                                               max="6"
-                                               class="form-control" />
-
-                                        <span class="input-group-text">
-                                            / 6
-                                        </span>
-
-                                        <button type="submit"
-                                                class="btn
-                                            btn-outline-secondary">
-                                            Set
-                                        </button>
-
-                                    </div>
-
-                                </form>
-
+                            <div class="small text-muted">
+                                Level @Model.Character.ExhaustionLevel
                             </div>
 
                         </div>
+
+
+                        <form method="post"
+                              asp-page-handler="SetExhaustion"
+                              asp-route-id="@Model.Character.Id"
+                              class="exhaustion-control">
+
+                            <button type="submit"
+                                    name="exhaustionLevel"
+                                    value="0"
+                                    class="exhaustion-clear
+                                @(Model.Character.ExhaustionLevel == 0
+                                    ? "is-active"
+                                    : "")"
+                                    title="Clear exhaustion">
+                                None
+                            </button>
+
+
+                            @for (var level = 1;
+                                  level <= 6;
+                                  level++)
+                            {
+                                <button type="submit"
+                                        name="exhaustionLevel"
+                                        value="@level"
+                                        class="exhaustion-pip
+                                    @(level <= Model.Character.ExhaustionLevel
+                                        ? "is-active"
+                                        : "")"
+                                        title="Set exhaustion to level @level"
+                                        aria-label="Set exhaustion to level @level">
+
+                                    <span>
+                                        @level
+                                    </span>
+
+                                </button>
+                            }
+
+                        </form>
 
                     </div>
 
 
-                    @* CONDITIONS PLACEHOLDER *@
-                    <div class="border-top
-                        mt-3
-                        pt-3">
+                    @* ============================================================
+                       CONDITIONS
+                       ============================================================ *@
 
-                        <div class="d-flex
-                            justify-content-between
-                            align-items-center
-                            gap-2">
+                    <div class="combat-state-row">
 
-                            <div>
+                        <div>
 
-                                <div class="fw-semibold">
-                                    Conditions
-                                </div>
-
-                                <div class="small text-muted">
-                                    No active conditions
-                                </div>
-
+                            <div class="fw-semibold">
+                                Conditions
                             </div>
 
-
-                            <button type="button"
-                                    class="btn
-                                btn-sm
-                                btn-outline-secondary"
-                                    disabled>
-                                Manage
-                            </button>
+                            <div class="small text-muted">
+                                No active conditions
+                            </div>
 
                         </div>
+
+
+                        <button type="button"
+                                class="btn
+                            btn-sm
+                            btn-outline-secondary"
+                                disabled>
+                            Manage
+                        </button>
 
                     </div>
 
@@ -1226,4 +1281,7 @@
             asp-append-version="true">
     </script>
 
+    <script src="~/js/player-character.js"
+            asp-append-version="true">
+    </script>
 }
