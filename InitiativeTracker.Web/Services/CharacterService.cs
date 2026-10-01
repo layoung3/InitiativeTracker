@@ -753,6 +753,389 @@ public class CharacterService
         }
     }
 
+    public IReadOnlyList<PlayerCharacterItem> GetInventory(
+        Guid characterId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var characterExists =
+            db.PlayerCharacters
+                .Any(
+                    x =>
+                        x.Id ==
+                        characterId);
+
+        if (!characterExists)
+        {
+            throw new ArgumentException(
+                "Character was not found.",
+                nameof(characterId));
+        }
+
+        var items =
+            db.PlayerCharacterItems
+                .AsNoTracking()
+                .Where(
+                    x =>
+                        x.PlayerCharacterId ==
+                        characterId)
+                .ToList();
+
+        return items
+            .OrderBy(
+                x =>
+                    GetInventoryTypeSortOrder(
+                        x.ItemType))
+            .ThenByDescending(
+                x => x.IsEquipped)
+            .ThenBy(
+                x => x.Name)
+            .ToList();
+    }
+
+
+    public PlayerCharacterItem AddInventoryItem(
+        Guid characterId,
+        string name,
+        CharacterItemType itemType,
+        int quantity,
+        bool isEquipped,
+        string? notes = null)
+    {
+        var normalized =
+            NormalizeInventoryItemInput(
+                name,
+                notes);
+
+        if (!Enum.IsDefined(
+                typeof(CharacterItemType),
+                itemType))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(itemType));
+        }
+
+        if (quantity < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                "Quantity must be at least 1.");
+        }
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var now =
+                DateTime.UtcNow;
+
+            var item =
+                new PlayerCharacterItem
+                {
+                    PlayerCharacterId =
+                        characterId,
+
+                    Name =
+                        normalized.Name,
+
+                    ItemType =
+                        itemType,
+
+                    Quantity =
+                        quantity,
+
+                    IsEquipped =
+                        CanEquipInventoryItemType(
+                            itemType) &&
+                        isEquipped,
+
+                    Notes =
+                        normalized.Notes,
+
+                    CreatedAtUtc =
+                        now,
+
+                    UpdatedAtUtc =
+                        now
+                };
+
+            db.PlayerCharacterItems.Add(
+                item);
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+
+            return item;
+        }
+    }
+
+
+    public void UpdateInventoryItem(
+        Guid characterId,
+        Guid itemId,
+        string name,
+        CharacterItemType itemType,
+        int quantity,
+        bool isEquipped,
+        string? notes = null)
+    {
+        var normalized =
+            NormalizeInventoryItemInput(
+                name,
+                notes);
+
+        if (!Enum.IsDefined(
+                typeof(CharacterItemType),
+                itemType))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(itemType));
+        }
+
+        if (quantity < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                "Quantity must be at least 1.");
+        }
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var item =
+                db.PlayerCharacterItems
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                itemId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+            if (item is null)
+            {
+                throw new ArgumentException(
+                    "Inventory item was not found.",
+                    nameof(itemId));
+            }
+
+            var now =
+                DateTime.UtcNow;
+
+            item.Name =
+                normalized.Name;
+
+            item.ItemType =
+                itemType;
+
+            item.Quantity =
+                quantity;
+
+            item.IsEquipped =
+                CanEquipInventoryItemType(
+                    itemType) &&
+                isEquipped;
+
+            item.Notes =
+                normalized.Notes;
+
+            item.UpdatedAtUtc =
+                now;
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+        }
+    }
+
+
+    public void ToggleInventoryItemEquipped(
+        Guid characterId,
+        Guid itemId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var item =
+                db.PlayerCharacterItems
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                itemId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+            if (item is null)
+            {
+                throw new ArgumentException(
+                    "Inventory item was not found.",
+                    nameof(itemId));
+            }
+
+            if (!CanEquipInventoryItemType(
+                    item.ItemType))
+            {
+                throw new InvalidOperationException(
+                    "This item type cannot be equipped.");
+            }
+
+            var now =
+                DateTime.UtcNow;
+
+            item.IsEquipped =
+                !item.IsEquipped;
+
+            item.UpdatedAtUtc =
+                now;
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void AdjustInventoryItemQuantity(
+        Guid characterId,
+        Guid itemId,
+        int amount)
+    {
+        if (amount == 0)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var item =
+                db.PlayerCharacterItems
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                itemId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+            if (item is null)
+            {
+                throw new ArgumentException(
+                    "Inventory item was not found.",
+                    nameof(itemId));
+            }
+
+            item.Quantity =
+                Math.Max(
+                    1,
+                    item.Quantity + amount);
+
+            var now =
+                DateTime.UtcNow;
+
+            item.UpdatedAtUtc =
+                now;
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+        }
+    }
+
+
+    public void DeleteInventoryItem(
+        Guid characterId,
+        Guid itemId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var item =
+                db.PlayerCharacterItems
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                itemId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+            if (item is null)
+            {
+                return;
+            }
+
+            db.PlayerCharacterItems.Remove(
+                item);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
     public IReadOnlyList<PlayerCharacterCondition> GetConditions(Guid characterId)
     {
         using var db =
@@ -1049,5 +1432,69 @@ public class CharacterService
 
             db.SaveChanges();
         }
+    }
+
+    private static (string Name,string? Notes) NormalizeInventoryItemInput(
+        string name,
+        string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(
+                name))
+        {
+            throw new ArgumentException(
+                "Item name is required.",
+                nameof(name));
+        }
+
+        var normalizedName =
+            name.Trim();
+
+        if (normalizedName.Length > 150)
+        {
+            throw new ArgumentException(
+                "Item name cannot exceed 150 characters.",
+                nameof(name));
+        }
+
+        var normalizedNotes =
+            string.IsNullOrWhiteSpace(
+                notes)
+                ? null
+                : notes.Trim();
+
+        if (normalizedNotes?.Length > 2000)
+        {
+            throw new ArgumentException(
+                "Item notes cannot exceed 2000 characters.",
+                nameof(notes));
+        }
+
+        return (
+            normalizedName,
+            normalizedNotes);
+    }
+
+    private static bool CanEquipInventoryItemType(
+        CharacterItemType itemType)
+    {
+        return itemType is
+            CharacterItemType.Weapon or
+            CharacterItemType.Armor or
+            CharacterItemType.Equipment;
+    }
+
+
+    private static int GetInventoryTypeSortOrder(
+        CharacterItemType itemType)
+    {
+        return itemType switch
+        {
+            CharacterItemType.Weapon => 0,
+            CharacterItemType.Armor => 1,
+            CharacterItemType.Equipment => 2,
+            CharacterItemType.Consumable => 3,
+            CharacterItemType.General => 4,
+            _ => 99
+        };
     }
 }

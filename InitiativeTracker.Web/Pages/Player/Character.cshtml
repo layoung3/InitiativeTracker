@@ -1003,7 +1003,10 @@
 
 
 
-            @* Inventory placeholder *@
+            @* ========================================================
+               INVENTORY
+               ======================================================== *@
+
             <div class="card">
 
                 <div class="card-header
@@ -1015,21 +1018,272 @@
                         Inventory
                     </span>
 
-                    <span class="badge
-                        text-bg-secondary">
-                        Coming next
-                    </span>
+
+                    <button type="button"
+                            class="btn
+                        btn-sm
+                        btn-outline-primary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#addInventoryItemModal">
+                        + Add Item
+                    </button>
 
                 </div>
 
 
-                <div class="card-body text-muted">
+                @if (TempData["InventoryError"]
+                     is string inventoryError)
+                {
+                    <div class="alert
+                        alert-danger
+                        rounded-0
+                        border-start-0
+                        border-end-0
+                        border-top-0
+                        mb-0">
+                        @inventoryError
+                    </div>
+                }
 
-                    Character equipment, carried items,
-                    currency, quantities, and notes will
-                    live here.
 
-                </div>
+                @if (Model.InventoryItems.Count == 0)
+                {
+                    <div class="card-body text-muted">
+
+                        No items in inventory.
+
+                    </div>
+                }
+                else
+                {
+                    <div class="list-group
+                        list-group-flush">
+
+                        @foreach (var itemGroup
+                                  in Model.InventoryItems
+                                      .GroupBy(
+                                          x => x.ItemType)
+                                      .OrderBy(
+                                          x =>
+                                              Model.GetInventoryTypeSortOrder(
+                                                  x.Key)))
+                        {
+                            var collapseId =
+                                $"inventory-{itemGroup.Key}";
+
+
+                            <div class="list-group-item
+                                p-0
+                                bg-body-tertiary">
+
+                                <button type="button"
+                                        class="inventory-section-toggle"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#@collapseId"
+                                        aria-expanded="true"
+                                        aria-controls="@collapseId">
+
+                                    <span>
+                                        @Model.GetInventoryTypeLabel(
+                                            itemGroup.Key)
+                                    </span>
+
+                                    <span class="inventory-section-chevron"
+                                          aria-hidden="true">
+                                        ▾
+                                    </span>
+
+                                </button>
+
+                            </div>
+
+
+                            <div id="@collapseId"
+                                 class="collapse show"
+                                 data-inventory-section="@itemGroup.Key">
+
+                                @foreach (var item
+                                          in itemGroup
+                                              .OrderByDescending(
+                                                  x => x.IsEquipped)
+                                              .ThenBy(
+                                                  x => x.Name))
+                                {
+                                    <div class="list-group-item">
+
+                                        <div class="d-flex
+                                            flex-column
+                                            flex-md-row
+                                            justify-content-between
+                                            gap-3">
+
+
+                                            <div class="flex-grow-1">
+
+                                                <div class="d-flex
+                                                    flex-wrap
+                                                    align-items-center
+                                                    gap-2">
+
+                                                    <span class="fw-semibold">
+                                                        @item.Name
+                                                    </span>
+
+
+                                                    @if (item.IsEquipped &&
+                                                         Model.CanEquipInventoryItem(
+                                                             item.ItemType))
+                                                    {
+                                                        <span class="badge
+                                                            text-bg-success">
+                                                            Equipped
+                                                        </span>
+                                                    }
+
+                                                </div>
+
+
+                                                @if (!string.IsNullOrWhiteSpace(
+                                                    item.Notes))
+                                                {
+                                                    <div class="small
+                                                        text-muted
+                                                        mt-1">
+                                                        @item.Notes
+                                                    </div>
+                                                }
+
+                                            </div>
+
+
+                                            <div class="d-flex
+                                                flex-wrap
+                                                align-items-center
+                                                gap-2">
+
+
+                                                @* Quantity *@
+                                                <form method="post"
+                                                      asp-page-handler="AdjustInventoryItemQuantity"
+                                                      asp-route-id="@Model.Character.Id"
+                                                      data-preserve-inventory-scroll="true">
+
+                                                    <input type="hidden"
+                                                           name="itemId"
+                                                           value="@item.Id" />
+
+
+                                                    <div class="input-group
+                                                        input-group-sm">
+
+                                                        <button type="submit"
+                                                                name="amount"
+                                                                value="-1"
+                                                                class="btn
+                                                            btn-outline-secondary"
+                                                                disabled="@(item.Quantity <= 1)">
+                                                            −
+                                                        </button>
+
+
+                                                        <span class="input-group-text">
+                                                            @item.Quantity
+                                                        </span>
+
+
+                                                        <button type="submit"
+                                                                name="amount"
+                                                                value="1"
+                                                                class="btn
+                                                            btn-outline-secondary">
+                                                            +
+                                                        </button>
+
+                                                    </div>
+
+                                                </form>
+
+
+                                                @* Equip / Unequip *@
+                                                @if (Model.CanEquipInventoryItem(
+                                                    item.ItemType))
+                                                {
+                                                    <form method="post"
+                                                          asp-page-handler="ToggleInventoryItemEquipped"
+                                                          asp-route-id="@Model.Character.Id"
+                                                          data-preserve-inventory-scroll="true">
+
+                                                        <input type="hidden"
+                                                               name="itemId"
+                                                               value="@item.Id" />
+
+
+                                                        <button type="submit"
+                                                                class="btn
+                                                            btn-sm
+                                                            @(item.IsEquipped
+                                                                ? "btn-outline-secondary"
+                                                                : "btn-outline-success")">
+
+                                                            @(item.IsEquipped
+                                                                ? "Unequip"
+                                                                : "Equip")
+
+                                                        </button>
+
+                                                    </form>
+                                                }
+
+                                                @* Edit *@
+                                                <button type="button"
+                                                        class="btn
+                                                    btn-sm
+                                                    btn-outline-primary"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#editInventoryItemModal"
+                                                        data-item-id="@item.Id"
+                                                        data-item-name="@item.Name"
+                                                        data-item-type="@item.ItemType"
+                                                        data-item-quantity="@item.Quantity"
+                                                        data-item-equipped="@(item.IsEquipped ? "true" : "false")"
+                                                        data-item-notes="@item.Notes">
+                                                    Edit
+                                                </button>
+
+
+                                                @* Delete *@
+                                                <form method="post"
+                                                      asp-page-handler="DeleteInventoryItem"
+                                                      asp-route-id="@Model.Character.Id"
+                                                      data-preserve-inventory-scroll="true"
+                                                      onsubmit="return confirm('Remove @item.Name from inventory?');">
+
+                                                    <input type="hidden"
+                                                           name="itemId"
+                                                           value="@item.Id" />
+
+
+                                                    <button type="submit"
+                                                            class="btn
+                                                        btn-sm
+                                                        btn-outline-danger">
+                                                        Delete
+                                                    </button>
+
+                                                </form>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+                                }
+
+                            </div>
+                        }
+
+                    </div>
+                }
 
             </div>
 
@@ -1253,6 +1507,368 @@
                 </div>
 
             </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+@* ============================================================
+   ADD INVENTORY ITEM MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="addInventoryItemModal"
+     tabindex="-1"
+     aria-labelledby="addInventoryItemModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <form method="post"
+                  asp-page-handler="AddInventoryItem"
+                  asp-route-id="@Model.Character.Id"
+                  data-preserve-inventory-scroll="true">
+
+
+                <div class="modal-header">
+
+                    <div>
+
+                        <h2 class="modal-title
+                            fs-5"
+                            id="addInventoryItemModalLabel">
+                            Add Inventory Item
+                        </h2>
+
+                        <div class="small
+                            text-muted">
+                            @Model.Character.Name
+                        </div>
+
+                    </div>
+
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+
+                <div class="modal-body">
+
+
+                    <div class="mb-3">
+
+                        <label for="itemName"
+                               class="form-label">
+                            Name
+                        </label>
+                        
+                        <input type="text"
+                               id="itemName"
+                               name="itemName"
+                               maxlength="150"
+                               class="form-control"
+                               required />
+
+                    </div>
+
+
+                    <div class="row g-3 mb-3">
+
+
+                        <div class="col-8">
+
+                            <label for="itemType"
+                                   class="form-label">
+                                Type
+                            </label>
+
+                            <select id="itemType"
+                                    name="itemType"
+                                    class="form-select">
+
+                                @foreach (var itemType
+                                          in Enum.GetValues<CharacterItemType>())
+                                {
+                                    <option value="@itemType">
+                                        @itemType
+                                    </option>
+                                }
+
+                            </select>
+
+                        </div>
+
+
+                        <div class="col-4">
+
+                            <label for="quantity"
+                                   class="form-label">
+                                Quantity
+                            </label>
+
+                            <input type="number"
+                                   id="quantity"
+                                   name="quantity"
+                                   value="1"
+                                   min="1"
+                                   class="form-control" />
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="mb-3">
+
+                        <label for="itemNotes"
+                               class="form-label">
+                            Notes
+                        </label>
+
+                        <textarea id="itemNotes"
+                                  name="itemNotes"
+                                  maxlength="2000"
+                                  rows="3"
+                                  class="form-control"
+                                  placeholder="Optional notes"></textarea>
+
+                    </div>
+
+
+                    <div class="form-check">
+
+                        <input type="checkbox"
+                               id="isEquipped"
+                               name="isEquipped"
+                               value="true"
+                               class="form-check-input" />
+
+                        <label for="isEquipped"
+                               class="form-check-label">
+                            Equipped
+                        </label>
+
+                    </div>
+
+                </div>
+
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn
+                        btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+
+
+                    <button type="submit"
+                            class="btn
+                        btn-primary">
+                        Add Item
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+@* ============================================================
+   EDIT INVENTORY ITEM MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="editInventoryItemModal"
+     tabindex="-1"
+     aria-labelledby="editInventoryItemModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <form method="post"
+                  asp-page-handler="UpdateInventoryItem"
+                  asp-route-id="@Model.Character.Id"
+                  data-preserve-inventory-scroll="true">
+
+
+                <input type="hidden"
+                       id="editItemId"
+                       name="itemId" />
+
+
+                <div class="modal-header">
+
+                    <div>
+
+                        <h2 class="modal-title
+                            fs-5"
+                            id="editInventoryItemModalLabel">
+                            Edit Inventory Item
+                        </h2>
+
+                        <div class="small
+                            text-muted">
+                            @Model.Character.Name
+                        </div>
+
+                    </div>
+
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+
+                <div class="modal-body">
+
+
+                    <div class="mb-3">
+
+                        <label for="editItemName"
+                               class="form-label">
+                            Name
+                        </label>
+
+                        <input type="text"
+                               id="editItemName"
+                               name="itemName"
+                               maxlength="150"
+                               class="form-control"
+                               required />
+
+                    </div>
+
+
+                    <div class="row
+                        g-3
+                        mb-3">
+
+
+                        <div class="col-8">
+
+                            <label for="editItemType"
+                                   class="form-label">
+                                Type
+                            </label>
+
+                            <select id="editItemType"
+                                    name="itemType"
+                                    class="form-select">
+
+                                @foreach (var itemType
+                                          in Enum.GetValues<CharacterItemType>())
+                                {
+                                    <option value="@itemType">
+                                        @itemType
+                                    </option>
+                                }
+
+                            </select>
+
+                        </div>
+
+
+                        <div class="col-4">
+
+                            <label for="editItemQuantity"
+                                   class="form-label">
+                                Quantity
+                            </label>
+
+                            <input type="number"
+                                   id="editItemQuantity"
+                                   name="quantity"
+                                   min="1"
+                                   class="form-control"
+                                   required />
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="mb-3">
+
+                        <label for="editItemNotes"
+                               class="form-label">
+                            Notes
+                        </label>
+
+                        <textarea id="editItemNotes"
+                                  name="itemNotes"
+                                  maxlength="2000"
+                                  rows="3"
+                                  class="form-control"
+                                  placeholder="Optional notes"></textarea>
+
+                    </div>
+
+
+                    <div class="form-check">
+
+                        <input type="checkbox"
+                               id="editIsEquipped"
+                               name="isEquipped"
+                               value="true"
+                               class="form-check-input" />
+
+                        <label for="editIsEquipped"
+                               class="form-check-label">
+                            Equipped
+                        </label>
+
+                        <div class="form-text">
+                            Available for weapons, armor,
+                            and equipment.
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn
+                        btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+
+
+                    <button type="submit"
+                            class="btn
+                        btn-primary">
+                        Save Changes
+                    </button>
+
+                </div>
+
+            </form>
 
         </div>
 
@@ -1557,6 +2173,14 @@
     </script>
 
     <script src="~/js/player-character.js"
+            asp-append-version="true">
+    </script>
+
+    <script src="~/js/player-inventory.js"
+            asp-append-version="true">
+    </script>
+
+    <script src="~/js/player-inventory.js"
             asp-append-version="true">
     </script>
 }

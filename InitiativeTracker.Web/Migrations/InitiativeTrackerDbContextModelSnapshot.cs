@@ -228,6 +228,46 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("PlayerCharacterConditions");
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEquipped")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ItemType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterId");
+
+                    b.ToTable("PlayerCharacterItem", (string)null);
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSkill", b =>
                 {
                     b.Property<Guid>("Id")
@@ -354,6 +394,17 @@ namespace InitiativeTracker.Web.Migrations
                     b.Navigation("PlayerCharacter");
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterItem", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
+                        .WithMany("InventoryItems")
+                        .HasForeignKey("PlayerCharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlayerCharacter");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSkill", b =>
                 {
                     b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
@@ -368,6 +419,8 @@ namespace InitiativeTracker.Web.Migrations
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacter", b =>
                 {
                     b.Navigation("Conditions");
+
+                    b.Navigation("InventoryItems");
 
                     b.Navigation("Skills");
                 });

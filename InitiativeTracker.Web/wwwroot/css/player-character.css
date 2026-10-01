@@ -343,6 +343,44 @@ button.combat-stat-tile {
     border-color: var(--character-accent);
 }
 
+/* ==============================================================
+   INVENTORY
+   ============================================================== */
+
+.inventory-section-toggle {
+    width: 100%;
+    padding: 0.65rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 0;
+    background: transparent;
+    color: var(--bs-secondary-color);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: left;
+}
+
+
+    .inventory-section-toggle:hover {
+        background: var(--bs-secondary-bg);
+    }
+
+
+.inventory-section-chevron {
+    display: inline-block;
+    font-size: 1rem;
+    transition: transform 0.15s ease;
+}
+
+
+.inventory-section-toggle.collapsed
+.inventory-section-chevron {
+    transform: rotate(-90deg);
+}
+
 
 /* ==============================================================
    MOBILE

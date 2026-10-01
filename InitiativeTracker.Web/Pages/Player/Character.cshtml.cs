@@ -33,7 +33,9 @@ public class CharacterModel : PageModel
 
     public PlayerCharacter Character { get; private set; } = null!;
 
-    public IReadOnlyList<PlayerCharacterSkill> Skills{ get; private set; } = [];
+    public IReadOnlyList<PlayerCharacterSkill> Skills { get; private set; } = [];
+
+    public IReadOnlyList<PlayerCharacterItem> InventoryItems { get; private set; } = [];
 
     public Combatant? EncounterCombatant { get; private set; }
 
@@ -122,6 +124,8 @@ public class CharacterModel : PageModel
         Character = character;
 
         Skills = _characterService.GetSkills(character.Id);
+
+        InventoryItems = _characterService.GetInventory(character.Id);
 
         EncounterCombatant =
             _encounterState
@@ -623,6 +627,267 @@ public class CharacterModel : PageModel
             {
                 id
             });
+    }
+
+    public IActionResult OnPostAddInventoryItem(
+        Guid id,
+        string itemName,
+        CharacterItemType itemType,
+        int quantity,
+        bool isEquipped,
+        string? itemNotes)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .AddInventoryItem(
+                    character!.Id,
+                    itemName,
+                    itemType,
+                    quantity,
+                    isEquipped,
+                    itemNotes);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException)
+        {
+            TempData["InventoryError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostToggleInventoryItemEquipped(
+        Guid id,
+        Guid itemId)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .ToggleInventoryItemEquipped(
+                    character!.Id,
+                    itemId);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            TempData["InventoryError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostAdjustInventoryItemQuantity(
+        Guid id,
+        Guid itemId,
+        int amount)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .AdjustInventoryItemQuantity(
+                    character!.Id,
+                    itemId,
+                    amount);
+        }
+        catch (ArgumentException ex)
+        {
+            TempData["InventoryError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostUpdateInventoryItem(
+        Guid id,
+        Guid itemId,
+        string itemName,
+        CharacterItemType itemType,
+        int quantity,
+        bool isEquipped,
+        string? itemNotes)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .UpdateInventoryItem(
+                    character!.Id,
+                    itemId,
+                    itemName,
+                    itemType,
+                    quantity,
+                    isEquipped,
+                    itemNotes);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            TempData["InventoryError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostDeleteInventoryItem(
+        Guid id,
+        Guid itemId)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .DeleteInventoryItem(
+                    character!.Id,
+                    itemId);
+        }
+        catch (ArgumentException ex)
+        {
+            TempData["InventoryError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public bool CanEquipInventoryItem(
+        CharacterItemType itemType)
+    {
+        return itemType is
+            CharacterItemType.Weapon or
+            CharacterItemType.Armor or
+            CharacterItemType.Equipment;
+    }
+
+
+    public int GetInventoryTypeSortOrder(
+        CharacterItemType itemType)
+    {
+        return itemType switch
+        {
+            CharacterItemType.Weapon => 0,
+            CharacterItemType.Armor => 1,
+            CharacterItemType.Equipment => 2,
+            CharacterItemType.Consumable => 3,
+            CharacterItemType.General => 4,
+            _ => 99
+        };
+    }
+
+
+    public string GetInventoryTypeLabel(
+        CharacterItemType itemType)
+    {
+        return itemType switch
+        {
+            CharacterItemType.Weapon =>
+                "Weapons",
+
+            CharacterItemType.Armor =>
+                "Armor",
+
+            CharacterItemType.Equipment =>
+                "Equipment",
+
+            CharacterItemType.Consumable =>
+                "Consumables",
+
+            CharacterItemType.General =>
+                "General",
+
+            _ =>
+                itemType.ToString()
+        };
     }
 
     private IActionResult? ValidateOwnedCharacter(

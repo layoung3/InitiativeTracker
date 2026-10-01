@@ -58,6 +58,8 @@ public class PlayerCharacter
 
     public ICollection<PlayerCharacterCondition> Conditions { get; set; } = new List<PlayerCharacterCondition>();
 
+    public ICollection<PlayerCharacterItem> InventoryItems { get; set; } = new List<PlayerCharacterItem>();
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAtUtc { get; set; }
