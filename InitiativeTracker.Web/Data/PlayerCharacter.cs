@@ -24,6 +24,8 @@ public class PlayerCharacter
 
     public int TemporaryHp { get; set; }
 
+    public int ArmorClass { get; set; } = 10;
+
     public bool Inspiration { get; set; }
 
     public int ExhaustionLevel { get; set; }

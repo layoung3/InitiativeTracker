@@ -52,7 +52,6 @@ public class EditCharacterModel : PageModel
         private set;
     }
 
-
     public IActionResult OnGet(
         Guid id)
     {
@@ -83,68 +82,49 @@ public class EditCharacterModel : PageModel
         Input =
             new CharacterEditInput
             {
-                Id =
-                    character.Id,
+                Id = character.Id,
 
-                Name =
-                    character.Name,
+                Name = character.Name,
 
-                Level =
-                    character.Level,
+                Level = character.Level,
 
-                MovementSpeed =
-                    character.MovementSpeed,
+                MovementSpeed = character.MovementSpeed,
 
-                ProficiencyBonus =
-                    character.ProficiencyBonus,
+                ProficiencyBonus = character.ProficiencyBonus,
 
-                CurrentHp =
-                    character.CurrentHp,
+                ArmorClass = character.ArmorClass,
 
-                MaxHp =
-                    character.MaxHp,
+                CurrentHp = character.CurrentHp,
 
-                TemporaryHp =
-                    character.TemporaryHp,
+                MaxHp = character.MaxHp,
 
-                Inspiration =
-                    character.Inspiration,
+                TemporaryHp = character.TemporaryHp,
 
-                Strength =
-                    character.Strength,
+                Inspiration = character.Inspiration,
 
-                Dexterity =
-                    character.Dexterity,
+                Strength = character.Strength,
 
-                Constitution =
-                    character.Constitution,
+                Dexterity = character.Dexterity,
 
-                Intelligence =
-                    character.Intelligence,
+                Constitution = character.Constitution,
 
-                Wisdom =
-                    character.Wisdom,
+                Intelligence = character.Intelligence,
 
-                Charisma =
-                    character.Charisma,
+                Wisdom = character.Wisdom,
 
-                StrengthSaveProficient =
-                    character.StrengthSaveProficient,
+                Charisma = character.Charisma,
 
-                DexteritySaveProficient =
-                    character.DexteritySaveProficient,
+                StrengthSaveProficient = character.StrengthSaveProficient,
 
-                ConstitutionSaveProficient =
-                    character.ConstitutionSaveProficient,
+                DexteritySaveProficient = character.DexteritySaveProficient,
 
-                IntelligenceSaveProficient =
-                    character.IntelligenceSaveProficient,
+                ConstitutionSaveProficient = character.ConstitutionSaveProficient,
 
-                WisdomSaveProficient =
-                    character.WisdomSaveProficient,
+                IntelligenceSaveProficient = character.IntelligenceSaveProficient,
 
-                CharismaSaveProficient =
-                    character.CharismaSaveProficient
+                WisdomSaveProficient = character.WisdomSaveProficient,
+
+                CharismaSaveProficient = character.CharismaSaveProficient
             };
 
 
@@ -243,6 +223,8 @@ public class EditCharacterModel : PageModel
 
                 ProficiencyBonus =
                     Input.ProficiencyBonus,
+
+                ArmorClass = Input.ArmorClass,
 
                 CurrentHp =
                     Input.CurrentHp,
@@ -425,12 +407,11 @@ public class EditCharacterModel : PageModel
 
         public int Level { get; set; } = 1;
 
-        public int MovementSpeed { get; set; } =
-            30;
+        public int MovementSpeed { get; set; } = 30;
 
-        public int ProficiencyBonus { get; set; } =
-            2;
+        public int ProficiencyBonus { get; set; } = 2;
 
+        public int ArmorClass { get; set; } = 10;
 
         public int CurrentHp { get; set; }
 

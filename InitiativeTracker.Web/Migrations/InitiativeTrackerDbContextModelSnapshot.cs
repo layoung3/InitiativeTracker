@@ -110,6 +110,9 @@ namespace InitiativeTracker.Web.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ArmorClass")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Charisma")
                         .HasColumnType("INTEGER");
 

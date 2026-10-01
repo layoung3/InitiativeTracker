@@ -135,6 +135,11 @@ public class CharacterService
                     0,
                     character.TemporaryHp);
 
+            existing.ArmorClass =
+                Math.Max(
+                    0,
+                    character.ArmorClass);
+
             existing.Inspiration =
                 character.Inspiration;
 
@@ -446,6 +451,11 @@ public class CharacterService
                 Math.Max(
                     0,
                     values.ProficiencyBonus);
+
+            character.ArmorClass =
+                Math.Max(
+                    0,
+                    values.ArmorClass);
 
             character.Inspiration =
                 values.Inspiration;
