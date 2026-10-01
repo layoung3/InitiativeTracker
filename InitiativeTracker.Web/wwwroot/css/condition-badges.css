@@ -1,0 +1,182 @@
+﻿/* ==============================================================
+   CONDITION COLORS
+
+   Themes can override any of these variables later.
+   ============================================================== */
+
+:root {
+    --condition-color-blinded: #6c757d;
+    --condition-color-charmed: #d63384;
+    --condition-color-deafened: #708090;
+    --condition-color-frightened: #6f42c1;
+    --condition-color-grappled: #fd7e14;
+    --condition-color-incapacitated: #495057;
+    --condition-color-invisible: #0dcaf0;
+    --condition-color-paralyzed: #d39e00;
+    --condition-color-petrified: #8b7765;
+    --condition-color-poisoned: #198754;
+    --condition-color-prone: #a66b32;
+    --condition-color-restrained: #dc6b35;
+    --condition-color-stunned: #0d6efd;
+    --condition-color-unconscious: #343a40;
+    --condition-color-custom: #6c757d;
+}
+
+
+.condition-blinded {
+    --condition-color: var(--condition-color-blinded);
+}
+
+.condition-charmed {
+    --condition-color: var(--condition-color-charmed);
+}
+
+.condition-deafened {
+    --condition-color: var(--condition-color-deafened);
+}
+
+.condition-frightened {
+    --condition-color: var(--condition-color-frightened);
+}
+
+.condition-grappled {
+    --condition-color: var(--condition-color-grappled);
+}
+
+.condition-incapacitated {
+    --condition-color: var(--condition-color-incapacitated);
+}
+
+.condition-invisible {
+    --condition-color: var(--condition-color-invisible);
+}
+
+.condition-paralyzed {
+    --condition-color: var(--condition-color-paralyzed);
+}
+
+.condition-petrified {
+    --condition-color: var(--condition-color-petrified);
+}
+
+.condition-poisoned {
+    --condition-color: var(--condition-color-poisoned);
+}
+
+.condition-prone {
+    --condition-color: var(--condition-color-prone);
+}
+
+.condition-restrained {
+    --condition-color: var(--condition-color-restrained);
+}
+
+.condition-stunned {
+    --condition-color: var(--condition-color-stunned);
+}
+
+.condition-unconscious {
+    --condition-color: var(--condition-color-unconscious);
+}
+
+.condition-custom {
+    --condition-color: var(--condition-color-custom);
+}
+
+
+/* ==============================================================
+   BADGES
+   ============================================================== */
+
+.condition-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+
+.condition-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var( --condition-color, var(--bs-border-color));
+    border-radius: 999px;
+    background: color-mix( in srgb, var( --condition-color, var(--bs-secondary-color)) 18%, var(--bs-body-bg));
+    color: var(--bs-body-color);
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+
+/* ==============================================================
+   CONDITION PICKER
+   ============================================================== */
+
+.condition-selector-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+
+    .condition-selector-grid form {
+        margin: 0;
+    }
+
+
+.condition-option {
+    width: 100%;
+    min-height: 3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    text-align: left;
+    cursor: pointer;
+}
+
+
+    .condition-option:hover,
+    .condition-option:focus-visible {
+        border-color: var( --condition-color, var(--bs-primary));
+    }
+
+
+    .condition-option.is-active {
+        border-color: var( --condition-color, var(--bs-primary));
+        background: color-mix( in srgb, var( --condition-color, var(--bs-primary)) 14%, var(--bs-body-bg));
+    }
+
+
+.condition-option-marker {
+    width: 1.25rem;
+    min-width: 1.25rem;
+    color: var( --condition-color, var(--bs-primary));
+    font-weight: 700;
+    text-align: center;
+}
+
+
+.custom-condition-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+}
+
+
+@media (max-width: 575.98px) {
+
+    .condition-selector-grid {
+        grid-template-columns: 1fr;
+    }
+}

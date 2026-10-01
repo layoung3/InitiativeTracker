@@ -1,12 +1,13 @@
-using InitiativeTracker.Core.Models;
-using InitiativeTracker.Web.Models;
 using InitiativeTracker.Core.Enums;
+using InitiativeTracker.Core.Models;
+using InitiativeTracker.Web.Hubs;
+using InitiativeTracker.Web.Models;
+using InitiativeTracker.Web.Rules.Dnd5e;
 using InitiativeTracker.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using InitiativeTracker.Web.Hubs;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.AspNetCore.Authorization;
 
 namespace InitiativeTracker.Web.Pages.Dm;
 
@@ -52,10 +53,23 @@ public class IndexModel : PageModel
 
     public bool CanUndo => _encounterState.CanUndo;
 
-    public void OnGet()
+    public Combatant? ConditionCombatant { get; private set; }
+
+
+    public IReadOnlyList<string> StandardConditions =>
+            Dnd5eConditionCatalog.StandardConditions;
+
+    public void OnGet(Guid? conditions = null)
     {
         LoadConnectedPlayers();
         LoadConnectedPlayerCharacters();
+
+        if (conditions.HasValue)
+        {
+            ConditionCombatant =Encounter
+                    .Combatants.SingleOrDefault(
+                        x => x.Id == conditions.Value);
+        }
     }
 
     public async Task<IActionResult> OnPostAddPlayerCharacterAsync(
@@ -642,16 +656,133 @@ public class IndexModel : PageModel
 
                         return new ConnectedPlayerOption
                         {
-                            PlayerProfileId =
-                                latestConnection
-                                    .PlayerProfileId,
+                            PlayerProfileId = latestConnection.PlayerProfileId,
 
-                            PlayerName =
-                                latestConnection.Name
+                            PlayerName = latestConnection.Name
                         };
                     })
                 .OrderBy(
                     x => x.PlayerName)
                 .ToList();
+    }
+
+    public async Task<IActionResult> OnPostToggleCombatantConditionAsync(
+        Guid combatantId,
+        string conditionName)
+    {
+        if (!Dnd5eConditionCatalog
+                .StandardConditions
+                .Any(
+                    x =>
+                        string.Equals(
+                            x,
+                            conditionName,
+                            StringComparison.OrdinalIgnoreCase)))
+        {
+            return BadRequest(
+                "Unknown standard condition.");
+        }
+
+
+        var combatant =
+            Encounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.Id ==
+                        combatantId);
+
+        if (combatant is null)
+        {
+            return NotFound();
+        }
+
+
+        var existing =
+            combatant
+                .Conditions
+                .FirstOrDefault(
+                    x =>
+                        string.Equals(
+                            x.Name,
+                            conditionName,
+                            StringComparison.OrdinalIgnoreCase));
+
+
+        if (existing is null)
+        {
+            _encounterState
+                .AddCombatantCondition(
+                    combatantId,
+                    conditionName,
+                    isCustom: false);
+        }
+        else
+        {
+            _encounterState
+                .RemoveCombatantCondition(
+                    combatantId,
+                    existing.Id);
+        }
+
+
+        await BroadcastEncounterAsync();
+
+
+        return RedirectToPage(
+            new
+            {
+                conditions = combatantId
+            });
+    }
+
+    public async Task<IActionResult> OnPostAddCustomCombatantConditionAsync(
+        Guid combatantId,
+        string customConditionName,
+        string? customConditionNotes)
+    {
+        try
+        {
+            _encounterState
+                .AddCombatantCondition(
+                    combatantId,
+                    customConditionName,
+                    isCustom: true,
+                    customConditionNotes);
+
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            TempData["ConditionError"] = ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                conditions = combatantId
+            });
+    }
+
+    public async Task<IActionResult> OnPostRemoveCombatantConditionAsync(
+        Guid combatantId,
+        Guid conditionId)
+    {
+        _encounterState
+            .RemoveCombatantCondition(
+                combatantId,
+                conditionId);
+
+        await BroadcastEncounterAsync();
+
+
+        return RedirectToPage(
+            new
+            {
+                conditions = combatantId
+            });
     }
 }

@@ -190,14 +190,60 @@ function renderCombatants(combatants) {
         /*
          * NAME
          */
-        const name =
+        const name = document.createElement("div");
+
+        name.className = "combatant-name";
+
+
+        const nameText =
             document.createElement("div");
 
-        name.className =
-            "combatant-name";
+        nameText.textContent = combatant.name;
 
-        name.textContent =
-            combatant.name;
+        name.appendChild(nameText);
+
+
+        const conditions = combatant.conditions ?? [];
+
+
+        if (conditions.length > 0) {
+
+            const conditionList =
+                document.createElement(
+                    "div");
+
+            conditionList.className = "condition-badges mt-1";
+
+
+            for (const condition
+                of conditions) {
+
+                const badge =
+                    document.createElement(
+                        "span");
+
+                const styleKey =
+                    /^[a-z0-9-]+$/
+                        .test(
+                            condition.styleKey ?? "")
+                        ? condition.styleKey
+                        : "custom";
+
+
+                badge.classList.add(
+                    "condition-badge",
+                    `condition-${styleKey}`
+                );
+
+                badge.textContent = condition.name;
+
+
+                conditionList.appendChild(badge);
+            }
+
+
+            name.appendChild(conditionList);
+        }
 
 
         /*
@@ -209,8 +255,7 @@ function renderCombatants(combatants) {
          * In that case we do not render an HP
          * value at all.
          */
-        const hp =
-            document.createElement("div");
+        const hp = document.createElement("div");
 
         hp.className =
             "combatant-hp ms-3";

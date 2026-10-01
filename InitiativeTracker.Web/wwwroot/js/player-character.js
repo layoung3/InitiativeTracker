@@ -1,20 +1,68 @@
 ﻿document.addEventListener("DOMContentLoaded", () => {
 
-    const combatEditors =
-        document.getElementById("combatEditors");
+    const combatEditors = document.getElementById("combatEditors");
 
-    const conditionsModal =
-        document.getElementById(
-            "conditionsModal");
+    const conditionsModal = document.getElementById("conditionsModal");
 
-    if (
-        conditionsModal &&
-        conditionsModal.dataset.autoOpen === "true"
-    ) {
-        bootstrap.Modal
-            .getOrCreateInstance(
-                conditionsModal)
-            .show();
+    if (conditionsModal) {
+
+        const modal =
+            bootstrap.Modal
+                .getOrCreateInstance(
+                    conditionsModal);
+
+
+        function updateConditionsModalQuery(
+            isOpen) {
+
+            const url =
+                new URL(
+                    window.location.href);
+
+            if (isOpen) {
+
+                url.searchParams.set(
+                    "modal",
+                    "conditions");
+            }
+            else if (
+                url.searchParams.get(
+                    "modal") ===
+                "conditions"
+            ) {
+
+                url.searchParams.delete("modal");
+            }
+
+            window.history.replaceState(
+                {},
+                "",
+                url);
+        }
+
+
+        conditionsModal.addEventListener(
+            "shown.bs.modal",
+            () => {
+
+                updateConditionsModalQuery(true);
+            });
+
+
+        conditionsModal.addEventListener(
+            "hidden.bs.modal",
+            () => {
+
+                updateConditionsModalQuery(false);
+            });
+
+
+        if (
+            conditionsModal.dataset.autoOpen === "true"
+        ) {
+
+            modal.show();
+        }
     }
 
     if (!combatEditors) {

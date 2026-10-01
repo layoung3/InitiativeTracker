@@ -1,0 +1,24 @@
+﻿@model InitiativeTracker.Core.Models.Combatant
+@using InitiativeTracker.Web.Rules.Dnd5e
+
+
+@if (Model.Conditions.Count > 0)
+{
+    <div class="condition-badges mt-1">
+
+        @foreach (var condition
+                  in Model.Conditions
+                      .OrderBy(
+                          x => x.Name))
+        {
+            <span class="condition-badge
+                condition-@Dnd5eConditionCatalog.GetStyleKey(condition.Name)"
+                  title="@condition.Notes">
+
+                @condition.Name
+
+            </span>
+        }
+
+    </div>
+}

@@ -1,9 +1,11 @@
 ﻿using InitiativeTracker.Core.Enums;
 using InitiativeTracker.Core.Models;
-using InitiativeTracker.Web.Models;
-using System.Text.Json;
 using InitiativeTracker.Web.Data;
+using InitiativeTracker.Web.Models;
+using InitiativeTracker.Web.Rules.Dnd5e;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using static InitiativeTracker.Web.Models.CombatantDisplayState;
 
 namespace InitiativeTracker.Web.Services;
 
@@ -448,7 +450,22 @@ public class EncounterStateService
                                 MaxHp = hideHp ? null : c.MaxHp,
                                 TemporaryHp = hideHp ? null : c.TemporaryHp,
                                 IsActive = c.IsActive,
-                                IsCurrent = CurrentEncounter.CurrentCombatantId == c.Id
+                                IsCurrent = CurrentEncounter.CurrentCombatantId == c.Id,
+                                Conditions = c.Conditions
+                                    .OrderBy( x => x.Name)
+                                    .Select(
+                                        condition =>
+                                            new ConditionDisplayState
+                                            {
+                                                Name =
+                                                    condition.Name,
+
+                                                StyleKey =
+                                                    Dnd5eConditionCatalog
+                                                        .GetStyleKey(
+                                                            condition.Name)
+                                            })
+                                    .ToList(),
                             };
                         })
                         .ToList()

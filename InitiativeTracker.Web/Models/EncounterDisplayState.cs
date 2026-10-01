@@ -30,4 +30,13 @@ public class CombatantDisplayState
     public bool IsActive { get; set; }
 
     public bool IsCurrent { get; set; }
+
+    public List<ConditionDisplayState> Conditions { get; set; } = [];
+
+    public class ConditionDisplayState
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string StyleKey { get; set; } = "custom";
+    }
 }
