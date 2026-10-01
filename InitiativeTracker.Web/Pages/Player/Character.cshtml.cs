@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.SignalR;
 using InitiativeTracker.Web.Rules.Dnd5e;
+using System.Text.Json;
 
 namespace InitiativeTracker.Web.Pages.Player;
 
@@ -36,6 +37,10 @@ public class CharacterModel : PageModel
     public IReadOnlyList<PlayerCharacterSkill> Skills { get; private set; } = [];
 
     public IReadOnlyList<PlayerCharacterItem> InventoryItems { get; private set; } = [];
+
+    public IReadOnlyDictionary<Guid, PlayerCharacterWeapon> WeaponsByItemId { get; private set; } = new Dictionary<Guid, PlayerCharacterWeapon>();
+
+    public IReadOnlyList<Dnd5eWeaponDefinition> StandardWeapons => Dnd5eWeaponCatalog.StandardWeapons;
 
     public Combatant? EncounterCombatant { get; private set; }
 
@@ -126,6 +131,13 @@ public class CharacterModel : PageModel
         Skills = _characterService.GetSkills(character.Id);
 
         InventoryItems = _characterService.GetInventory(character.Id);
+
+        WeaponsByItemId =
+            _characterService
+                .GetWeapons(
+                    character.Id)
+                .ToDictionary(
+                    x => x.PlayerCharacterItemId);
 
         EncounterCombatant =
             _encounterState
@@ -1188,6 +1200,230 @@ public class CharacterModel : PageModel
             });
     }
 
+    public string GetWeaponConfigurationJson(
+    Guid itemId)
+    {
+        if (!WeaponsByItemId.TryGetValue(
+                itemId,
+                out var weapon))
+        {
+            return string.Empty;
+        }
+
+
+        return JsonSerializer.Serialize(
+            new
+            {
+                attackAbility =
+                    weapon.AttackAbility.ToString(),
+
+                usesProficiency =
+                    weapon.UsesProficiency,
+
+                attackBonus =
+                    weapon.AttackBonus,
+
+                primaryDamageBonus =
+                    weapon.PrimaryDamageBonus,
+
+                normalRange =
+                    weapon.NormalRange,
+
+                longRange =
+                    weapon.LongRange,
+
+                damageComponents =
+                    weapon.DamageComponents
+                        .OrderBy(
+                            x => x.SortOrder)
+                        .Select(
+                            x =>
+                                new
+                                {
+                                    damageDice =
+                                        x.DamageDice,
+
+                                    damageType =
+                                        x.DamageType,
+
+                                    addsAbilityModifier =
+                                        x.AddsAbilityModifier,
+
+                                    versatileDamageDice =
+                                        x.VersatileDamageDice
+                                })
+                        .ToList()
+            });
+    }
+
+
+    public string GetWeaponCatalogJson()
+    {
+        return JsonSerializer.Serialize(
+            StandardWeapons
+                .Select(
+                    weapon =>
+                        new
+                        {
+                            key =
+                                weapon.Key,
+
+                            name =
+                                weapon.Name,
+
+                            defaultAttackAbility =
+                                weapon
+                                    .DefaultAttackAbility
+                                    .ToString(),
+
+                            allowedAttackAbilities =
+                                weapon
+                                    .AllowedAttackAbilities
+                                    .Select(
+                                        x => x.ToString())
+                                    .ToList(),
+
+                            normalRange =
+                                weapon.NormalRange,
+
+                            longRange =
+                                weapon.LongRange,
+
+                            damageComponents =
+                                weapon
+                                    .DamageComponents
+                                    .OrderBy(
+                                        x => x.SortOrder)
+                                    .Select(
+                                        x =>
+                                            new
+                                            {
+                                                damageDice =
+                                                    x.DamageDice,
+
+                                                damageType =
+                                                    x.DamageType,
+
+                                                addsAbilityModifier =
+                                                    x.AddsAbilityModifier,
+
+                                                versatileDamageDice =
+                                                    x.VersatileDamageDice
+                                            })
+                                    .ToList()
+                        })
+                .ToList());
+    }
+
+    public IActionResult OnPostSaveWeaponConfiguration(
+        Guid id,
+        Guid itemId,
+        CharacterAbilityType attackAbility,
+        bool usesProficiency,
+        int attackBonus,
+        int primaryDamageBonus,
+        int? normalRange,
+        int? longRange,
+        List<WeaponDamageInput> damageComponents)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            damageComponents ??=
+                [];
+
+
+            var weapon =
+                new PlayerCharacterWeapon
+                {
+                    PlayerCharacterItemId =
+                        itemId,
+
+                    AttackAbility =
+                        attackAbility,
+
+                    UsesProficiency =
+                        usesProficiency,
+
+                    AttackBonus =
+                        attackBonus,
+
+                    PrimaryDamageBonus =
+                        primaryDamageBonus,
+
+                    NormalRange =
+                        normalRange,
+
+                    LongRange =
+                        longRange,
+
+                    DamageComponents =
+                        damageComponents
+                            .Select(
+                                (damage, index) =>
+                                    new PlayerCharacterWeaponDamageComponent
+                                    {
+                                        PlayerCharacterItemId =
+                                            itemId,
+
+                                        DamageDice =
+                                            damage.DamageDice,
+
+                                        DamageType =
+                                            damage.DamageType,
+
+                                        IsPrimary =
+                                            index == 0,
+
+                                        AddsAbilityModifier =
+                                            damage.AddsAbilityModifier,
+
+                                        VersatileDamageDice =
+                                            index == 0
+                                                ? damage.VersatileDamageDice
+                                                : null,
+
+                                        SortOrder =
+                                            index
+                                    })
+                            .ToList()
+                };
+
+
+            _characterService
+                .SaveWeapon(
+                    character!.Id,
+                    itemId,
+                    weapon);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException
+                  or InvalidOperationException)
+        {
+            TempData["InventoryError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
     public class CharacterConditionView
     {
         public Guid Id { get; set; }
@@ -1197,5 +1433,32 @@ public class CharacterModel : PageModel
         public bool IsCustom { get; set; }
 
         public string? Notes { get; set; }
+    }
+
+    public class WeaponDamageInput
+    {
+        public string DamageDice
+        {
+            get;
+            set;
+        } = string.Empty;
+
+        public string DamageType
+        {
+            get;
+            set;
+        } = string.Empty;
+
+        public bool AddsAbilityModifier
+        {
+            get;
+            set;
+        }
+
+        public string? VersatileDamageDice
+        {
+            get;
+            set;
+        }
     }
 }

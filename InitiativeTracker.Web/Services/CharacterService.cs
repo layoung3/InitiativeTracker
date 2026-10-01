@@ -970,6 +970,23 @@ public class CharacterService
             character.UpdatedAtUtc =
                 now;
 
+            if (itemType != CharacterItemType.Weapon)
+            {
+                var existingWeapon =
+                    db.PlayerCharacterWeapons
+                        .SingleOrDefault(
+                            x =>
+                                x.PlayerCharacterItemId ==
+                                itemId);
+
+                if (existingWeapon is not null)
+                {
+                    db.PlayerCharacterWeapons
+                        .Remove(
+                            existingWeapon);
+                }
+            }
+
             db.SaveChanges();
         }
     }
@@ -1496,5 +1513,313 @@ public class CharacterService
             CharacterItemType.General => 4,
             _ => 99
         };
+    }
+
+    public PlayerCharacterWeapon? GetWeapon(
+        Guid characterId,
+        Guid itemId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        return db.PlayerCharacterWeapons
+            .AsNoTracking()
+            .Include(
+                x => x.Item)
+            .Include(
+                x => x.DamageComponents)
+            .SingleOrDefault(
+                x =>
+                    x.PlayerCharacterItemId ==
+                        itemId &&
+                    x.Item.PlayerCharacterId ==
+                        characterId);
+    }
+
+    public IReadOnlyList<PlayerCharacterWeapon> GetWeapons(
+        Guid characterId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        return db.PlayerCharacterWeapons
+            .AsNoTracking()
+            .Include(
+                x => x.Item)
+            .Include(
+                x => x.DamageComponents)
+            .Where(
+                x =>
+                    x.Item.PlayerCharacterId ==
+                    characterId)
+            .OrderBy(
+                x => x.Item.Name)
+            .ToList();
+    }
+
+    public void SaveWeapon(
+        Guid characterId,
+        Guid itemId,
+        PlayerCharacterWeapon values)
+    {
+        if (!Enum.IsDefined(
+                typeof(CharacterAbilityType),
+                values.AttackAbility))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.AttackAbility));
+        }
+
+
+        if (values.NormalRange.HasValue &&
+            values.NormalRange.Value < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.NormalRange),
+                "Normal range must be greater than zero.");
+        }
+
+
+        if (values.LongRange.HasValue &&
+            values.LongRange.Value < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.LongRange),
+                "Long range must be greater than zero.");
+        }
+
+
+        if (values.LongRange.HasValue &&
+            values.NormalRange.HasValue &&
+            values.LongRange.Value <
+                values.NormalRange.Value)
+        {
+            throw new ArgumentException(
+                "Long range cannot be shorter than normal range.");
+        }
+
+
+        var damageComponents =
+            values.DamageComponents
+                .OrderBy(
+                    x => x.SortOrder)
+                .ToList();
+
+
+        if (damageComponents.Count == 0)
+        {
+            throw new ArgumentException(
+                "A weapon must have at least one damage component.");
+        }
+
+
+        if (damageComponents.Count(
+                x => x.IsPrimary) != 1)
+        {
+            throw new ArgumentException(
+                "A weapon must have exactly one primary damage component.");
+        }
+
+
+        foreach (var component
+                 in damageComponents)
+        {
+            ValidateWeaponDamageComponent(
+                component);
+        }
+
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            var item =
+                db.PlayerCharacterItems
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                itemId &&
+                            x.PlayerCharacterId ==
+                                characterId)
+                ?? throw new ArgumentException(
+                    "Inventory item was not found.",
+                    nameof(itemId));
+
+
+            var weapon =
+                db.PlayerCharacterWeapons
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterItemId ==
+                            itemId);
+
+
+            if (weapon is null)
+            {
+                weapon =
+                    new PlayerCharacterWeapon
+                    {
+                        PlayerCharacterItemId =
+                            itemId
+                    };
+
+                db.PlayerCharacterWeapons
+                    .Add(
+                        weapon);
+            }
+
+
+            weapon.AttackAbility =
+                values.AttackAbility;
+
+            weapon.UsesProficiency =
+                values.UsesProficiency;
+
+            weapon.AttackBonus =
+                values.AttackBonus;
+
+            weapon.PrimaryDamageBonus =
+                values.PrimaryDamageBonus;
+
+            weapon.NormalRange =
+                values.NormalRange;
+
+            weapon.LongRange =
+                values.LongRange;
+
+
+            /*
+             * Replace the weapon's damage components directly
+             * through their DbSet rather than replacing the
+             * tracked navigation collection.
+             */
+            var existingDamageComponents =
+                db.PlayerCharacterWeaponDamageComponents
+                    .Where(
+                        x =>
+                            x.PlayerCharacterItemId ==
+                            itemId)
+                    .ToList();
+
+
+            if (existingDamageComponents.Count > 0)
+            {
+                db.PlayerCharacterWeaponDamageComponents
+                    .RemoveRange(
+                        existingDamageComponents);
+            }
+
+
+            var newDamageComponents =
+                damageComponents
+                    .Select(
+                        x =>
+                            new PlayerCharacterWeaponDamageComponent
+                            {
+                                PlayerCharacterItemId =
+                                    itemId,
+
+                                DamageDice =
+                                    x.DamageDice.Trim(),
+
+                                DamageType =
+                                    x.DamageType.Trim(),
+
+                                IsPrimary =
+                                    x.IsPrimary,
+
+                                AddsAbilityModifier =
+                                    x.AddsAbilityModifier,
+
+                                VersatileDamageDice =
+                                    string.IsNullOrWhiteSpace(
+                                        x.VersatileDamageDice)
+                                        ? null
+                                        : x.VersatileDamageDice.Trim(),
+
+                                SortOrder =
+                                    x.SortOrder
+                            })
+                    .ToList();
+
+
+            db.PlayerCharacterWeaponDamageComponents
+                .AddRange(
+                    newDamageComponents);
+
+
+            item.ItemType =
+                CharacterItemType.Weapon;
+
+
+            var now =
+                DateTime.UtcNow;
+
+            item.UpdatedAtUtc =
+                now;
+
+            character.UpdatedAtUtc =
+                now;
+
+
+            db.SaveChanges();
+        }
+    }
+
+    private static void ValidateWeaponDamageComponent(
+        PlayerCharacterWeaponDamageComponent component)
+    {
+        if (string.IsNullOrWhiteSpace(
+                component.DamageDice))
+        {
+            throw new ArgumentException(
+                "Damage dice are required.");
+        }
+
+
+        if (component.DamageDice.Trim().Length > 50)
+        {
+            throw new ArgumentException(
+                "Damage dice cannot exceed 50 characters.");
+        }
+
+
+        if (string.IsNullOrWhiteSpace(
+                component.DamageType))
+        {
+            throw new ArgumentException(
+                "Damage type is required.");
+        }
+
+
+        if (component.DamageType.Trim().Length > 100)
+        {
+            throw new ArgumentException(
+                "Damage type cannot exceed 100 characters.");
+        }
+
+
+        if (!string.IsNullOrWhiteSpace(
+                component.VersatileDamageDice) &&
+            component.VersatileDamageDice
+                .Trim()
+                .Length > 50)
+        {
+            throw new ArgumentException(
+                "Versatile damage dice cannot exceed 50 characters.");
+        }
     }
 }

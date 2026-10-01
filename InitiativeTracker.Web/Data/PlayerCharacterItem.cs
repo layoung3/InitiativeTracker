@@ -23,4 +23,6 @@ public class PlayerCharacterItem
     public DateTime UpdatedAtUtc { get; set; }
 
     public PlayerCharacter PlayerCharacter { get; set; } = null!;
+
+    public PlayerCharacterWeapon? Weapon { get; set; }
 }

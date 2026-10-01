@@ -297,6 +297,73 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("PlayerCharacterSkills");
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeapon", b =>
+                {
+                    b.Property<Guid>("PlayerCharacterItemId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AttackAbility")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AttackBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("LongRange")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("NormalRange")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PrimaryDamageBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("UsesProficiency")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("PlayerCharacterItemId");
+
+                    b.ToTable("PlayerCharacterWeapon", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeaponDamageComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AddsAbilityModifier")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DamageDice")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DamageType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("PlayerCharacterItemId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VersatileDamageDice")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterItemId", "SortOrder");
+
+                    b.ToTable("PlayerCharacterWeaponDamageComponent", (string)null);
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerConnection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -416,6 +483,28 @@ namespace InitiativeTracker.Web.Migrations
                     b.Navigation("PlayerCharacter");
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeapon", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacterItem", "Item")
+                        .WithOne("Weapon")
+                        .HasForeignKey("InitiativeTracker.Web.Data.PlayerCharacterWeapon", "PlayerCharacterItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Item");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeaponDamageComponent", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacterWeapon", "Weapon")
+                        .WithMany("DamageComponents")
+                        .HasForeignKey("PlayerCharacterItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Weapon");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacter", b =>
                 {
                     b.Navigation("Conditions");
@@ -423,6 +512,16 @@ namespace InitiativeTracker.Web.Migrations
                     b.Navigation("InventoryItems");
 
                     b.Navigation("Skills");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterItem", b =>
+                {
+                    b.Navigation("Weapon");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeapon", b =>
+                {
+                    b.Navigation("DamageComponents");
                 });
 #pragma warning restore 612, 618
         }

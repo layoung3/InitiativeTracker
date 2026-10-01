@@ -565,8 +565,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#hpEditor"
                                     aria-expanded="@(Model.OpenEditor == "hp"
-                                                                            ? "true"
-                                                                            : "false")"
+                                                                                                            ? "true"
+                                                                                                            : "false")"
                                     aria-controls="hpEditor">
 
                                 <span class="combat-stat-value">
@@ -616,8 +616,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#temporaryHpEditor"
                                     aria-expanded="@(Model.OpenEditor == "temp"
-                                                                    ? "true"
-                                                                    : "false")"
+                                                                                                    ? "true"
+                                                                                                    : "false")"
                                     aria-controls="temporaryHpEditor">
 
                                 <span class="combat-stat-value">
@@ -1140,6 +1140,17 @@
                                                         </span>
                                                     }
 
+                                                    @if (item.ItemType ==
+                                                         CharacterItemType.Weapon &&
+                                                         Model.WeaponsByItemId.ContainsKey(
+                                                             item.Id))
+                                                    {
+                                                        <span class="badge
+                                                            text-bg-primary">
+                                                            Configured
+                                                        </span>
+                                                    }
+
                                                 </div>
 
 
@@ -1232,6 +1243,21 @@
                                                         </button>
 
                                                     </form>
+                                                }
+
+                                                @if (item.ItemType == CharacterItemType.Weapon)
+                                                {
+                                                    <button type="button"
+                                                            class="btn
+                                                        btn-sm
+                                                        btn-outline-primary"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#weaponConfigurationModal"
+                                                            data-weapon-item-id="@item.Id"
+                                                            data-weapon-item-name="@item.Name"
+                                                            data-weapon-config="@Model.GetWeaponConfigurationJson(item.Id)">
+                                                        Configure Weapon
+                                                    </button>
                                                 }
 
                                                 @* Edit *@
@@ -1571,7 +1597,7 @@
                                class="form-label">
                             Name
                         </label>
-                        
+
                         <input type="text"
                                id="itemName"
                                name="itemName"
@@ -1876,6 +1902,299 @@
 
 </div>
 
+@* ============================================================
+   WEAPON CONFIGURATION MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="weaponConfigurationModal"
+     tabindex="-1"
+     aria-labelledby="weaponConfigurationModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-lg
+        modal-dialog-scrollable
+        modal-fullscreen-sm-down">
+
+        <form method="post"
+              asp-page-handler="SaveWeaponConfiguration"
+              asp-route-id="@Model.Character.Id"
+              data-preserve-inventory-scroll="true"
+              id="weaponConfigurationForm"
+              class="modal-content">
+
+
+            <input type="hidden"
+                   id="weaponItemId"
+                   name="itemId" />
+
+
+            <div class="modal-header">
+
+                <div>
+
+                    <h2 class="modal-title fs-5"
+                        id="weaponConfigurationModalLabel">
+                        Configure Weapon
+                    </h2>
+
+                    <div class="small text-muted"
+                         id="weaponConfigurationItemName">
+                    </div>
+
+                </div>
+
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+
+            <div class="modal-body">
+
+                <div class="mb-4">
+
+                    <label for="weaponTemplate"
+                           class="form-label">
+                        Standard Weapon Template
+                    </label>
+
+                    <select id="weaponTemplate"
+                            class="form-select">
+
+                        <option value="">
+                            Custom / Current Values
+                        </option>
+
+                        @foreach (var weapon
+                                  in Model.StandardWeapons
+                                      .OrderBy(
+                                          x => x.Name))
+                        {
+                            <option value="@weapon.Key">
+                                @weapon.Name
+                            </option>
+                        }
+
+                    </select>
+
+                    <div class="form-text">
+                        Choosing a template replaces the
+                        weapon fields below. You can still
+                        modify them afterward.
+                    </div>
+
+                </div>
+
+
+                <div class="row g-3 mb-4">
+
+                    <div class="col-12 col-sm-6">
+
+                        <label for="weaponAttackAbility"
+                               class="form-label">
+                            Attack Ability
+                        </label>
+
+                        <select id="weaponAttackAbility"
+                                name="attackAbility"
+                                class="form-select">
+
+                            @foreach (var ability
+                                      in Enum.GetValues<CharacterAbilityType>())
+                            {
+                                <option value="@ability">
+                                    @ability
+                                </option>
+                            }
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <label class="form-label d-block">
+                            Proficiency
+                        </label>
+
+                        <div class="form-check
+                            mt-sm-2">
+
+                            <input type="checkbox"
+                                   id="weaponUsesProficiency"
+                                   name="usesProficiency"
+                                   value="true"
+                                   class="form-check-input"
+                                   checked />
+
+                            <label for="weaponUsesProficiency"
+                                   class="form-check-label">
+                                Add proficiency bonus to hit
+                            </label>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="weaponAttackBonus"
+                               class="form-label">
+                            Additional Hit Bonus
+                        </label>
+
+                        <input type="number"
+                               id="weaponAttackBonus"
+                               name="attackBonus"
+                               value="0"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="weaponPrimaryDamageBonus"
+                               class="form-label">
+                            Additional Damage Bonus
+                        </label>
+
+                        <input type="number"
+                               id="weaponPrimaryDamageBonus"
+                               name="primaryDamageBonus"
+                               value="0"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="weaponNormalRange"
+                               class="form-label">
+                            Normal Range
+                        </label>
+
+                        <div class="input-group">
+
+                            <input type="number"
+                                   id="weaponNormalRange"
+                                   name="normalRange"
+                                   min="1"
+                                   class="form-control" />
+
+                            <span class="input-group-text">
+                                ft.
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="weaponLongRange"
+                               class="form-label">
+                            Long Range
+                        </label>
+
+                        <div class="input-group">
+
+                            <input type="number"
+                                   id="weaponLongRange"
+                                   name="longRange"
+                                   min="1"
+                                   class="form-control" />
+
+                            <span class="input-group-text">
+                                ft.
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="d-flex
+                    justify-content-between
+                    align-items-center
+                    mb-2">
+
+                    <div>
+
+                        <div class="fw-semibold">
+                            Damage
+                        </div>
+
+                        <div class="small text-muted">
+                            The first damage entry is the
+                            weapon's primary damage.
+                        </div>
+
+                    </div>
+
+
+                    <button type="button"
+                            id="addWeaponDamageComponent"
+                            class="btn
+                        btn-sm
+                        btn-outline-secondary">
+                        + Add Damage
+                    </button>
+
+                </div>
+
+
+                <div id="weaponDamageComponents"
+                     class="d-flex
+                    flex-column
+                    gap-3">
+                </div>
+
+            </div>
+
+
+            <div class="modal-footer">
+
+                <button type="button"
+                        class="btn
+                    btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+
+                <button type="submit"
+                        class="btn
+                    btn-primary">
+                    Save Weapon
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<script type="application/json"
+        id="weaponCatalogData">
+    @Html.Raw(Model.GetWeaponCatalogJson())
+</script>
+
 @if (Model.CanChangeConditions)
 {
     <div class="modal fade"
@@ -1884,8 +2203,8 @@
          aria-labelledby="conditionsModalLabel"
          aria-hidden="true"
          data-auto-open="@(Model.OpenModal == "conditions"
-                     ? "true"
-                     : "false")">
+                             ? "true"
+                             : "false")">
 
         <div class="modal-dialog
             modal-dialog-centered
@@ -2173,10 +2492,6 @@
     </script>
 
     <script src="~/js/player-character.js"
-            asp-append-version="true">
-    </script>
-
-    <script src="~/js/player-inventory.js"
             asp-append-version="true">
     </script>
 
