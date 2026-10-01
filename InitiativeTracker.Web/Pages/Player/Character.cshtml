@@ -930,26 +930,51 @@
 
                     <div class="combat-state-row">
 
-                        <div>
+                        <div class="flex-grow-1">
 
-                            <div class="fw-semibold">
+                            <div class="fw-semibold mb-2">
                                 Conditions
                             </div>
 
-                            <div class="small text-muted">
-                                No active conditions
-                            </div>
+
+                            @if (Model.ActiveConditions.Count == 0)
+                            {
+                                <div class="small text-muted">
+                                    No active conditions
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="condition-badges">
+
+                                    @foreach (var condition
+                                              in Model.ActiveConditions)
+                                    {
+                                        <span class="condition-badge"
+                                              title="@condition.Notes">
+
+                                            @condition.Name
+
+                                        </span>
+                                    }
+
+                                </div>
+                            }
 
                         </div>
 
 
-                        <button type="button"
-                                class="btn
-                            btn-sm
-                            btn-outline-secondary"
-                                disabled>
-                            Manage
-                        </button>
+                        @if (Model.CanChangeConditions)
+                        {
+                            <button type="button"
+                                    class="btn
+                                btn-sm
+                                btn-outline-secondary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#conditionsModal">
+                                Manage
+                            </button>
+                        }
 
                     </div>
 
@@ -1215,6 +1240,237 @@
     </div>
 
 </div>
+
+@if (Model.CanChangeConditions)
+{
+    <div class="modal fade"
+         id="conditionsModal"
+         tabindex="-1"
+         aria-labelledby="conditionsModalLabel"
+         aria-hidden="true"
+         data-auto-open="@(Model.OpenModal == "conditions"
+                     ? "true"
+                     : "false")">
+
+        <div class="modal-dialog
+            modal-dialog-centered
+            modal-dialog-scrollable">
+
+            <div class="modal-content">
+
+
+                <div class="modal-header">
+
+                    <div>
+
+                        <h2 class="modal-title
+                            fs-5"
+                            id="conditionsModalLabel">
+                            Manage Conditions
+                        </h2>
+
+                        <div class="small
+                            text-muted">
+                            @Model.Character.Name
+                        </div>
+
+                    </div>
+
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+
+                <div class="modal-body">
+
+
+                    @if (TempData["ConditionError"]
+                         is string conditionError)
+                    {
+                        <div class="alert
+                            alert-danger">
+                            @conditionError
+                        </div>
+                    }
+
+
+                    <div class="fw-semibold mb-2">
+                        Standard Conditions
+                    </div>
+
+
+                    <div class="condition-selector-grid">
+
+                        @foreach (var conditionName
+                                  in Model.StandardConditions)
+                        {
+                            var activeCondition =
+                                Model.GetActiveCondition(
+                                    conditionName);
+
+                            var isActive =
+                                activeCondition is not null;
+
+
+                            <form method="post"
+                                  asp-page-handler="ToggleCondition"
+                                  asp-route-id="@Model.Character.Id">
+
+                                <input type="hidden"
+                                       name="conditionName"
+                                       value="@conditionName" />
+
+
+                                <button type="submit"
+                                        class="condition-option
+                                    @(isActive
+                                        ? "is-active"
+                                        : "")">
+
+                                    <span class="condition-option-marker">
+                                        @(isActive
+                                            ? "✓"
+                                            : "")
+                                    </span>
+
+                                    <span>
+                                        @conditionName
+                                    </span>
+
+                                </button>
+
+                            </form>
+                        }
+
+                    </div>
+
+
+                    <hr class="my-4" />
+
+
+                    <div class="fw-semibold mb-2">
+                        Custom Conditions
+                    </div>
+
+
+                    @if (Model.ActiveConditions
+                        .Any(x => x.IsCustom))
+                    {
+                        <div class="d-flex
+                            flex-column
+                            gap-2
+                            mb-3">
+
+                            @foreach (var condition
+                                      in Model.ActiveConditions
+                                          .Where(
+                                              x => x.IsCustom))
+                            {
+                                <div class="custom-condition-row">
+
+                                    <div>
+
+                                        <div class="fw-semibold">
+                                            @condition.Name
+                                        </div>
+
+                                        @if (!string.IsNullOrWhiteSpace(
+                                            condition.Notes))
+                                        {
+                                            <div class="small
+                                                text-muted">
+                                                @condition.Notes
+                                            </div>
+                                        }
+
+                                    </div>
+
+
+                                    <form method="post"
+                                          asp-page-handler="RemoveCondition"
+                                          asp-route-id="@Model.Character.Id">
+
+                                        <input type="hidden"
+                                               name="conditionId"
+                                               value="@condition.Id" />
+
+
+                                        <button type="submit"
+                                                class="btn
+                                            btn-sm
+                                            btn-outline-danger">
+                                            Remove
+                                        </button>
+
+                                    </form>
+
+                                </div>
+                            }
+
+                        </div>
+                    }
+
+
+                    <form method="post"
+                          asp-page-handler="AddCustomCondition"
+                          asp-route-id="@Model.Character.Id">
+
+                        <div class="mb-2">
+
+                            <label for="customConditionName"
+                                   class="form-label">
+                                Name
+                            </label>
+
+                            <input type="text"
+                                   id="customConditionName"
+                                   name="customConditionName"
+                                   maxlength="100"
+                                   class="form-control"
+                                   placeholder="Custom condition" />
+
+                        </div>
+
+
+                        <div class="mb-3">
+
+                            <label for="customConditionNotes"
+                                   class="form-label">
+                                Notes
+                            </label>
+
+                            <textarea id="customConditionNotes"
+                                      name="customConditionNotes"
+                                      maxlength="1000"
+                                      rows="2"
+                                      class="form-control"
+                                      placeholder="Optional notes"></textarea>
+
+                        </div>
+
+
+                        <button type="submit"
+                                class="btn
+                            btn-outline-primary
+                            w-100">
+                            Add Custom Condition
+                        </button>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+}
 
 @if (Model.EncounterCombatant is not null &&
      Model.IsEncounterStarted &&

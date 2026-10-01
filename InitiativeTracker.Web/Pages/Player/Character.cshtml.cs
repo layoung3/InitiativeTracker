@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.SignalR;
+using InitiativeTracker.Web.Rules.Dnd5e;
 
 namespace InitiativeTracker.Web.Pages.Player;
 
@@ -77,10 +78,24 @@ public class CharacterModel : PageModel
         EncounterCombatant is null ||
         IsControlled;
 
+    public IReadOnlyList<CharacterConditionView> ActiveConditions { get; private set; } = [];
 
-    public IActionResult OnGet(Guid id, string? editor=null)
+
+    public IReadOnlyList<string> StandardConditions => Dnd5eConditionCatalog.StandardConditions;
+
+
+    public bool CanChangeConditions =>
+        EncounterCombatant is null ||
+        IsControlled;
+
+
+    public string? OpenModal { get; private set; }
+
+
+    public IActionResult OnGet(Guid id, string? editor=null, string? modal=null)
     {
         OpenEditor = editor;
+        OpenModal = modal;
 
         if (!TryGetPlayerProfileId(
                 out var profileId))
@@ -116,6 +131,58 @@ public class CharacterModel : PageModel
                     x =>
                         x.PlayerCharacterId ==
                         character.Id);
+
+        if (EncounterCombatant is not null)
+        {
+            ActiveConditions =
+                EncounterCombatant
+                    .Conditions
+                    .OrderBy(
+                        x => x.Name)
+                    .Select(
+                        x =>
+                            new CharacterConditionView
+                            {
+                                Id =
+                                    x.Id,
+
+                                Name =
+                                    x.Name,
+
+                                IsCustom =
+                                    x.IsCustom,
+
+                                Notes =
+                                    x.Notes
+                            })
+                    .ToList();
+        }
+        else
+        {
+            ActiveConditions =
+                _characterService
+                    .GetConditions(
+                        character.Id)
+                    .OrderBy(
+                        x => x.Name)
+                    .Select(
+                        x =>
+                            new CharacterConditionView
+                            {
+                                Id =
+                                    x.Id,
+
+                                Name =
+                                    x.Name,
+
+                                IsCustom =
+                                    x.IsCustom,
+
+                                Notes =
+                                    x.Notes
+                            })
+                    .ToList();
+        }
 
         return Page();
     }
@@ -592,5 +659,278 @@ public class CharacterModel : PageModel
         }
 
         return null;
+    }
+
+    public CharacterConditionView? GetActiveCondition(string name)
+    {
+        return ActiveConditions
+            .FirstOrDefault(
+                x =>
+                    string.Equals(
+                        x.Name,
+                        name,
+                        StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<IActionResult> OnPostToggleConditionAsync(
+        Guid id,
+        string conditionName)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out var profileId);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        if (!Dnd5eConditionCatalog
+                .StandardConditions
+                .Any(
+                    x =>
+                        string.Equals(
+                            x,
+                            conditionName,
+                            StringComparison.OrdinalIgnoreCase)))
+        {
+            return BadRequest(
+                "Unknown standard condition.");
+        }
+
+
+        var combatant =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character!.Id);
+
+
+        if (combatant is null)
+        {
+            var existing =
+                _characterService
+                    .GetConditions(
+                        character.Id)
+                    .FirstOrDefault(
+                        x =>
+                            string.Equals(
+                                x.Name,
+                                conditionName,
+                                StringComparison.OrdinalIgnoreCase));
+
+            if (existing is null)
+            {
+                _characterService
+                    .AddCondition(
+                        character.Id,
+                        conditionName,
+                        isCustom: false);
+            }
+            else
+            {
+                _characterService
+                    .RemoveCondition(
+                        character.Id,
+                        existing.Id);
+            }
+        }
+        else
+        {
+            var existing =
+                combatant.Conditions
+                    .FirstOrDefault(
+                        x =>
+                            string.Equals(
+                                x.Name,
+                                conditionName,
+                                StringComparison.OrdinalIgnoreCase));
+
+            if (existing is null)
+            {
+                _encounterState
+                    .AddConditionForController(
+                        profileId,
+                        combatant.Id,
+                        conditionName,
+                        isCustom: false);
+            }
+            else
+            {
+                _encounterState
+                    .RemoveConditionForController(
+                        profileId,
+                        combatant.Id,
+                        existing.Id);
+            }
+
+            await BroadcastEncounterAsync();
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                modal =
+                    "conditions"
+            });
+    }
+
+    public async Task<IActionResult> OnPostAddCustomConditionAsync(
+        Guid id,
+        string customConditionName,
+        string? customConditionNotes)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out var profileId);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        if (string.IsNullOrWhiteSpace(
+                customConditionName))
+        {
+            return RedirectToPage(
+                new
+                {
+                    id,
+                    modal =
+                        "conditions"
+                });
+        }
+
+
+        var combatant =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character!.Id);
+
+
+        try
+        {
+            if (combatant is null)
+            {
+                _characterService
+                    .AddCondition(
+                        character.Id,
+                        customConditionName,
+                        isCustom: true,
+                        customConditionNotes);
+            }
+            else
+            {
+                _encounterState
+                    .AddConditionForController(
+                        profileId,
+                        combatant.Id,
+                        customConditionName,
+                        isCustom: true,
+                        customConditionNotes);
+
+                await BroadcastEncounterAsync();
+            }
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            /*
+             * We can improve the actual modal validation
+             * presentation later.
+             */
+            TempData["ConditionError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                modal =
+                    "conditions"
+            });
+    }
+
+    public async Task<IActionResult> OnPostRemoveConditionAsync(
+        Guid id,
+        Guid conditionId)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out var profileId);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        var combatant =
+            _encounterState
+                .CurrentEncounter
+                .Combatants
+                .SingleOrDefault(
+                    x =>
+                        x.PlayerCharacterId ==
+                        character!.Id);
+
+
+        if (combatant is null)
+        {
+            _characterService
+                .RemoveCondition(
+                    character.Id,
+                    conditionId);
+        }
+        else
+        {
+            _encounterState
+                .RemoveConditionForController(
+                    profileId,
+                    combatant.Id,
+                    conditionId);
+
+            await BroadcastEncounterAsync();
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                modal =
+                    "conditions"
+            });
+    }
+
+    public class CharacterConditionView
+    {
+        public Guid Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public bool IsCustom { get; set; }
+
+        public string? Notes { get; set; }
     }
 }

@@ -341,6 +341,14 @@ public class Encounter
                     AssignedPlayerProfileId = c.AssignedPlayerProfileId,
                     IsHiddenFromPublic = c.IsHiddenFromPublic,
                     IsHpHiddenFromPublic = c.IsHpHiddenFromPublic,
+                    Conditions = c.Conditions.Select(condition =>
+                                new CombatantConditionSnapshot
+                                {
+                                    Id = condition.Id,
+                                    Name = condition.Name,
+                                    IsCustom = condition.IsCustom,
+                                    Notes = condition.Notes
+                                }).ToList()
                 })
                 .ToList()
         };
@@ -375,6 +383,14 @@ public class Encounter
                 AssignedPlayerProfileId = c.AssignedPlayerProfileId,
                 IsHiddenFromPublic = c.IsHiddenFromPublic,
                 IsHpHiddenFromPublic = c.IsHpHiddenFromPublic,
+                Conditions = c.Conditions.Select(condition =>
+                            new CombatantCondition
+                            {
+                                Id = condition.Id,
+                                Name = condition.Name,
+                                IsCustom = condition.IsCustom,
+                                Notes = condition.Notes
+                            }).ToList()
             }));
 
         return encounter;
@@ -637,5 +653,92 @@ public class Encounter
 
         combatant.IsHpHiddenFromPublic =
             isHpHiddenFromPublic;
+    }
+
+    public void AddCombatantCondition(
+        Guid combatantId,
+        CombatantCondition condition)
+    {
+        ArgumentNullException.ThrowIfNull(
+            condition);
+
+        if (string.IsNullOrWhiteSpace(
+                condition.Name))
+        {
+            throw new ArgumentException(
+                "Condition name is required.",
+                nameof(condition));
+        }
+
+        var combatant =
+            GetCombatant(
+                combatantId);
+
+        var normalizedName =
+            condition.Name.Trim();
+
+        if (normalizedName.Length > 100)
+        {
+            throw new ArgumentException(
+                "Condition name cannot exceed 100 characters.",
+                nameof(condition));
+        }
+
+        var normalizedNotes =
+            string.IsNullOrWhiteSpace(
+                condition.Notes)
+                ? null
+                : condition.Notes.Trim();
+
+        if (normalizedNotes?.Length > 1000)
+        {
+            throw new ArgumentException(
+                "Condition notes cannot exceed 1000 characters.",
+                nameof(condition));
+        }
+
+        if (combatant.Conditions.Any(
+                existing =>
+                    string.Equals(
+                        existing.Name,
+                        normalizedName,
+                        StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"{normalizedName} is already active.");
+        }
+
+        condition.Name =
+            normalizedName;
+
+        condition.Notes =
+            normalizedNotes;
+
+        combatant.Conditions.Add(
+            condition);
+    }
+
+    public void RemoveCombatantCondition(
+        Guid combatantId,
+        Guid conditionId)
+    {
+        var combatant =
+            GetCombatant(
+                combatantId);
+
+        var condition =
+            combatant.Conditions
+                .SingleOrDefault(
+                    x =>
+                        x.Id ==
+                        conditionId);
+
+        if (condition is null)
+        {
+            return;
+        }
+
+        combatant.Conditions.Remove(
+            condition);
     }
 }

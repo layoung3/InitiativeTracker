@@ -196,6 +196,35 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("PlayerCharacter", (string)null);
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterCondition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsCustom")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("PlayerCharacterConditions");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSkill", b =>
                 {
                     b.Property<Guid>("Id")
@@ -311,6 +340,17 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("RegisteredDevice", (string)null);
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterCondition", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
+                        .WithMany("Conditions")
+                        .HasForeignKey("PlayerCharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlayerCharacter");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSkill", b =>
                 {
                     b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
@@ -324,6 +364,8 @@ namespace InitiativeTracker.Web.Migrations
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacter", b =>
                 {
+                    b.Navigation("Conditions");
+
                     b.Navigation("Skills");
                 });
 #pragma warning restore 612, 618

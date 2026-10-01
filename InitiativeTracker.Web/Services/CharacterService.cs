@@ -742,4 +742,302 @@ public class CharacterService
             db.SaveChanges();
         }
     }
+
+    public IReadOnlyList<PlayerCharacterCondition> GetConditions(Guid characterId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var characterExists =
+            db.PlayerCharacters
+                .Any(
+                    x =>
+                        x.Id ==
+                        characterId);
+
+        if (!characterExists)
+        {
+            throw new ArgumentException(
+                "Character was not found.",
+                nameof(characterId));
+        }
+
+        return db.PlayerCharacterConditions
+            .AsNoTracking()
+            .Where(
+                x =>
+                    x.PlayerCharacterId ==
+                    characterId)
+            .OrderBy(
+                x => x.Name)
+            .ToList();
+    }
+
+    public PlayerCharacterCondition AddCondition(
+        Guid characterId,
+        string name,
+        bool isCustom,
+        string? notes = null)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException(
+                "Condition name is required.",
+                nameof(name));
+        }
+
+        var normalizedName =
+            name.Trim();
+
+        if (normalizedName.Length > 100)
+        {
+            throw new ArgumentException(
+                "Condition name cannot exceed 100 characters.",
+                nameof(name));
+        }
+
+        var normalizedNotes =
+            string.IsNullOrWhiteSpace(notes)
+                ? null
+                : notes.Trim();
+
+        if (normalizedNotes?.Length > 1000)
+        {
+            throw new ArgumentException(
+                "Condition notes cannot exceed 1000 characters.",
+                nameof(notes));
+        }
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var existingNames =
+                db.PlayerCharacterConditions
+                    .Where(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId)
+                    .Select(
+                        x => x.Name)
+                    .ToList();
+
+            if (existingNames.Any(
+                    existing =>
+                        string.Equals(
+                            existing,
+                            normalizedName,
+                            StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"{normalizedName} is already active.");
+            }
+
+            var condition =
+                new PlayerCharacterCondition
+                {
+                    PlayerCharacterId =
+                        characterId,
+
+                    Name =
+                        normalizedName,
+
+                    IsCustom =
+                        isCustom,
+
+                    Notes =
+                        normalizedNotes
+                };
+
+            db.PlayerCharacterConditions
+                .Add(condition);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+
+            return condition;
+        }
+    }
+
+    public void RemoveCondition(
+        Guid characterId,
+        Guid conditionId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var condition =
+                db.PlayerCharacterConditions
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                conditionId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+            if (condition is null)
+            {
+                return;
+            }
+
+            db.PlayerCharacterConditions
+                .Remove(condition);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void UpdateEncounterState(
+        Guid characterId,
+        int currentHp,
+        int maxHp,
+        int temporaryHp,
+        IReadOnlyCollection<PlayerCharacterCondition> conditions)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            character.MaxHp =
+                Math.Max(
+                    0,
+                    maxHp);
+
+            character.CurrentHp =
+                Math.Clamp(
+                    currentHp,
+                    0,
+                    character.MaxHp);
+
+            character.TemporaryHp =
+                Math.Max(
+                    0,
+                    temporaryHp);
+
+
+            var existingConditions =
+                db.PlayerCharacterConditions
+                    .Where(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId)
+                    .ToList();
+
+
+            var incomingIds =
+                conditions
+                    .Select(
+                        x => x.Id)
+                    .ToHashSet();
+
+
+            var removedConditions =
+                existingConditions
+                    .Where(
+                        x =>
+                            !incomingIds.Contains(
+                                x.Id))
+                    .ToList();
+
+            if (removedConditions.Count > 0)
+            {
+                db.PlayerCharacterConditions
+                    .RemoveRange(
+                        removedConditions);
+            }
+
+
+            var existingById =
+                existingConditions
+                    .ToDictionary(
+                        x => x.Id);
+
+
+            foreach (var incoming
+                     in conditions)
+            {
+                if (existingById.TryGetValue(
+                        incoming.Id,
+                        out var existing))
+                {
+                    existing.Name =
+                        incoming.Name;
+
+                    existing.IsCustom =
+                        incoming.IsCustom;
+
+                    existing.Notes =
+                        incoming.Notes;
+
+                    continue;
+                }
+
+                db.PlayerCharacterConditions
+                    .Add(
+                        new PlayerCharacterCondition
+                        {
+                            Id =
+                                incoming.Id,
+
+                            PlayerCharacterId =
+                                characterId,
+
+                            Name =
+                                incoming.Name,
+
+                            IsCustom =
+                                incoming.IsCustom,
+
+                            Notes =
+                                incoming.Notes
+                        });
+            }
+
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
 }

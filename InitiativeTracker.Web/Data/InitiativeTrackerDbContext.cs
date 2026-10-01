@@ -34,6 +34,9 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PlayerCharacterSkill> PlayerCharacterSkills =>
         Set<PlayerCharacterSkill>();
 
+    public DbSet<PlayerCharacterCondition> PlayerCharacterConditions =>
+        Set<PlayerCharacterCondition>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -165,6 +168,39 @@ public class InitiativeTrackerDbContext : DbContext
                         x => x.PlayerCharacter)
                     .WithMany(
                         x => x.Skills)
+                    .HasForeignKey(
+                        x => x.PlayerCharacterId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterCondition>(
+            entity =>
+            {
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.Notes)
+                    .HasMaxLength(1000);
+
+                entity.HasIndex(
+                    x => new
+                    {
+                        x.PlayerCharacterId,
+                        x.Name
+                    })
+                    .IsUnique();
+
+                entity.HasOne(
+                        x => x.PlayerCharacter)
+                    .WithMany(
+                        x => x.Conditions)
                     .HasForeignKey(
                         x => x.PlayerCharacterId)
                     .OnDelete(

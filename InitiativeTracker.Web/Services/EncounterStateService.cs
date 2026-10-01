@@ -202,6 +202,11 @@ public class EncounterStateService
                 "Character was not found.",
                 nameof(characterId));
 
+        var characterConditions =
+            _characterService
+                .GetConditions(
+                    character.Id);
+
         ExecuteMutation(() =>
         {
             if (CurrentEncounter.Combatants.Any(
@@ -235,8 +240,19 @@ public class EncounterStateService
                     character.Id,
 
                 AssignedPlayerProfileId =
-                    character.PlayerProfileId
-            });
+                    character.PlayerProfileId,
+
+                Conditions = characterConditions
+                        .Select(
+                            condition =>
+                                new CombatantCondition
+                                {
+                                    Id = condition.Id,
+                                    Name = condition.Name,
+                                    IsCustom = condition.IsCustom,
+                                    Notes = condition.Notes
+                                }).ToList()
+                });
         });
     }
 
@@ -445,18 +461,9 @@ public class EncounterStateService
         int amount)
     {
         ExecuteMutation(() =>
-        {
             CurrentEncounter.AdjustHp(
                 combatantId,
-                amount);
-
-            var combatant =
-                CurrentEncounter.GetCombatant(
-                    combatantId);
-
-            SyncLinkedCharacterHp(
-                combatant);
-        });
+                amount));
     }
 
     public void SetCurrentHp(
@@ -464,18 +471,10 @@ public class EncounterStateService
         int currentHp)
     {
         ExecuteMutation(() =>
-        {
-            CurrentEncounter.SetCurrentHp(
-                combatantId,
-                currentHp);
-
-            var combatant =
-                CurrentEncounter.GetCombatant(
-                    combatantId);
-
-            SyncLinkedCharacterHp(
-                combatant);
-        });
+            CurrentEncounter
+                .SetCurrentHp(
+                    combatantId,
+                    currentHp));
     }
 
     public void SetTemporaryHp(
@@ -483,18 +482,10 @@ public class EncounterStateService
         int temporaryHp)
     {
         ExecuteMutation(() =>
-        {
-            CurrentEncounter.SetTemporaryHp(
-                combatantId,
-                temporaryHp);
-
-            var combatant =
-                CurrentEncounter.GetCombatant(
-                    combatantId);
-
-            SyncLinkedCharacterHp(
-                combatant);
-        });
+            CurrentEncounter
+                .SetTemporaryHp(
+                    combatantId,
+                    temporaryHp));
     }
 
     public void SetCombatantStatus(
@@ -693,7 +684,7 @@ public class EncounterStateService
         }
     }
 
-    private void SyncLinkedCharacterHp(
+    private void SyncLinkedCharacterState(
         Combatant combatant)
     {
         if (!combatant.PlayerCharacterId.HasValue ||
@@ -703,12 +694,30 @@ public class EncounterStateService
             return;
         }
 
+
+        var conditions =
+            combatant.Conditions
+                .Select(
+                    condition =>
+                        new PlayerCharacterCondition
+                        {
+                            Id = condition.Id,
+                            PlayerCharacterId = combatant.PlayerCharacterId.Value,
+                            Name = condition.Name,
+                            IsCustom = condition.IsCustom,
+                            Notes = condition.Notes
+                        }).ToList();
+
+
         _characterService
-            .UpdateCombatValues(
-                combatant.PlayerCharacterId.Value,
+            .UpdateEncounterState(
+                combatant
+                    .PlayerCharacterId
+                    .Value,
                 combatant.CurrentHp.Value,
                 combatant.MaxHp.Value,
-                combatant.TemporaryHp);
+                combatant.TemporaryHp,
+                conditions);
     }
 
     private void SyncAllLinkedCharacters()
@@ -716,9 +725,89 @@ public class EncounterStateService
         foreach (var combatant
                  in CurrentEncounter.Combatants)
         {
-            SyncLinkedCharacterHp(
-                combatant);
+            SyncLinkedCharacterState(combatant);
         }
     }
 
+    public void AddCombatantCondition(
+        Guid combatantId,
+        string name,
+        bool isCustom,
+        string? notes = null)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter
+                .AddCombatantCondition(
+                    combatantId,
+                    new CombatantCondition
+                    {
+                        Name = name,
+                        IsCustom = isCustom,
+                        Notes = notes
+                    }));
+    }
+
+    public void RemoveCombatantCondition(
+        Guid combatantId,
+        Guid conditionId)
+    {
+        ExecuteMutation(() =>
+            CurrentEncounter
+                .RemoveCombatantCondition(
+                    combatantId,
+                    conditionId));
+    }
+
+    public void AddConditionForController(
+        Guid playerProfileId,
+        Guid combatantId,
+        string name,
+        bool isCustom,
+        string? notes = null)
+    {
+        ExecuteMutation(() =>
+        {
+            var combatant =
+                CurrentEncounter
+                    .GetCombatant(
+                        combatantId);
+
+            EnsureControlledBy(
+                combatant,
+                playerProfileId);
+
+            CurrentEncounter
+                .AddCombatantCondition(
+                    combatantId,
+                    new CombatantCondition
+                    {
+                        Name = name,
+                        IsCustom = isCustom,
+                        Notes = notes
+                    });
+        });
+    }
+
+    public void RemoveConditionForController(
+        Guid playerProfileId,
+        Guid combatantId,
+        Guid conditionId)
+    {
+        ExecuteMutation(() =>
+        {
+            var combatant =
+                CurrentEncounter
+                    .GetCombatant(
+                        combatantId);
+
+            EnsureControlledBy(
+                combatant,
+                playerProfileId);
+
+            CurrentEncounter
+                .RemoveCombatantCondition(
+                    combatantId,
+                    conditionId);
+        });
+    }
 }

@@ -3,6 +3,20 @@
     const combatEditors =
         document.getElementById("combatEditors");
 
+    const conditionsModal =
+        document.getElementById(
+            "conditionsModal");
+
+    if (
+        conditionsModal &&
+        conditionsModal.dataset.autoOpen === "true"
+    ) {
+        bootstrap.Modal
+            .getOrCreateInstance(
+                conditionsModal)
+            .show();
+    }
+
     if (!combatEditors) {
         return;
     }

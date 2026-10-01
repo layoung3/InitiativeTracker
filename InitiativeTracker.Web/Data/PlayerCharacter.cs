@@ -54,6 +54,8 @@ public class PlayerCharacter
 
     public ICollection<PlayerCharacterSkill> Skills{ get; set;} = new List<PlayerCharacterSkill>();
 
+    public ICollection<PlayerCharacterCondition> Conditions { get; set; } = new List<PlayerCharacterCondition>();
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAtUtc { get; set; }

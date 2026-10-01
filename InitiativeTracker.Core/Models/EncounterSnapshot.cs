@@ -42,4 +42,16 @@ public class CombatantSnapshot
     public bool IsHiddenFromPublic { get; set; }
 
     public bool IsHpHiddenFromPublic { get; set; }
+    public List<CombatantConditionSnapshot> Conditions { get; set; } = [];
+}
+
+public class CombatantConditionSnapshot
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public bool IsCustom { get; set; }
+
+    public string? Notes { get; set; }
 }

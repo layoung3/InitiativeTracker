@@ -33,4 +33,6 @@ public class Combatant
     public bool IsHiddenFromPublic { get; set; }
 
     public bool IsHpHiddenFromPublic { get; set; }
+
+    public List<CombatantCondition> Conditions { get; set; } = [];
 }
