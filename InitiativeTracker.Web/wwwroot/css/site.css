@@ -1,31 +1,103 @@
+/* ==============================================================
+   APPLICATION FOUNDATION
+   ============================================================== */
+
+:root {
+    --app-content-max-width: 1400px;
+    --app-page-gutter: 1rem;
+    --app-touch-target: 2.75rem;
+    --app-transition-fast: 150ms;
+    /*
+     * Shared semantic surface tokens.
+     *
+     * These currently inherit Bootstrap's active color mode.
+     * Later, display themes can override the app tokens without
+     * requiring page-specific components to be rewritten.
+     */
+    --app-surface: var(--bs-body-bg);
+    --app-surface-subtle: var(--bs-tertiary-bg);
+    --app-surface-muted: var(--bs-secondary-bg);
+    --app-text: var(--bs-body-color);
+    --app-text-muted: var(--bs-secondary-color);
+    --app-border: var(--bs-border-color);
+    --app-accent: var(--bs-primary);
+}
+
+
 html {
-  font-size: 14px;
+    min-height: 100%;
+    font-size: 14px;
 }
 
-@media (min-width: 768px) {
-  html {
-    font-size: 16px;
-  }
-}
-
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
-}
-
-html {
-  position: relative;
-  min-height: 100%;
-}
 
 body {
-  margin-bottom: 60px;
+    min-height: 100vh;
+    margin: 0;
+    background: var(--app-surface);
+    color: var(--app-text);
 }
 
-.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
-  color: var(--bs-secondary-color);
-  text-align: end;
+
+.app-shell {
+    min-height: 100vh;
 }
 
-.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
-  text-align: start;
+
+.app-main {
+    min-width: 0;
+}
+
+
+@media (min-width: 768px) {
+
+    html {
+        font-size: 16px;
+    }
+}
+
+
+/* ==============================================================
+   ACCESSIBILITY / INTERACTION
+   ============================================================== */
+
+.btn:focus-visible,
+.btn-link.nav-link:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible {
+    box-shadow: 0 0 0 0.1rem var(--app-surface), 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.45);
+}
+
+
+/*
+ * Respect users who request reduced motion while still allowing
+ * Bootstrap and page components to animate normally by default.
+ */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
+
+
+/* ==============================================================
+   FORM HELPERS
+   ============================================================== */
+
+.form-floating > .form-control-plaintext::placeholder,
+.form-floating > .form-control::placeholder {
+    color: var(--app-text-muted);
+    text-align: end;
+}
+
+
+.form-floating > .form-control-plaintext:focus::placeholder,
+.form-floating > .form-control:focus::placeholder {
+    text-align: start;
 }

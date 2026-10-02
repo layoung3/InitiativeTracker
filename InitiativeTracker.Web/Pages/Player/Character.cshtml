@@ -56,7 +56,7 @@
                         flex-wrap
                         align-items-center
                         gap-2
-                        text-muted">
+                        character-header-meta">
 
                         <span>
                             Level @Model.Character.Level
@@ -79,9 +79,7 @@
                 </div>
 
 
-                <div class="d-flex
-                    flex-wrap
-                    gap-2">
+                <div class="character-header-actions">
 
                     <a href="/player"
                        class="btn
@@ -167,8 +165,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#hpEditor"
                                     aria-expanded="@(Model.OpenEditor == "hp"
-                                                                                                                                                                                                                                                                                                            ? "true"
-                                                                                                                                                                                                                                                                                                            : "false")"
+                                                                                                                                                                                                                                                                                                                                            ? "true"
+                                                                                                                                                                                                                                                                                                                                            : "false")"
                                     aria-controls="hpEditor">
 
                                 <span class="combat-stat-value">
@@ -218,8 +216,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#temporaryHpEditor"
                                     aria-expanded="@(Model.OpenEditor == "temp"
-                                                                                                                                                                                                                                                                                                    ? "true"
-                                                                                                                                                                                                                                                                                                    : "false")"
+                                                                                                                                                                                                                                                                                                                                    ? "true"
+                                                                                                                                                                                                                                                                                                                                    : "false")"
                                     aria-controls="temporaryHpEditor">
 
                                 <span class="combat-stat-value">
@@ -402,8 +400,7 @@
                                                        name="currentHp"
                                                        value="@Model.DisplayCurrentHp"
                                                        min="0"
-                                                       class="form-control"
-                                                       style="max-width: 7rem;" />
+                                                       class="form-control character-number-input" />
 
                                                 <button type="submit"
                                                         class="btn
@@ -445,8 +442,7 @@
                                         </label>
 
 
-                                        <div class="input-group"
-                                             style="max-width: 14rem;">
+                                        <div class="input-group character-temp-hp-control">
 
                                             <input type="number"
                                                    name="temporaryHp"
@@ -779,7 +775,8 @@
                     <ul class="nav
                         nav-tabs
                         card-header-tabs"
-                        role="tablist">
+                        role="tablist"
+                        aria-label="Character actions">
 
                         <li class="nav-item"
                             role="presentation">
@@ -899,7 +896,7 @@
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#characterAttackModal"
                                                             data-attack-config="@Model.GetCharacterAttackConfigurationJson(
-                                                                                                                                                                                                                                                                                                                                                                                                                attack.SourceId)">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                        attack.SourceId)">
                                                         Edit
                                                     </button>
                                                 }
@@ -1393,11 +1390,11 @@
                                                                         ? "is-prepared"
                                                                         : "")"
                                                                         title="@(spell.IsPrepared
-                                                                                                                                                                                                                                                                                        ? "Mark unprepared"
-                                                                                                                                                                                                                                                                                        : "Mark prepared")"
+                                                                                                                                                                                                                                                                                                                                                            ? "Mark unprepared"
+                                                                                                                                                                                                                                                                                                                                                            : "Mark prepared")"
                                                                         aria-label="@(spell.IsPrepared
-                                                                                                                                                                                                                                                                                        ? $"Mark {spell.Name} unprepared"
-                                                                                                                                                                                                                                                                                        : $"Mark {spell.Name} prepared")">
+                                                                                                                                                                                                                                                                                                                                                            ? $"Mark {spell.Name} unprepared"
+                                                                                                                                                                                                                                                                                                                                                            : $"Mark {spell.Name} prepared")">
 
                                                                     @(spell.IsPrepared
                                                                         ? "✓"
@@ -4241,8 +4238,8 @@
              aria-labelledby="conditionsModalLabel"
              aria-hidden="true"
              data-auto-open="@(Model.OpenModal == "conditions"
-                                                                                     ? "true"
-                                                                                     : "false")">
+                                                                                                 ? "true"
+                                                                                                 : "false")">
 
             <div class="modal-dialog
                 modal-dialog-centered
@@ -4468,7 +4465,9 @@
          Model.IsEncounterStarted &&
          Model.IsControlled)
     {
-        <div class="character-combat-bar">
+        <div class="character-combat-bar"
+             role="region"
+             aria-label="Encounter turn controls">
 
             <div class="container
                 character-combat-bar-content">
