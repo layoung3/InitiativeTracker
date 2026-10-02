@@ -7,63 +7,141 @@
 
 @section Styles {
     <link rel="stylesheet"
-      href="~/css/condition-badges.css"
-      asp-append-version="true" />
+          href="~/css/condition-badges.css"
+          asp-append-version="true" />
 
     <link rel="stylesheet"
           href="~/css/initiative-display.css"
           asp-append-version="true" />
 }
 
-<div class="initiative-display container-fluid mx-auto p-3 p-md-4">
+<div class="initiative-display"
+     id="initiativeDisplay">
 
-    <header class="initiative-header
-        d-flex
-        justify-content-between
-        align-items-center
-        border-bottom
-        border-2
-        pb-3
-        mb-4
-        fs-4">
+    <div class="display-backdrop"
+         aria-hidden="true"></div>
 
-        <div id="roundDisplay">
+    <header class="initiative-header">
+
+        <div class="initiative-header-status"
+             id="roundDisplay">
+
             @if (Model.DisplayState.IsStarted)
             {
-                <span>
-                    ROUND
-                    <strong>@Model.DisplayState.Round</strong>
+                <span class="display-status-label">
+                    Round
                 </span>
+
+                <strong class="display-status-value">
+                    @Model.DisplayState.Round
+                </strong>
             }
             else
             {
-                <span>ENCOUNTER SETUP</span>
+                <span class="display-status-label">
+                    Encounter
+                </span>
+
+                <strong class="display-status-value display-status-value--text">
+                    Setup
+                </strong>
             }
+
         </div>
 
-        <div id="turnDisplay">
-            @if (Model.DisplayState.IsStarted)
-            {
-                <span>
-                    TURN
-                    <strong>
-                        @Model.DisplayState.CurrentTurnNumber
-                        /
-                        @Model.DisplayState.ActiveCombatantCount
+
+        <div class="initiative-title"
+             aria-hidden="true">
+
+            <span class="initiative-title-mark"></span>
+
+            <span>
+                Initiative
+            </span>
+
+            <span class="initiative-title-mark"></span>
+
+        </div>
+
+
+        <div class="initiative-header-actions">
+
+            <div class="initiative-header-status
+                        initiative-header-status--end"
+                 id="turnDisplay">
+
+                @if (Model.DisplayState.IsStarted)
+                {
+                    <span class="display-status-label">
+                        Turn
+                    </span>
+
+                    <strong class="display-status-value">
+                        @if (Model.DisplayState.CurrentTurnNumber > 0)
+                        {
+                            @Model.DisplayState.CurrentTurnNumber
+                            <span class="display-status-divider">/</span>
+                            @Model.DisplayState.ActiveCombatantCount
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
                     </strong>
-                </span>
-            }
+                }
+
+            </div>
+
+
+            <button type="button"
+                    class="display-theme-button display-fullscreen-button"
+                    id="displayFullscreenButton"
+                    aria-label="Toggle fullscreen"
+                    title="Toggle fullscreen">
+
+                <span aria-hidden="true">⛶</span>
+
+            </button>
+
+
+            <button type="button"
+                    class="display-theme-button"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#displayAppearancePanel"
+                    aria-controls="displayAppearancePanel"
+                    aria-label="Display appearance"
+                    title="Display appearance">
+
+                <span aria-hidden="true">◐</span>
+
+            </button>
+
         </div>
 
     </header>
 
+
     <main id="initiativeList"
-          class="initiative-list">
+          class="initiative-list"
+          aria-label="Initiative order">
 
         @if (Model.DisplayState.Combatants.Count == 0)
         {
             <div class="empty-display">
-                Waiting for encounter...
+
+                <div class="empty-display-symbol"
+                     aria-hidden="true">
+                    ◇
+                </div>
+
+                <div class="empty-display-title">
+                    Waiting for encounter
+                </div>
+
+                <div class="empty-display-detail">
+                    The initiative order will appear here when combat begins.
+                </div>
+
             </div>
         }
         else
@@ -71,39 +149,55 @@
             foreach (var combatant in Model.DisplayState.Combatants)
             {
                 <div class="initiative-row
-                    align-items-center
-                    border
-                    rounded
-                    px-3
-                    py-2
-                    mb-2
-                    fs-4
-                    @(combatant.IsCurrent ? "current border-primary" : "")
-                    @(!combatant.IsActive ? "opacity-50" : "")"
+                            @(combatant.IsCurrent ? "is-current" : "")
+                            @(!combatant.IsActive ? "is-inactive" : "")"
                      data-combatant-id="@combatant.Id">
 
-                    <div class="turn-indicator">
+                    <div class="turn-indicator"
+                         aria-hidden="true">
+
                         @if (combatant.IsCurrent)
                         {
-                            <span>➜</span>
+                            <span>▶</span>
                         }
+
                     </div>
+
 
                     <div class="combatant-name">
-                        @combatant.Name
+
+                        <div class="combatant-name-text">
+                            @combatant.Name
+                        </div>
+
                     </div>
 
-                    <div class="combatant-hp ms-3">
-                        @if (combatant.CurrentHp.HasValue ||
-                             combatant.MaxHp.HasValue)
-                        {
-                            <span>
+
+                    @if (combatant.CurrentHp.HasValue ||
+                         combatant.MaxHp.HasValue)
+                    {
+                        <div class="combatant-hp">
+
+                            <span class="combatant-hp-label">
+                                HP
+                            </span>
+
+                            <span class="combatant-hp-value">
                                 @(combatant.CurrentHp?.ToString() ?? "—")
-                                /
+                                <span class="combatant-hp-divider">/</span>
                                 @(combatant.MaxHp?.ToString() ?? "—")
                             </span>
-                        }
-                    </div>
+
+                            @if (combatant.TemporaryHp.HasValue &&
+                                 combatant.TemporaryHp.Value > 0)
+                            {
+                                <span class="combatant-temp-hp">
+                                    +@combatant.TemporaryHp Temp
+                                </span>
+                            }
+
+                        </div>
+                    }
 
                 </div>
             }
@@ -111,11 +205,250 @@
 
     </main>
 
+
+    <div class="display-connection-status"
+         id="displayConnectionStatus"
+         role="status"
+         aria-live="polite">
+
+        <span class="display-connection-dot"
+              aria-hidden="true"></span>
+
+        <span id="displayConnectionText">
+            Connecting
+        </span>
+
+    </div>
+
 </div>
 
+
+<div class="offcanvas offcanvas-end display-appearance-panel"
+     tabindex="-1"
+     id="displayAppearancePanel"
+     aria-labelledby="displayAppearancePanelLabel">
+
+    <div class="offcanvas-header">
+
+        <div>
+
+            <h2 class="offcanvas-title h5 mb-1"
+                id="displayAppearancePanelLabel">
+                Display Appearance
+            </h2>
+
+            <div class="small text-body-secondary">
+                Saved on this display.
+            </div>
+
+        </div>
+
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="offcanvas"
+                aria-label="Close">
+        </button>
+
+    </div>
+
+
+    <div class="offcanvas-body">
+
+        <fieldset class="display-theme-fieldset">
+
+            <legend class="display-theme-legend">
+                Theme
+            </legend>
+
+            <div class="display-theme-grid">
+
+                <label class="display-theme-option"
+                       data-theme-preview="dark">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="dark"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Dark
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="light">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="light"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Light
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="parchment">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="parchment"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Parchment
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="arcane">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="arcane"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Arcane
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="infernal">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="infernal"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Infernal
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="frost">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="frost"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Frost
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="forest">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="forest"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Forest
+                    </span>
+
+                </label>
+
+
+                <label class="display-theme-option"
+                       data-theme-preview="blood-moon">
+
+                    <input type="radio"
+                           name="displayTheme"
+                           value="blood-moon"
+                           data-display-theme-option />
+
+                    <span class="display-theme-swatch">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </span>
+
+                    <span class="display-theme-name">
+                        Blood Moon
+                    </span>
+
+                </label>
+
+            </div>
+
+        </fieldset>
+
+
+        <hr />
+
+
+        <div class="display-theme-note">
+            A future DM control can use the same theme names and broadcast
+            them to this display without changing the display markup.
+        </div>
+
+    </div>
+
+</div>
+
+
 @section Scripts {
-
     <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
-    <script src="~/js/initiative-display.js"></script>
-
+    <script src="~/js/initiative-display.js"
+            asp-append-version="true"></script>
 }
