@@ -60,6 +60,8 @@ public class PlayerCharacter
 
     public ICollection<PlayerCharacterItem> InventoryItems { get; set; } = new List<PlayerCharacterItem>();
 
+    public ICollection<PlayerCharacterAttack> Attacks { get; set; } = new List<PlayerCharacterAttack>();
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAtUtc { get; set; }

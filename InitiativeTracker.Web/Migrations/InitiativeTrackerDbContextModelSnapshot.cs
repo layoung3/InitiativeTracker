@@ -199,6 +199,96 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("PlayerCharacter", (string)null);
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterAttack", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AddsAbilityModifierToHit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AttackAbility")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AttackBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("LongRange")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("NormalRange")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("UsesProficiency")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterId", "SortOrder");
+
+                    b.ToTable("PlayerCharacterAttack", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterAttackDamageComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AdditionalDamageBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AddsAbilityModifier")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DamageExpression")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DamageType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterAttackId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterAttackId", "SortOrder");
+
+                    b.ToTable("PlayerCharacterAttackDamageComponent", (string)null);
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterCondition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -450,6 +540,28 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("RegisteredDevice", (string)null);
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterAttack", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
+                        .WithMany("Attacks")
+                        .HasForeignKey("PlayerCharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlayerCharacter");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterAttackDamageComponent", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacterAttack", "Attack")
+                        .WithMany("DamageComponents")
+                        .HasForeignKey("PlayerCharacterAttackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Attack");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterCondition", b =>
                 {
                     b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
@@ -507,11 +619,18 @@ namespace InitiativeTracker.Web.Migrations
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacter", b =>
                 {
+                    b.Navigation("Attacks");
+
                     b.Navigation("Conditions");
 
                     b.Navigation("InventoryItems");
 
                     b.Navigation("Skills");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterAttack", b =>
+                {
+                    b.Navigation("DamageComponents");
                 });
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterItem", b =>

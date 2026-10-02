@@ -565,8 +565,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#hpEditor"
                                     aria-expanded="@(Model.OpenEditor == "hp"
-                                                                                                            ? "true"
-                                                                                                            : "false")"
+                                                                                                                                            ? "true"
+                                                                                                                                            : "false")"
                                     aria-controls="hpEditor">
 
                                 <span class="combat-stat-value">
@@ -616,8 +616,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#temporaryHpEditor"
                                     aria-expanded="@(Model.OpenEditor == "temp"
-                                                                                                    ? "true"
-                                                                                                    : "false")"
+                                                                                                                                    ? "true"
+                                                                                                                                    : "false")"
                                     aria-controls="temporaryHpEditor">
 
                                 <span class="combat-stat-value">
@@ -1001,6 +1001,272 @@
 
             </div>
 
+            @* ========================================================
+               ATTACKS / SPELLS
+               ======================================================== *@
+
+            <div class="card mb-3">
+
+                <div class="card-header
+                    pb-0">
+
+                    <ul class="nav
+                        nav-tabs
+                        card-header-tabs"
+                        role="tablist">
+
+                        <li class="nav-item"
+                            role="presentation">
+
+                            <button class="nav-link active"
+                                    id="attacks-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#attacks-panel"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="attacks-panel"
+                                    aria-selected="true">
+                                Attacks
+                            </button>
+
+                        </li>
+
+
+                        <li class="nav-item"
+                            role="presentation">
+
+                            <button class="nav-link"
+                                    id="spells-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#spells-panel"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="spells-panel"
+                                    aria-selected="false">
+                                Spells
+                            </button>
+
+                        </li>
+
+                    </ul>
+
+                </div>
+
+
+                <div class="tab-content">
+
+                    @* ====================================================
+                       ATTACKS
+                       ==================================================== *@
+
+                    <div class="tab-pane
+                        fade
+                        show
+                        active"
+                         id="attacks-panel"
+                         role="tabpanel"
+                         aria-labelledby="attacks-tab"
+                         tabindex="0">
+
+                        <div class="d-flex
+                            justify-content-end
+                            p-2
+                            border-bottom">
+
+                            <button type="button"
+                                    class="btn
+                                btn-sm
+                                btn-outline-primary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#characterAttackModal"
+                                    data-attack-config="">
+                                + Add Attack
+                            </button>
+
+                        </div>
+
+
+                        @if (Model.Attacks.Count == 0)
+                        {
+                            <div class="card-body
+                                text-muted">
+
+                                No attacks available.
+
+                                <div class="small mt-1">
+                                    Equip and configure a weapon in
+                                    Inventory, or add a custom attack.
+                                </div>
+
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="list-group
+                                list-group-flush">
+
+                                @foreach (var attack in Model.Attacks)
+                                {
+                                    <div class="list-group-item
+                                        attack-row">
+
+                                        @* Attack identity *@
+                                        <div class="attack-identity">
+
+                                            <div class="d-flex
+                                                flex-wrap
+                                                align-items-center
+                                                gap-2">
+
+                                                <div class="fw-semibold">
+                                                    @attack.Name
+                                                </div>
+
+
+                                                @if (attack.SourceType ==
+                                                     Dnd5eAttackSourceType.Custom)
+                                                {
+                                                    <button type="button"
+                                                            class="btn
+                                                        btn-sm
+                                                        btn-link
+                                                        p-0"
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#characterAttackModal"
+                                                            data-attack-config="@Model.GetCharacterAttackConfigurationJson(
+                                                                                                                        attack.SourceId)">
+                                                        Edit
+                                                    </button>
+                                                }
+
+                                            </div>
+
+
+                                            <div class="small
+                                                text-muted">
+
+                                                @Model.GetAbilityAbbreviation(
+                                                    attack.AttackAbility)
+
+                                                @if (attack.NormalRange.HasValue)
+                                                {
+                                                    <span>
+                                                        ·
+                                                        @attack.NormalRange
+
+                                                        @if (attack.LongRange.HasValue)
+                                                        {
+                                                            <text>
+                                                                /@attack.LongRange
+                                                            </text>
+                                                        }
+
+                                                        ft.
+                                                    </span>
+                                                }
+
+                                            </div>
+
+                                        </div>
+
+
+                                        @* To hit *@
+                                        <div class="attack-hit">
+
+                                            <div class="attack-hit-value">
+                                                @Model.FormatBonus(
+                                                    attack.ToHitBonus)
+                                            </div>
+
+                                            <div class="attack-hit-label">
+                                                To Hit
+                                            </div>
+
+                                        </div>
+
+
+                                        @* Damage *@
+                                        <div class="attack-damage">
+
+                                            @if (attack.DamageComponents.Count == 0)
+                                            {
+                                                <span class="text-muted">
+                                                    —
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var damage
+                                                          in attack.DamageComponents)
+                                                {
+                                                    <div class="attack-damage-line">
+
+                                                        <span class="fw-semibold">
+                                                            @Model.FormatDamage(
+                                                                damage.DamageExpression,
+                                                                damage.FlatBonus)
+                                                        </span>
+
+                                                        <span class="text-muted">
+                                                            @damage.DamageType
+                                                        </span>
+
+                                                    </div>
+
+
+                                                    @if (damage.IsPrimary &&
+                                                         !string.IsNullOrWhiteSpace(
+                                                             damage.VersatileDamageExpression))
+                                                    {
+                                                        <div class="small
+                                                            text-muted">
+
+                                                            Versatile:
+                                                            @Model.FormatDamage(
+                                                                damage.VersatileDamageExpression,
+                                                                damage.FlatBonus)
+                                                            @damage.DamageType
+
+                                                        </div>
+                                                    }
+                                                }
+                                            }
+
+                                        </div>
+
+                                    </div>
+                                }
+
+                            </div>
+                        }
+
+                    </div>
+
+
+                    @* ====================================================
+                       SPELLS
+                       ==================================================== *@
+
+                    <div class="tab-pane
+                        fade"
+                         id="spells-panel"
+                         role="tabpanel"
+                         aria-labelledby="spells-tab"
+                         tabindex="0">
+
+                        <div class="card-body
+                            text-muted">
+
+                            Spellcasting will appear here once
+                            spells are added to the character.
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
 
 
             @* ========================================================
@@ -2195,6 +2461,292 @@
     @Html.Raw(Model.GetWeaponCatalogJson())
 </script>
 
+<div class="modal fade"
+     id="characterAttackModal"
+     tabindex="-1"
+     aria-labelledby="characterAttackModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-lg
+        modal-dialog-scrollable
+        modal-fullscreen-sm-down">
+
+        <form method="post"
+              asp-page-handler="SaveCharacterAttack"
+              asp-route-id="@Model.Character.Id"
+              id="characterAttackForm"
+              class="modal-content">
+
+
+            <input type="hidden"
+                   id="characterAttackId"
+                   name="attackId" />
+
+
+            <div class="modal-header">
+
+                <div>
+
+                    <h2 class="modal-title fs-5"
+                        id="characterAttackModalLabel">
+                        Add Attack
+                    </h2>
+
+                    <div class="small text-muted">
+                        @Model.Character.Name
+                    </div>
+
+                </div>
+
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+
+            <div class="modal-body">
+
+                @if (TempData["AttackError"]
+                     is string attackError)
+                {
+                    <div class="alert alert-danger">
+                        @attackError
+                    </div>
+                }
+
+
+                <div class="mb-3">
+
+                    <label for="characterAttackName"
+                           class="form-label">
+                        Name
+                    </label>
+
+                    <input type="text"
+                           id="characterAttackName"
+                           name="attackName"
+                           maxlength="150"
+                           class="form-control"
+                           required />
+
+                </div>
+
+
+                <div class="row g-3 mb-4">
+
+                    <div class="col-12 col-sm-6">
+
+                        <label for="characterAttackAbility"
+                               class="form-label">
+                            Attack Ability
+                        </label>
+
+                        <select id="characterAttackAbility"
+                                name="attackAbility"
+                                class="form-select">
+
+                            @foreach (var ability
+                                      in Enum.GetValues<CharacterAbilityType>())
+                            {
+                                <option value="@ability">
+                                    @ability
+                                </option>
+                            }
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <label for="characterAttackBonus"
+                               class="form-label">
+                            Additional Hit Bonus
+                        </label>
+
+                        <input type="number"
+                               id="characterAttackBonus"
+                               name="attackBonus"
+                               value="0"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <div class="form-check">
+
+                            <input type="checkbox"
+                                   id="characterAttackAddsAbility"
+                                   name="addsAbilityModifierToHit"
+                                   value="true"
+                                   class="form-check-input"
+                                   checked />
+
+                            <label for="characterAttackAddsAbility"
+                                   class="form-check-label">
+                                Add ability modifier to hit
+                            </label>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <div class="form-check">
+
+                            <input type="checkbox"
+                                   id="characterAttackUsesProficiency"
+                                   name="usesProficiency"
+                                   value="true"
+                                   class="form-check-input"
+                                   checked />
+
+                            <label for="characterAttackUsesProficiency"
+                                   class="form-check-label">
+                                Add proficiency bonus
+                            </label>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="characterAttackNormalRange"
+                               class="form-label">
+                            Normal Range
+                        </label>
+
+                        <input type="number"
+                               id="characterAttackNormalRange"
+                               name="normalRange"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="characterAttackLongRange"
+                               class="form-label">
+                            Long Range
+                        </label>
+
+                        <input type="number"
+                               id="characterAttackLongRange"
+                               name="longRange"
+                               min="1"
+                               class="form-control" />
+
+                    </div>
+
+                </div>
+
+
+                <div class="d-flex
+                    justify-content-between
+                    align-items-center
+                    mb-2">
+
+                    <div>
+
+                        <div class="fw-semibold">
+                            Damage
+                        </div>
+
+                        <div class="small text-muted">
+                            Add one or more damage components.
+                        </div>
+
+                    </div>
+
+
+                    <button type="button"
+                            id="addCharacterAttackDamage"
+                            class="btn
+                        btn-sm
+                        btn-outline-secondary">
+                        + Add Damage
+                    </button>
+
+                </div>
+
+
+                <div id="characterAttackDamageComponents"
+                     class="d-flex
+                    flex-column
+                    gap-3
+                    mb-4">
+                </div>
+
+
+                <div>
+
+                    <label for="characterAttackNotes"
+                           class="form-label">
+                        Notes
+                    </label>
+
+                    <textarea id="characterAttackNotes"
+                              name="attackNotes"
+                              maxlength="2000"
+                              rows="3"
+                              class="form-control"
+                              placeholder="Optional attack notes"></textarea>
+
+                </div>
+
+            </div>
+
+
+            <div class="modal-footer">
+
+                <button type="submit"
+                        id="deleteCharacterAttack"
+                        asp-page-handler="DeleteCharacterAttack"
+                        asp-route-id="@Model.Character.Id"
+                        class="btn
+                    btn-outline-danger
+                    me-auto"
+                        onclick="return confirm('Delete this attack?');">
+                    Delete
+                </button>
+
+
+                <button type="button"
+                        class="btn
+                    btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+
+                <button type="submit"
+                        class="btn
+                    btn-primary">
+                    Save Attack
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
 @if (Model.CanChangeConditions)
 {
     <div class="modal fade"
@@ -2203,8 +2755,8 @@
          aria-labelledby="conditionsModalLabel"
          aria-hidden="true"
          data-auto-open="@(Model.OpenModal == "conditions"
-                             ? "true"
-                             : "false")">
+                                     ? "true"
+                                     : "false")">
 
         <div class="modal-dialog
             modal-dialog-centered
@@ -2496,6 +3048,10 @@
     </script>
 
     <script src="~/js/player-inventory.js"
+            asp-append-version="true">
+    </script>
+
+    <script src="~/js/player-attacks.js"
             asp-append-version="true">
     </script>
 }

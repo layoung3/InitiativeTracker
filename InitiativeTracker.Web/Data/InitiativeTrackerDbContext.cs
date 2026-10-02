@@ -46,6 +46,12 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PlayerCharacterWeaponDamageComponent> PlayerCharacterWeaponDamageComponents =>
         Set<PlayerCharacterWeaponDamageComponent>();
 
+    public DbSet<PlayerCharacterAttack> PlayerCharacterAttacks =>
+        Set<PlayerCharacterAttack>();
+
+    public DbSet<PlayerCharacterAttackDamageComponent> PlayerCharacterAttackDamageComponents =>
+        Set<PlayerCharacterAttackDamageComponent>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -310,6 +316,81 @@ public class InitiativeTrackerDbContext : DbContext
                         x => x.DamageComponents)
                     .HasForeignKey(
                         x => x.PlayerCharacterItemId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterAttack>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerCharacterAttack");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(150);
+
+                entity.Property(
+                        x => x.AttackAbility)
+                    .IsRequired();
+
+                entity.Property(
+                        x => x.Notes)
+                    .HasMaxLength(2000);
+
+                entity.HasIndex(
+                    x => new
+                    {
+                        x.PlayerCharacterId,
+                        x.SortOrder
+                    });
+
+                entity.HasOne(
+                        x => x.PlayerCharacter)
+                    .WithMany(
+                        x => x.Attacks)
+                    .HasForeignKey(
+                        x => x.PlayerCharacterId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterAttackDamageComponent>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerCharacterAttackDamageComponent");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.DamageExpression)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(
+                        x => x.DamageType)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.HasIndex(
+                    x => new
+                    {
+                        x.PlayerCharacterAttackId,
+                        x.SortOrder
+                    });
+
+                entity.HasOne(
+                        x => x.Attack)
+                    .WithMany(
+                        x => x.DamageComponents)
+                    .HasForeignKey(
+                        x => x.PlayerCharacterAttackId)
                     .OnDelete(
                         DeleteBehavior.Cascade);
             });

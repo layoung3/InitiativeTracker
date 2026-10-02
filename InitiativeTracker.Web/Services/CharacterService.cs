@@ -1822,4 +1822,371 @@ public class CharacterService
                 "Versatile damage dice cannot exceed 50 characters.");
         }
     }
+
+    public IReadOnlyList<PlayerCharacterAttack> GetCharacterAttacks(
+        Guid characterId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+
+        return db.PlayerCharacterAttacks
+            .AsNoTracking()
+            .Include(
+                x => x.DamageComponents)
+            .Where(
+                x =>
+                    x.PlayerCharacterId ==
+                    characterId)
+            .OrderBy(
+                x => x.SortOrder)
+            .ThenBy(
+                x => x.Name)
+            .ToList();
+    }
+
+    public PlayerCharacterAttack SaveCharacterAttack(
+        Guid characterId,
+        Guid? attackId,
+        PlayerCharacterAttack values)
+    {
+        if (string.IsNullOrWhiteSpace(
+                values.Name))
+        {
+            throw new ArgumentException(
+                "Attack name is required.");
+        }
+
+
+        var normalizedName =
+            values.Name.Trim();
+
+
+        if (normalizedName.Length > 150)
+        {
+            throw new ArgumentException(
+                "Attack name cannot exceed 150 characters.");
+        }
+
+
+        if (!Enum.IsDefined(
+                typeof(CharacterAbilityType),
+                values.AttackAbility))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.AttackAbility));
+        }
+
+
+        if (values.NormalRange.HasValue &&
+            values.NormalRange.Value < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.NormalRange),
+                "Normal range must be greater than zero.");
+        }
+
+
+        if (values.LongRange.HasValue &&
+            values.LongRange.Value < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.LongRange),
+                "Long range must be greater than zero.");
+        }
+
+
+        if (values.NormalRange.HasValue &&
+            values.LongRange.HasValue &&
+            values.LongRange.Value <
+                values.NormalRange.Value)
+        {
+            throw new ArgumentException(
+                "Long range cannot be shorter than normal range.");
+        }
+
+
+        var normalizedNotes =
+            string.IsNullOrWhiteSpace(
+                values.Notes)
+                ? null
+                : values.Notes.Trim();
+
+
+        if (normalizedNotes?.Length > 2000)
+        {
+            throw new ArgumentException(
+                "Attack notes cannot exceed 2000 characters.");
+        }
+
+
+        var damageComponents =
+            values.DamageComponents
+                .OrderBy(
+                    x => x.SortOrder)
+                .ToList();
+
+
+        foreach (var component
+                 in damageComponents)
+        {
+            ValidateCharacterAttackDamageComponent(
+                component);
+        }
+
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            PlayerCharacterAttack attack;
+
+
+            if (attackId.HasValue &&
+                attackId.Value != Guid.Empty)
+            {
+                attack =
+                    db.PlayerCharacterAttacks
+                        .SingleOrDefault(
+                            x =>
+                                x.Id ==
+                                    attackId.Value &&
+                                x.PlayerCharacterId ==
+                                    characterId)
+                    ?? throw new ArgumentException(
+                        "Attack was not found.",
+                        nameof(attackId));
+            }
+            else
+            {
+                var nextSortOrder =
+                    db.PlayerCharacterAttacks
+                        .Where(
+                            x =>
+                                x.PlayerCharacterId ==
+                                    characterId)
+                        .Select(
+                            x => (int?)x.SortOrder)
+                        .Max() ?? -1;
+
+
+                attack =
+                    new PlayerCharacterAttack
+                    {
+                        Id =
+                            Guid.NewGuid(),
+
+                        PlayerCharacterId =
+                            characterId,
+
+                        SortOrder =
+                            nextSortOrder + 1,
+
+                        IsEnabled =
+                            true,
+
+                        CreatedAtUtc =
+                            DateTime.UtcNow
+                    };
+
+
+                db.PlayerCharacterAttacks
+                    .Add(
+                        attack);
+            }
+
+
+            attack.Name =
+                normalizedName;
+
+            attack.AttackAbility =
+                values.AttackAbility;
+
+            attack.AddsAbilityModifierToHit =
+                values.AddsAbilityModifierToHit;
+
+            attack.UsesProficiency =
+                values.UsesProficiency;
+
+            attack.AttackBonus =
+                values.AttackBonus;
+
+            attack.NormalRange =
+                values.NormalRange;
+
+            attack.LongRange =
+                values.LongRange;
+
+            attack.Notes =
+                normalizedNotes;
+
+            attack.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+
+            var existingDamage =
+                db.PlayerCharacterAttackDamageComponents
+                    .Where(
+                        x =>
+                            x.PlayerCharacterAttackId ==
+                                attack.Id)
+                    .ToList();
+
+
+            if (existingDamage.Count > 0)
+            {
+                db.PlayerCharacterAttackDamageComponents
+                    .RemoveRange(
+                        existingDamage);
+            }
+
+
+            var newDamage =
+                damageComponents
+                    .Select(
+                        x =>
+                            new PlayerCharacterAttackDamageComponent
+                            {
+                                Id =
+                                    Guid.NewGuid(),
+
+                                PlayerCharacterAttackId =
+                                    attack.Id,
+
+                                DamageExpression =
+                                    x.DamageExpression.Trim(),
+
+                                DamageType =
+                                    x.DamageType.Trim(),
+
+                                AddsAbilityModifier =
+                                    x.AddsAbilityModifier,
+
+                                AdditionalDamageBonus =
+                                    x.AdditionalDamageBonus,
+
+                                SortOrder =
+                                    x.SortOrder
+                            })
+                    .ToList();
+
+
+            if (newDamage.Count > 0)
+            {
+                db.PlayerCharacterAttackDamageComponents
+                    .AddRange(
+                        newDamage);
+            }
+
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+
+            db.SaveChanges();
+
+
+            return attack;
+        }
+    }
+
+    public void DeleteCharacterAttack(
+        Guid characterId,
+        Guid attackId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            var attack =
+                db.PlayerCharacterAttacks
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                attackId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+
+            if (attack is null)
+            {
+                return;
+            }
+
+
+            db.PlayerCharacterAttacks
+                .Remove(
+                    attack);
+
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+
+            db.SaveChanges();
+        }
+    }
+
+    private static void ValidateCharacterAttackDamageComponent(
+        PlayerCharacterAttackDamageComponent component)
+    {
+        if (string.IsNullOrWhiteSpace(
+                component.DamageExpression))
+        {
+            throw new ArgumentException(
+                "Damage is required.");
+        }
+
+
+        if (component.DamageExpression
+                .Trim()
+                .Length > 50)
+        {
+            throw new ArgumentException(
+                "Damage cannot exceed 50 characters.");
+        }
+
+
+        if (string.IsNullOrWhiteSpace(
+                component.DamageType))
+        {
+            throw new ArgumentException(
+                "Damage type is required.");
+        }
+
+
+        if (component.DamageType
+                .Trim()
+                .Length > 100)
+        {
+            throw new ArgumentException(
+                "Damage type cannot exceed 100 characters.");
+        }
+    }
 }

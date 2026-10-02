@@ -42,6 +42,10 @@ public class CharacterModel : PageModel
 
     public IReadOnlyList<Dnd5eWeaponDefinition> StandardWeapons => Dnd5eWeaponCatalog.StandardWeapons;
 
+    public IReadOnlyList<Dnd5eAttackView> Attacks { get; private set; } = [];
+
+    public IReadOnlyDictionary<Guid, PlayerCharacterAttack> CharacterAttacksById { get; private set; } = new Dictionary<Guid, PlayerCharacterAttack>();
+
     public Combatant? EncounterCombatant { get; private set; }
 
     public Guid PlayerProfileId { get; private set; }
@@ -132,12 +136,49 @@ public class CharacterModel : PageModel
 
         InventoryItems = _characterService.GetInventory(character.Id);
 
-        WeaponsByItemId =
+        var weapons = _characterService.GetWeapons(character.Id);
+
+        WeaponsByItemId = weapons.ToDictionary(x => x.PlayerCharacterItemId);
+
+        var characterAttacks =
             _characterService
-                .GetWeapons(
-                    character.Id)
+                .GetCharacterAttacks(
+                    character.Id);
+
+        CharacterAttacksById =
+            characterAttacks
                 .ToDictionary(
-                    x => x.PlayerCharacterItemId);
+                    x => x.Id);
+
+        var calculatedAttacks = new List<Dnd5eAttackView>();
+
+        calculatedAttacks.AddRange(
+            weapons
+                .Where(
+                    x => x.Item.IsEquipped)
+                .Select(
+                    x =>
+                        Dnd5eWeaponAttackCalculator
+                            .Calculate(
+                                character,
+                                x)));
+
+        calculatedAttacks.AddRange(
+            characterAttacks
+                .Where(
+                    x => x.IsEnabled)
+                .Select(
+                    x =>
+                        Dnd5eCharacterAttackCalculator
+                            .Calculate(
+                                character,
+                                x)));
+
+        Attacks =
+            calculatedAttacks
+                .OrderBy(
+                    x => x.Name)
+                .ToList();
 
         EncounterCombatant =
             _encounterState
@@ -1200,8 +1241,73 @@ public class CharacterModel : PageModel
             });
     }
 
+    public string GetCharacterAttackConfigurationJson(
+        Guid attackId)
+    {
+        if (!CharacterAttacksById.TryGetValue(
+                attackId,
+                out var attack))
+        {
+            return string.Empty;
+        }
+
+
+        return JsonSerializer.Serialize(
+            new
+            {
+                id =
+                    attack.Id,
+
+                name =
+                    attack.Name,
+
+                attackAbility =
+                    attack.AttackAbility.ToString(),
+
+                addsAbilityModifierToHit =
+                    attack.AddsAbilityModifierToHit,
+
+                usesProficiency =
+                    attack.UsesProficiency,
+
+                attackBonus =
+                    attack.AttackBonus,
+
+                normalRange =
+                    attack.NormalRange,
+
+                longRange =
+                    attack.LongRange,
+
+                notes =
+                    attack.Notes,
+
+                damageComponents =
+                    attack.DamageComponents
+                        .OrderBy(
+                            x => x.SortOrder)
+                        .Select(
+                            x =>
+                                new
+                                {
+                                    damageExpression =
+                                        x.DamageExpression,
+
+                                    damageType =
+                                        x.DamageType,
+
+                                    addsAbilityModifier =
+                                        x.AddsAbilityModifier,
+
+                                    additionalDamageBonus =
+                                        x.AdditionalDamageBonus
+                                })
+                        .ToList()
+            });
+    }
+
     public string GetWeaponConfigurationJson(
-    Guid itemId)
+        Guid itemId)
     {
         if (!WeaponsByItemId.TryGetValue(
                 itemId,
@@ -1424,6 +1530,191 @@ public class CharacterModel : PageModel
             });
     }
 
+    public IActionResult OnPostSaveCharacterAttack(
+        Guid id,
+        Guid? attackId,
+        string attackName,
+        CharacterAbilityType attackAbility,
+        bool addsAbilityModifierToHit,
+        bool usesProficiency,
+        int attackBonus,
+        int? normalRange,
+        int? longRange,
+        string? attackNotes,
+        List<CharacterAttackDamageInput>? damageComponents)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            damageComponents ??=
+                [];
+
+
+            var attack =
+                new PlayerCharacterAttack
+                {
+                    Name =
+                        attackName,
+
+                    AttackAbility =
+                        attackAbility,
+
+                    AddsAbilityModifierToHit =
+                        addsAbilityModifierToHit,
+
+                    UsesProficiency =
+                        usesProficiency,
+
+                    AttackBonus =
+                        attackBonus,
+
+                    NormalRange =
+                        normalRange,
+
+                    LongRange =
+                        longRange,
+
+                    Notes =
+                        attackNotes,
+
+                    DamageComponents =
+                        damageComponents
+                            .Select(
+                                (damage, index) =>
+                                    new PlayerCharacterAttackDamageComponent
+                                    {
+                                        DamageExpression =
+                                            damage.DamageExpression,
+
+                                        DamageType =
+                                            damage.DamageType,
+
+                                        AddsAbilityModifier =
+                                            damage.AddsAbilityModifier,
+
+                                        AdditionalDamageBonus =
+                                            damage.AdditionalDamageBonus,
+
+                                        SortOrder =
+                                            index
+                                    })
+                            .ToList()
+                };
+
+
+            _characterService
+                .SaveCharacterAttack(
+                    character!.Id,
+                    attackId,
+                    attack);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException
+                  or InvalidOperationException)
+        {
+            TempData["AttackError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public IActionResult OnPostDeleteCharacterAttack(
+        Guid id,
+        Guid attackId)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        _characterService
+            .DeleteCharacterAttack(
+                character!.Id,
+                attackId);
+
+
+        return RedirectToPage(
+            new
+            {
+                id
+            });
+    }
+
+    public string FormatDamage(
+        string dice,
+        int bonus)
+    {
+        if (bonus > 0)
+        {
+            return $"{dice} + {bonus}";
+        }
+
+
+        if (bonus < 0)
+        {
+            return $"{dice} - {Math.Abs(bonus)}";
+        }
+
+
+        return dice;
+    }
+
+
+    public string GetAbilityAbbreviation(
+        CharacterAbilityType ability)
+    {
+        return ability switch
+        {
+            CharacterAbilityType.Strength =>
+                "STR",
+
+            CharacterAbilityType.Dexterity =>
+                "DEX",
+
+            CharacterAbilityType.Constitution =>
+                "CON",
+
+            CharacterAbilityType.Intelligence =>
+                "INT",
+
+            CharacterAbilityType.Wisdom =>
+                "WIS",
+
+            CharacterAbilityType.Charisma =>
+                "CHA",
+
+            _ =>
+                "—"
+        };
+    }
+
     public class CharacterConditionView
     {
         public Guid Id { get; set; }
@@ -1456,6 +1747,33 @@ public class CharacterModel : PageModel
         }
 
         public string? VersatileDamageDice
+        {
+            get;
+            set;
+        }
+    }
+
+    public class CharacterAttackDamageInput
+    {
+        public string DamageExpression
+        {
+            get;
+            set;
+        } = string.Empty;
+
+        public string DamageType
+        {
+            get;
+            set;
+        } = string.Empty;
+
+        public bool AddsAbilityModifier
+        {
+            get;
+            set;
+        }
+
+        public int AdditionalDamageBonus
         {
             get;
             set;
