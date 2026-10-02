@@ -387,6 +387,196 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("PlayerCharacterSkills");
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpell", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Area")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CastingTime")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Duration")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasMaterialComponent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HasSomaticComponent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HasSpellAttackRoll")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HasVerbalComponent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsPrepared")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsRitual")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MaterialDescription")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Range")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("RequiresConcentration")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SavingThrowAbility")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("School")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterId", "Level", "SortOrder");
+
+                    b.ToTable("PlayerCharacterSpell", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellEffectComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AdditionalBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AddsSpellcastingAbilityModifier")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CantripScalingExpression")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DamageType")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EffectType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Expression")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterSpellId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UpcastExpressionPerLevel")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterSpellId", "SortOrder");
+
+                    b.ToTable("PlayerCharacterSpellEffectComponent", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellSlot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaximumSlots")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("PlayerCharacterSpellcastingId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RemainingSlots")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterSpellcastingId", "Level")
+                        .IsUnique();
+
+                    b.ToTable("PlayerCharacterSpellSlot", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellcasting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ActiveConcentrationSpellId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AdditionalSpellAttackBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AdditionalSpellSaveDcBonus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SpellcastingAbility")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerCharacterId")
+                        .IsUnique();
+
+                    b.ToTable("PlayerCharacterSpellcasting", (string)null);
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeapon", b =>
                 {
                     b.Property<Guid>("PlayerCharacterItemId")
@@ -595,6 +785,50 @@ namespace InitiativeTracker.Web.Migrations
                     b.Navigation("PlayerCharacter");
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpell", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
+                        .WithMany("Spells")
+                        .HasForeignKey("PlayerCharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlayerCharacter");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellEffectComponent", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacterSpell", "Spell")
+                        .WithMany("EffectComponents")
+                        .HasForeignKey("PlayerCharacterSpellId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Spell");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellSlot", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacterSpellcasting", "Spellcasting")
+                        .WithMany("SpellSlots")
+                        .HasForeignKey("PlayerCharacterSpellcastingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Spellcasting");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellcasting", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerCharacter", "PlayerCharacter")
+                        .WithOne("Spellcasting")
+                        .HasForeignKey("InitiativeTracker.Web.Data.PlayerCharacterSpellcasting", "PlayerCharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlayerCharacter");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeapon", b =>
                 {
                     b.HasOne("InitiativeTracker.Web.Data.PlayerCharacterItem", "Item")
@@ -626,6 +860,10 @@ namespace InitiativeTracker.Web.Migrations
                     b.Navigation("InventoryItems");
 
                     b.Navigation("Skills");
+
+                    b.Navigation("Spellcasting");
+
+                    b.Navigation("Spells");
                 });
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterAttack", b =>
@@ -636,6 +874,16 @@ namespace InitiativeTracker.Web.Migrations
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterItem", b =>
                 {
                     b.Navigation("Weapon");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpell", b =>
+                {
+                    b.Navigation("EffectComponents");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterSpellcasting", b =>
+                {
+                    b.Navigation("SpellSlots");
                 });
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacterWeapon", b =>

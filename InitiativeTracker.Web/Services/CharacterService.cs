@@ -256,7 +256,7 @@ public class CharacterService
             .ToList();
     }
 
-    public IReadOnlyList<PlayerCharacterSkill>GetSkills(Guid characterId)
+    public IReadOnlyList<PlayerCharacterSkill> GetSkills(Guid characterId)
     {
         lock (_lock)
         {
@@ -1451,7 +1451,7 @@ public class CharacterService
         }
     }
 
-    private static (string Name,string? Notes) NormalizeInventoryItemInput(
+    private static (string Name, string? Notes) NormalizeInventoryItemInput(
         string name,
         string? notes)
     {
@@ -2187,6 +2187,1041 @@ public class CharacterService
         {
             throw new ArgumentException(
                 "Damage type cannot exceed 100 characters.");
+        }
+    }
+
+    public PlayerCharacterSpellcasting? GetSpellcasting(
+        Guid characterId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+
+        return db.PlayerCharacterSpellcastings
+            .AsNoTracking()
+            .Include(
+                x => x.SpellSlots)
+            .SingleOrDefault(
+                x =>
+                    x.PlayerCharacterId ==
+                    characterId);
+    }
+
+    public IReadOnlyList<PlayerCharacterSpell> GetSpells(
+        Guid characterId)
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var characterExists =
+            db.PlayerCharacters
+                .Any(
+                    x =>
+                        x.Id ==
+                        characterId);
+
+        if (!characterExists)
+        {
+            throw new ArgumentException(
+                "Character was not found.",
+                nameof(characterId));
+        }
+
+        return db.PlayerCharacterSpells
+            .AsNoTracking()
+            .Include(
+                x => x.EffectComponents)
+            .Where(
+                x =>
+                    x.PlayerCharacterId ==
+                    characterId)
+            .OrderBy(
+                x => x.Level)
+            .ThenBy(
+                x => x.SortOrder)
+            .ThenBy(
+                x => x.Name)
+            .ToList();
+    }
+
+    public void SaveSpellcasting(
+        Guid characterId,
+        CharacterAbilityType ability,
+        int additionalSpellAttackBonus,
+        int additionalSpellSaveDcBonus,
+        IReadOnlyDictionary<int, int> maximumSlotsByLevel)
+    {
+        if (!Enum.IsDefined(
+                typeof(CharacterAbilityType),
+                ability))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(ability));
+        }
+
+
+        foreach (var pair
+                 in maximumSlotsByLevel)
+        {
+            if (pair.Key < 1 ||
+                pair.Key > 9)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(maximumSlotsByLevel),
+                    "Spell slot levels must be between 1 and 9.");
+            }
+
+
+            if (pair.Value < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(maximumSlotsByLevel),
+                    "Maximum spell slots cannot be negative.");
+            }
+        }
+
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            var spellcasting =
+                db.PlayerCharacterSpellcastings
+                    .Include(
+                        x => x.SpellSlots)
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId);
+
+
+            var now =
+                DateTime.UtcNow;
+
+
+            if (spellcasting is null)
+            {
+                spellcasting =
+                    new PlayerCharacterSpellcasting
+                    {
+                        Id =
+                            Guid.NewGuid(),
+
+                        PlayerCharacterId =
+                            characterId,
+
+                        CreatedAtUtc =
+                            now
+                    };
+
+
+                db.PlayerCharacterSpellcastings
+                    .Add(
+                        spellcasting);
+            }
+
+
+            spellcasting.SpellcastingAbility =
+                ability;
+
+            spellcasting.AdditionalSpellAttackBonus =
+                additionalSpellAttackBonus;
+
+            spellcasting.AdditionalSpellSaveDcBonus =
+                additionalSpellSaveDcBonus;
+
+            spellcasting.UpdatedAtUtc =
+                now;
+
+
+            var existingByLevel =
+                spellcasting.SpellSlots
+                    .ToDictionary(
+                        x => x.Level);
+
+
+            for (var level = 1;
+                 level <= 9;
+                 level++)
+            {
+                maximumSlotsByLevel.TryGetValue(
+                    level,
+                    out var requestedMaximum);
+
+
+                existingByLevel.TryGetValue(
+                    level,
+                    out var existing);
+
+
+                if (requestedMaximum <= 0)
+                {
+                    if (existing is not null)
+                    {
+                        db.PlayerCharacterSpellSlots
+                            .Remove(
+                                existing);
+                    }
+
+                    continue;
+                }
+
+
+                if (existing is null)
+                {
+                    db.PlayerCharacterSpellSlots
+                        .Add(
+                            new PlayerCharacterSpellSlot
+                            {
+                                Id =
+                                    Guid.NewGuid(),
+
+                                PlayerCharacterSpellcastingId =
+                                    spellcasting.Id,
+
+                                Level =
+                                    level,
+
+                                MaximumSlots =
+                                    requestedMaximum,
+
+                                RemainingSlots =
+                                    requestedMaximum
+                            });
+
+                    continue;
+                }
+
+
+                var oldMaximum =
+                    existing.MaximumSlots;
+
+                var difference =
+                    requestedMaximum -
+                    oldMaximum;
+
+
+                existing.MaximumSlots =
+                    requestedMaximum;
+
+
+                if (difference > 0)
+                {
+                    existing.RemainingSlots =
+                        Math.Min(
+                            requestedMaximum,
+                            existing.RemainingSlots +
+                            difference);
+                }
+                else
+                {
+                    existing.RemainingSlots =
+                        Math.Min(
+                            existing.RemainingSlots,
+                            requestedMaximum);
+                }
+            }
+
+
+            character.UpdatedAtUtc =
+                now;
+
+
+            db.SaveChanges();
+        }
+    }
+
+    public void AdjustSpellSlot(
+        Guid characterId,
+        int level,
+        int amount)
+    {
+        if (level < 1 ||
+            level > 9)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(level));
+        }
+
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            var spellcasting =
+                db.PlayerCharacterSpellcastings
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId)
+                ?? throw new InvalidOperationException(
+                    "Spellcasting is not configured.");
+
+
+            var slot =
+                db.PlayerCharacterSpellSlots
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterSpellcastingId ==
+                                spellcasting.Id &&
+                            x.Level ==
+                                level)
+                ?? throw new InvalidOperationException(
+                    $"Level {level} spell slots are not configured.");
+
+
+            slot.RemainingSlots =
+                Math.Clamp(
+                    slot.RemainingSlots + amount,
+                    0,
+                    slot.MaximumSlots);
+
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+
+            db.SaveChanges();
+        }
+    }
+
+    public void RestoreAllSpellSlots(
+        Guid characterId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+
+            var spellcasting =
+                db.PlayerCharacterSpellcastings
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId)
+                ?? throw new InvalidOperationException(
+                    "Spellcasting is not configured.");
+
+
+            var slots =
+                db.PlayerCharacterSpellSlots
+                    .Where(
+                        x =>
+                            x.PlayerCharacterSpellcastingId ==
+                                spellcasting.Id)
+                    .ToList();
+
+
+            foreach (var slot in slots)
+            {
+                slot.RemainingSlots =
+                    slot.MaximumSlots;
+            }
+
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+
+            db.SaveChanges();
+        }
+    }
+
+    public PlayerCharacterSpell SaveSpell(
+        Guid characterId,
+        Guid? spellId,
+        PlayerCharacterSpell values)
+    {
+        if (string.IsNullOrWhiteSpace(
+                values.Name))
+        {
+            throw new ArgumentException(
+                "Spell name is required.");
+        }
+
+        if (values.Level < 0 ||
+            values.Level > 9)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.Level),
+                "Spell level must be between 0 and 9.");
+        }
+
+        if (values.SavingThrowAbility.HasValue &&
+            !Enum.IsDefined(
+                typeof(CharacterAbilityType),
+                values.SavingThrowAbility.Value))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(values.SavingThrowAbility));
+        }
+
+        var name =
+            values.Name.Trim();
+
+        if (name.Length > 150)
+        {
+            throw new ArgumentException(
+                "Spell name cannot exceed 150 characters.");
+        }
+
+        static string? Normalize(
+            string? value,
+            int maximumLength,
+            string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(
+                    value))
+            {
+                return null;
+            }
+
+            var normalized =
+                value.Trim();
+
+            if (normalized.Length >
+                maximumLength)
+            {
+                throw new ArgumentException(
+                    $"{fieldName} cannot exceed {maximumLength} characters.");
+            }
+
+            return normalized;
+        }
+
+        var school =
+            Normalize(
+                values.School,
+                50,
+                "School");
+
+        var castingTime =
+            Normalize(
+                values.CastingTime,
+                100,
+                "Casting time");
+
+        var range =
+            Normalize(
+                values.Range,
+                100,
+                "Range");
+
+        var area =
+            Normalize(
+                values.Area,
+                100,
+                "Area");
+
+        var duration =
+            Normalize(
+                values.Duration,
+                100,
+                "Duration");
+
+        var materialDescription =
+            Normalize(
+                values.MaterialDescription,
+                500,
+                "Material description");
+
+        var notes =
+            Normalize(
+                values.Notes,
+                2000,
+                "Notes");
+
+        var effects =
+            values.EffectComponents
+                .OrderBy(
+                    x => x.SortOrder)
+                .ToList();
+
+        foreach (var effect
+                 in effects)
+        {
+            if (!Enum.IsDefined(
+                    typeof(SpellEffectType),
+                    effect.EffectType))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(effect.EffectType));
+            }
+
+            if (string.IsNullOrWhiteSpace(
+                    effect.Expression))
+            {
+                throw new ArgumentException(
+                    "Spell effect expression is required.");
+            }
+
+            if (effect.Expression.Trim().Length >
+                100)
+            {
+                throw new ArgumentException(
+                    "Spell effect expression cannot exceed 100 characters.");
+            }
+
+            if (effect.EffectType ==
+                    SpellEffectType.Damage &&
+                string.IsNullOrWhiteSpace(
+                    effect.DamageType))
+            {
+                throw new ArgumentException(
+                    "Damage type is required for damage effects.");
+            }
+
+            if (effect.DamageType?.Trim().Length >
+                100)
+            {
+                throw new ArgumentException(
+                    "Damage type cannot exceed 100 characters.");
+            }
+
+            if (effect.UpcastExpressionPerLevel?
+                    .Trim()
+                    .Length >
+                100)
+            {
+                throw new ArgumentException(
+                    "Upcast expression cannot exceed 100 characters.");
+            }
+
+            if (effect.CantripScalingExpression?
+                    .Trim()
+                    .Length >
+                100)
+            {
+                throw new ArgumentException(
+                    "Cantrip scaling expression cannot exceed 100 characters.");
+            }
+        }
+
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var now =
+                DateTime.UtcNow;
+
+            PlayerCharacterSpell spell;
+
+            if (spellId.HasValue &&
+                spellId.Value != Guid.Empty)
+            {
+                spell =
+                    db.PlayerCharacterSpells
+                        .SingleOrDefault(
+                            x =>
+                                x.Id ==
+                                    spellId.Value &&
+                                x.PlayerCharacterId ==
+                                    characterId)
+                    ?? throw new ArgumentException(
+                        "Spell was not found.",
+                        nameof(spellId));
+            }
+            else
+            {
+                var nextSortOrder =
+                    db.PlayerCharacterSpells
+                        .Where(
+                            x =>
+                                x.PlayerCharacterId ==
+                                    characterId &&
+                                x.Level ==
+                                    values.Level)
+                        .Select(
+                            x =>
+                                (int?)x.SortOrder)
+                        .Max() ?? -1;
+
+                spell =
+                    new PlayerCharacterSpell
+                    {
+                        Id =
+                            Guid.NewGuid(),
+
+                        PlayerCharacterId =
+                            characterId,
+
+                        SortOrder =
+                            nextSortOrder + 1,
+
+                        CreatedAtUtc =
+                            now
+                    };
+
+                db.PlayerCharacterSpells
+                    .Add(
+                        spell);
+            }
+
+            spell.Name =
+                name;
+
+            spell.Level =
+                values.Level;
+
+            spell.School =
+                school;
+
+            spell.CastingTime =
+                castingTime;
+
+            spell.Range =
+                range;
+
+            spell.Area =
+                area;
+
+            spell.Duration =
+                duration;
+
+            spell.HasVerbalComponent =
+                values.HasVerbalComponent;
+
+            spell.HasSomaticComponent =
+                values.HasSomaticComponent;
+
+            spell.HasMaterialComponent =
+                values.HasMaterialComponent;
+
+            spell.MaterialDescription =
+                values.HasMaterialComponent
+                    ? materialDescription
+                    : null;
+
+            spell.RequiresConcentration =
+                values.RequiresConcentration;
+
+            spell.IsRitual =
+                values.IsRitual;
+
+            spell.IsPrepared =
+                values.IsPrepared;
+
+            spell.HasSpellAttackRoll =
+                values.HasSpellAttackRoll;
+
+            spell.SavingThrowAbility =
+                values.SavingThrowAbility;
+
+            spell.Notes =
+                notes;
+
+            spell.UpdatedAtUtc =
+                now;
+
+            var existingEffects =
+                db.PlayerCharacterSpellEffectComponents
+                    .Where(
+                        x =>
+                            x.PlayerCharacterSpellId ==
+                                spell.Id)
+                    .ToList();
+
+            if (existingEffects.Count > 0)
+            {
+                db.PlayerCharacterSpellEffectComponents
+                    .RemoveRange(
+                        existingEffects);
+            }
+
+            var newEffects =
+                effects
+                    .Select(
+                        (effect, index) =>
+                            new PlayerCharacterSpellEffectComponent
+                            {
+                                Id =
+                                    Guid.NewGuid(),
+
+                                PlayerCharacterSpellId =
+                                    spell.Id,
+
+                                EffectType =
+                                    effect.EffectType,
+
+                                Expression =
+                                    effect.Expression.Trim(),
+
+                                DamageType =
+                                    effect.EffectType ==
+                                        SpellEffectType.Damage
+                                        ? effect.DamageType?.Trim()
+                                        : null,
+
+                                AddsSpellcastingAbilityModifier =
+                                    effect.AddsSpellcastingAbilityModifier,
+
+                                AdditionalBonus =
+                                    effect.AdditionalBonus,
+
+                                UpcastExpressionPerLevel =
+                                    values.Level == 0
+                                        ? null
+                                        : string.IsNullOrWhiteSpace(
+                                            effect.UpcastExpressionPerLevel)
+                                            ? null
+                                            : effect.UpcastExpressionPerLevel.Trim(),
+
+                                CantripScalingExpression =
+                                    values.Level != 0 ||
+                                    string.IsNullOrWhiteSpace(
+                                        effect.CantripScalingExpression)
+                                        ? null
+                                        : effect.CantripScalingExpression.Trim(),
+
+                                SortOrder =
+                                    index
+                            })
+                    .ToList();
+
+            if (newEffects.Count > 0)
+            {
+                db.PlayerCharacterSpellEffectComponents
+                    .AddRange(
+                        newEffects);
+            }
+
+            if (!spell.RequiresConcentration)
+            {
+                var spellcasting =
+                    db.PlayerCharacterSpellcastings
+                        .SingleOrDefault(
+                            x =>
+                                x.PlayerCharacterId ==
+                                characterId);
+
+                if (spellcasting?.ActiveConcentrationSpellId ==
+                    spell.Id)
+                {
+                    spellcasting.ActiveConcentrationSpellId =
+                        null;
+
+                    spellcasting.UpdatedAtUtc =
+                        now;
+                }
+            }
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+
+            return spell;
+        }
+    }
+
+    public void DeleteSpell(
+    Guid characterId,
+    Guid spellId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var spell =
+                db.PlayerCharacterSpells
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                spellId &&
+                            x.PlayerCharacterId ==
+                                characterId);
+
+            if (spell is null)
+            {
+                return;
+            }
+
+            var spellcasting =
+                db.PlayerCharacterSpellcastings
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId);
+
+            if (spellcasting?.ActiveConcentrationSpellId ==
+                spell.Id)
+            {
+                spellcasting.ActiveConcentrationSpellId =
+                    null;
+
+                spellcasting.UpdatedAtUtc =
+                    DateTime.UtcNow;
+            }
+
+            db.PlayerCharacterSpells
+                .Remove(
+                    spell);
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void CastSpell(
+        Guid characterId,
+        Guid spellId,
+        int? slotLevel,
+        bool castAsRitual = false)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var spell =
+                db.PlayerCharacterSpells
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                spellId &&
+                            x.PlayerCharacterId ==
+                                characterId)
+                ?? throw new ArgumentException(
+                    "Spell was not found.",
+                    nameof(spellId));
+
+            var spellcasting =
+                db.PlayerCharacterSpellcastings
+                    .Include(
+                        x => x.SpellSlots)
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId)
+                ?? throw new InvalidOperationException(
+                    "Spellcasting is not configured.");
+
+            if (castAsRitual)
+            {
+                if (!spell.IsRitual)
+                {
+                    throw new InvalidOperationException(
+                        "This spell cannot be cast as a ritual.");
+                }
+            }
+            else if (spell.Level > 0)
+            {
+                if (!slotLevel.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        "Choose a spell slot level.");
+                }
+
+                if (slotLevel.Value <
+                        spell.Level ||
+                    slotLevel.Value > 9)
+                {
+                    throw new InvalidOperationException(
+                        "The selected spell slot cannot cast this spell.");
+                }
+
+                var slot =
+                    spellcasting.SpellSlots
+                        .SingleOrDefault(
+                            x =>
+                                x.Level ==
+                                slotLevel.Value)
+                    ?? throw new InvalidOperationException(
+                        $"Level {slotLevel.Value} spell slots are not configured.");
+
+                if (slot.RemainingSlots <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"No level {slotLevel.Value} spell slots remain.");
+                }
+
+                slot.RemainingSlots--;
+            }
+            else if (slotLevel.HasValue)
+            {
+                throw new InvalidOperationException(
+                    "Cantrips do not use spell slots.");
+            }
+
+            var now =
+                DateTime.UtcNow;
+
+            if (spell.RequiresConcentration)
+            {
+                spellcasting.ActiveConcentrationSpellId =
+                    spell.Id;
+
+                spellcasting.UpdatedAtUtc =
+                    now;
+            }
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void EndConcentration(
+        Guid characterId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var spellcasting =
+                db.PlayerCharacterSpellcastings
+                    .SingleOrDefault(
+                        x =>
+                            x.PlayerCharacterId ==
+                            characterId);
+
+            if (spellcasting is null ||
+                !spellcasting.ActiveConcentrationSpellId.HasValue)
+            {
+                return;
+            }
+
+            var now =
+                DateTime.UtcNow;
+
+            spellcasting.ActiveConcentrationSpellId =
+                null;
+
+            spellcasting.UpdatedAtUtc =
+                now;
+
+            character.UpdatedAtUtc =
+                now;
+
+            db.SaveChanges();
+        }
+    }
+
+    public void ToggleSpellPrepared(
+        Guid characterId,
+        Guid spellId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var character =
+                db.PlayerCharacters
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var spell =
+                db.PlayerCharacterSpells
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                                spellId &&
+                            x.PlayerCharacterId ==
+                                characterId)
+                ?? throw new ArgumentException(
+                    "Spell was not found.",
+                    nameof(spellId));
+
+            spell.IsPrepared =
+                !spell.IsPrepared;
+
+            spell.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            character.UpdatedAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
         }
     }
 }

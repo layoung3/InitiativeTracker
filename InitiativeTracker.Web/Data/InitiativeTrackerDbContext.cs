@@ -52,6 +52,18 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PlayerCharacterAttackDamageComponent> PlayerCharacterAttackDamageComponents =>
         Set<PlayerCharacterAttackDamageComponent>();
 
+    public DbSet<PlayerCharacterSpellcasting> PlayerCharacterSpellcastings =>
+        Set<PlayerCharacterSpellcasting>();
+
+    public DbSet<PlayerCharacterSpell> PlayerCharacterSpells =>
+        Set<PlayerCharacterSpell>();
+
+    public DbSet<PlayerCharacterSpellSlot> PlayerCharacterSpellSlots =>
+        Set<PlayerCharacterSpellSlot>();
+
+    public DbSet<PlayerCharacterSpellEffectComponent> PlayerCharacterSpellEffectComponents =>
+        Set<PlayerCharacterSpellEffectComponent>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -391,6 +403,164 @@ public class InitiativeTrackerDbContext : DbContext
                         x => x.DamageComponents)
                     .HasForeignKey(
                         x => x.PlayerCharacterAttackId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterSpellcasting>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerCharacterSpellcasting");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.SpellcastingAbility)
+                    .IsRequired();
+
+                entity.HasIndex(
+                        x => x.PlayerCharacterId)
+                    .IsUnique();
+
+                entity.HasOne(
+                        x => x.PlayerCharacter)
+                    .WithOne(
+                        x => x.Spellcasting)
+                    .HasForeignKey<PlayerCharacterSpellcasting>(
+                        x => x.PlayerCharacterId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterSpell>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerCharacterSpell");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(150);
+
+                entity.Property(
+                        x => x.School)
+                    .HasMaxLength(50);
+
+                entity.Property(
+                        x => x.CastingTime)
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.Range)
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.Area)
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.Duration)
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.MaterialDescription)
+                    .HasMaxLength(500);
+
+                entity.Property(
+                        x => x.Notes)
+                    .HasMaxLength(2000);
+
+                entity.HasIndex(
+                    x => new
+                    {
+                        x.PlayerCharacterId,
+                        x.Level,
+                        x.SortOrder
+                    });
+
+                entity.HasOne(
+                        x => x.PlayerCharacter)
+                    .WithMany(
+                        x => x.Spells)
+                    .HasForeignKey(
+                        x => x.PlayerCharacterId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterSpellSlot>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerCharacterSpellSlot");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.HasIndex(
+                        x => new
+                        {
+                            x.PlayerCharacterSpellcastingId,
+                            x.Level
+                        })
+                    .IsUnique();
+
+                entity.HasOne(
+                        x => x.Spellcasting)
+                    .WithMany(
+                        x => x.SpellSlots)
+                    .HasForeignKey(
+                        x =>
+                            x.PlayerCharacterSpellcastingId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
+            });
+
+        modelBuilder.Entity<PlayerCharacterSpellEffectComponent>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerCharacterSpellEffectComponent");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.EffectType)
+                    .IsRequired();
+
+                entity.Property(
+                        x => x.Expression)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.DamageType)
+                    .HasMaxLength(100);
+
+                entity.Property(
+                        x => x.UpcastExpressionPerLevel)
+                    .HasMaxLength(100);
+
+                entity.HasIndex(
+                    x => new
+                    {
+                        x.PlayerCharacterSpellId,
+                        x.SortOrder
+                    });
+
+                entity.HasOne(
+                        x => x.Spell)
+                    .WithMany(
+                        x => x.EffectComponents)
+                    .HasForeignKey(
+                        x => x.PlayerCharacterSpellId)
                     .OnDelete(
                         DeleteBehavior.Cascade);
             });

@@ -30,7 +30,7 @@ public class CharacterModel : PageModel
         _encounterHub = encounterHub;
     }
 
-    public string? OpenEditor{ get; private set; }
+    public string? OpenEditor { get; private set; }
 
     public PlayerCharacter Character { get; private set; } = null!;
 
@@ -45,6 +45,20 @@ public class CharacterModel : PageModel
     public IReadOnlyList<Dnd5eAttackView> Attacks { get; private set; } = [];
 
     public IReadOnlyDictionary<Guid, PlayerCharacterAttack> CharacterAttacksById { get; private set; } = new Dictionary<Guid, PlayerCharacterAttack>();
+
+    public PlayerCharacterSpellcasting? Spellcasting { get; private set; }
+
+    public Dnd5eSpellcastingSummaryView? SpellcastingSummary { get; private set; }
+
+    public IReadOnlyList<PlayerCharacterSpell> Spells { get; private set; } = [];
+
+    public IReadOnlyDictionary<int, PlayerCharacterSpellSlot> SpellSlotsByLevel { get; private set; } = new Dictionary<int, PlayerCharacterSpellSlot>();
+
+    public IReadOnlyDictionary<Guid, PlayerCharacterSpell> SpellsById { get; private set; } = new Dictionary<Guid, PlayerCharacterSpell>();
+
+    public PlayerCharacterSpell? ActiveConcentrationSpell { get; private set; }
+
+    public string? OpenTab { get; private set; }
 
     public Combatant? EncounterCombatant { get; private set; }
 
@@ -103,10 +117,11 @@ public class CharacterModel : PageModel
     public string? OpenModal { get; private set; }
 
 
-    public IActionResult OnGet(Guid id, string? editor=null, string? modal=null)
+    public IActionResult OnGet(Guid id, string? editor = null, string? modal = null, string? tab = null)
     {
         OpenEditor = editor;
         OpenModal = modal;
+        OpenTab = tab;
 
         if (!TryGetPlayerProfileId(
                 out var profileId))
@@ -179,6 +194,49 @@ public class CharacterModel : PageModel
                 .OrderBy(
                     x => x.Name)
                 .ToList();
+
+        Spellcasting =
+            _characterService
+                .GetSpellcasting(
+                    character.Id);
+
+
+        Spells =
+            _characterService
+                .GetSpells(
+                    character.Id);
+
+        SpellsById =
+            Spells
+                .ToDictionary(
+                    x => x.Id);
+
+
+        if (Spellcasting?.ActiveConcentrationSpellId is Guid concentrationSpellId &&
+            SpellsById.TryGetValue(
+                concentrationSpellId,
+                out var activeConcentrationSpell))
+        {
+            ActiveConcentrationSpell =
+                activeConcentrationSpell;
+        }
+
+
+        if (Spellcasting is not null)
+        {
+            SpellcastingSummary =
+                Dnd5eSpellcastingCalculator
+                    .Calculate(
+                        character,
+                        Spellcasting);
+
+
+            SpellSlotsByLevel =
+                Spellcasting
+                    .SpellSlots
+                    .ToDictionary(
+                        x => x.Level);
+        }
 
         EncounterCombatant =
             _encounterState
@@ -482,7 +540,7 @@ public class CharacterModel : PageModel
                     .GetDisplayState());
     }
 
-    public async Task<IActionResult>OnPostAdjustHpAsync(Guid id, int amount)
+    public async Task<IActionResult> OnPostAdjustHpAsync(Guid id, int amount)
     {
         var ownershipResult =
             ValidateOwnedCharacter(
@@ -525,11 +583,12 @@ public class CharacterModel : PageModel
         return RedirectToPage(
             new
             {
-                id, editor = "hp"
+                id,
+                editor = "hp"
             });
     }
 
-    public async Task<IActionResult>OnPostSetHpAsync(Guid id, int? currentHp)
+    public async Task<IActionResult> OnPostSetHpAsync(Guid id, int? currentHp)
     {
         if (!currentHp.HasValue)
         {
@@ -581,11 +640,12 @@ public class CharacterModel : PageModel
         return RedirectToPage(
             new
             {
-                id, editor = "hp"
+                id,
+                editor = "hp"
             });
     }
 
-    public async Task<IActionResult>OnPostSetTemporaryHpAsync(Guid id, int temporaryHp)
+    public async Task<IActionResult> OnPostSetTemporaryHpAsync(Guid id, int temporaryHp)
     {
         var ownershipResult =
             ValidateOwnedCharacter(
@@ -628,7 +688,8 @@ public class CharacterModel : PageModel
         return RedirectToPage(
             new
             {
-                id, editor = "temp"
+                id,
+                editor = "temp"
             });
     }
 
@@ -1682,8 +1743,523 @@ public class CharacterModel : PageModel
             return $"{dice} - {Math.Abs(bonus)}";
         }
 
-
         return dice;
+    }
+
+    public PlayerCharacterSpellSlot GetSpellSlot(
+        int level)
+    {
+        return SpellSlotsByLevel
+            .GetValueOrDefault(
+                level);
+    }
+
+    public IReadOnlyList<int> GetVisibleSpellLevels()
+    {
+        var levels = new SortedSet<int>();
+
+        if (Spellcasting is not null)
+        {
+            levels.Add(0);
+        }
+
+        foreach (var spell
+                 in Spells)
+        {
+            levels.Add(
+                spell.Level);
+        }
+
+        foreach (var level
+                 in SpellSlotsByLevel.Keys)
+        {
+            levels.Add(
+                level);
+        }
+
+        return levels
+            .Where(
+                x =>
+                    x >= 0 &&
+                    x <= 9)
+            .ToList();
+    }
+
+    public string GetSpellLevelLabel(int level)
+    {
+        return level switch
+        {
+            0 => "Cantrips",
+            1 => "1st Level",
+            2 => "2nd Level",
+            3 => "3rd Level",
+            _ => $"{level}th Level"
+        };
+    }
+
+    public IActionResult OnPostSaveSpellcasting(
+        Guid id,
+        CharacterAbilityType spellcastingAbility,
+        int additionalSpellAttackBonus,
+        int additionalSpellSaveDcBonus,
+        List<SpellSlotMaximumInput>? spellSlots)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            spellSlots ??=
+                [];
+
+
+            var maximumSlots =
+                spellSlots
+                    .Where(
+                        x =>
+                            x.Level >= 1 &&
+                            x.Level <= 9)
+                    .GroupBy(
+                        x => x.Level)
+                    .ToDictionary(
+                        x => x.Key,
+                        x => x.Last().MaximumSlots);
+
+
+            _characterService
+                .SaveSpellcasting(
+                    character!.Id,
+                    spellcastingAbility,
+                    additionalSpellAttackBonus,
+                    additionalSpellSaveDcBonus,
+                    maximumSlots);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException
+                  or InvalidOperationException)
+        {
+            TempData["SpellError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public IActionResult OnPostAdjustSpellSlot(
+        Guid id,
+        int level,
+        int amount)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .AdjustSpellSlot(
+                    character!.Id,
+                    level,
+                    amount);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException
+                  or InvalidOperationException)
+        {
+            TempData["SpellError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public IActionResult OnPostRestoreAllSpellSlots(Guid id)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+
+        try
+        {
+            _characterService
+                .RestoreAllSpellSlots(
+                    character!.Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["SpellError"] =
+                ex.Message;
+        }
+
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public string GetSpellRangeArea(
+    PlayerCharacterSpell spell)
+    {
+        var parts =
+            new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(
+                spell.Range))
+        {
+            parts.Add(
+                spell.Range);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                spell.Area))
+        {
+            parts.Add(
+                spell.Area);
+        }
+
+        return parts.Count == 0
+            ? "—"
+            : string.Join(
+                " · ",
+                parts);
+    }
+
+
+    public string GetSpellResolution(
+        PlayerCharacterSpell spell)
+    {
+        var parts =
+            new List<string>();
+
+        if (spell.HasSpellAttackRoll)
+        {
+            parts.Add(
+                "Spell Attack");
+        }
+
+        if (spell.SavingThrowAbility.HasValue)
+        {
+            parts.Add(
+                $"{GetAbilityAbbreviation(
+                    spell.SavingThrowAbility.Value)} Save");
+        }
+
+        return parts.Count == 0
+            ? "—"
+            : string.Join(
+                " · ",
+                parts);
+    }
+
+
+    public string GetSpellComponents(
+        PlayerCharacterSpell spell)
+    {
+        var parts =
+            new List<string>();
+
+        if (spell.HasVerbalComponent)
+        {
+            parts.Add("V");
+        }
+
+        if (spell.HasSomaticComponent)
+        {
+            parts.Add("S");
+        }
+
+        if (spell.HasMaterialComponent)
+        {
+            parts.Add("M");
+        }
+
+        return parts.Count == 0
+            ? "—"
+            : string.Join(
+                " ",
+                parts);
+    }
+
+
+    public string GetSpellDurationSummary(
+        PlayerCharacterSpell spell)
+    {
+        if (spell.RequiresConcentration)
+        {
+            return string.IsNullOrWhiteSpace(
+                    spell.Duration)
+                ? "C"
+                : $"C · {spell.Duration}";
+        }
+
+        return spell.Duration ?? string.Empty;
+    }
+
+    private int GetAbilityScore(
+    CharacterAbilityType ability)
+    {
+        return ability switch
+        {
+            CharacterAbilityType.Strength =>
+                Character.Strength,
+
+            CharacterAbilityType.Dexterity =>
+                Character.Dexterity,
+
+            CharacterAbilityType.Constitution =>
+                Character.Constitution,
+
+            CharacterAbilityType.Intelligence =>
+                Character.Intelligence,
+
+            CharacterAbilityType.Wisdom =>
+                Character.Wisdom,
+
+            CharacterAbilityType.Charisma =>
+                Character.Charisma,
+
+            _ =>
+                throw new ArgumentOutOfRangeException(
+                    nameof(ability),
+                    ability,
+                    null)
+        };
+    }
+
+    public int GetCantripScalingSteps()
+    {
+        return Character.Level switch
+        {
+            >= 17 => 3,
+            >= 11 => 2,
+            >= 5 => 1,
+            _ => 0
+        };
+    }
+
+    public int GetSpellEffectFlatBonus(
+        PlayerCharacterSpellEffectComponent effect)
+    {
+        var flatBonus =
+            effect.AdditionalBonus;
+
+        if (effect.AddsSpellcastingAbilityModifier &&
+            Spellcasting is not null)
+        {
+            flatBonus +=
+                GetAbilityModifier(
+                    GetAbilityScore(
+                        Spellcasting.SpellcastingAbility));
+        }
+
+        return flatBonus;
+    }
+
+    public string GetSpellEffectLabel(
+        PlayerCharacterSpellEffectComponent effect)
+    {
+        return effect.EffectType switch
+        {
+            SpellEffectType.Healing =>
+                "Healing",
+
+            SpellEffectType.Damage
+                when !string.IsNullOrWhiteSpace(
+                    effect.DamageType) =>
+                effect.DamageType,
+
+            _ =>
+                "Damage"
+        };
+    }
+
+    public string FormatSpellEffect(
+        PlayerCharacterSpellEffectComponent effect)
+    {
+        var flatBonus =
+            GetSpellEffectFlatBonus(
+                effect);
+
+        var expression =
+            effect.Expression;
+
+        if (flatBonus > 0)
+        {
+            expression +=
+                $" + {flatBonus}";
+        }
+        else if (flatBonus < 0)
+        {
+            expression +=
+                $" - {Math.Abs(flatBonus)}";
+        }
+
+        if (SpellsById.TryGetValue(
+                effect.PlayerCharacterSpellId,
+                out var spell) &&
+            spell.Level == 0 &&
+            !string.IsNullOrWhiteSpace(
+                effect.CantripScalingExpression))
+        {
+            var scalingSteps =
+                GetCantripScalingSteps();
+
+            if (scalingSteps == 1)
+            {
+                expression +=
+                    $" + {effect.CantripScalingExpression}";
+            }
+            else if (scalingSteps > 1)
+            {
+                expression +=
+                    $" + {scalingSteps} × {effect.CantripScalingExpression}";
+            }
+        }
+
+        var result =
+            $"{expression} {GetSpellEffectLabel(effect)}";
+
+        if (SpellsById.TryGetValue(
+                effect.PlayerCharacterSpellId,
+                out var parentSpell) &&
+            parentSpell.Level > 0 &&
+            !string.IsNullOrWhiteSpace(
+                effect.UpcastExpressionPerLevel))
+        {
+            result +=
+                $" (+{effect.UpcastExpressionPerLevel}/lv)";
+        }
+
+        return result;
+    }
+
+    public string GetSpellConfigurationJson(
+        Guid spellId)
+    {
+        if (!SpellsById.TryGetValue(
+                spellId,
+                out var spell))
+        {
+            return string.Empty;
+        }
+
+        var castSlots =
+            SpellSlotsByLevel
+                .Values
+                .Where(
+                    x =>
+                        spell.Level > 0 &&
+                        x.Level >= spell.Level)
+                .OrderBy(
+                    x => x.Level)
+                .Select(
+                    x =>
+                        new
+                        {
+                            level =
+                                x.Level,
+
+                            remainingSlots =
+                                x.RemainingSlots,
+
+                            maximumSlots =
+                                x.MaximumSlots
+                        })
+                .ToList();
+
+        return JsonSerializer.Serialize(
+            new
+            {
+                id = spell.Id,
+                name = spell.Name,
+                level = spell.Level,
+                levelLabel = GetSpellLevelLabel(spell.Level),
+                school = spell.School,
+                castingTime = spell.CastingTime,
+                range = spell.Range,
+                area = spell.Area,
+                rangeArea = GetSpellRangeArea(spell),
+                duration = spell.Duration,
+                hasVerbalComponent = spell.HasVerbalComponent,
+                hasSomaticComponent = spell.HasSomaticComponent,
+                hasMaterialComponent = spell.HasMaterialComponent,
+                components = GetSpellComponents(spell),
+                materialDescription = spell.MaterialDescription,
+                requiresConcentration = spell.RequiresConcentration,
+                isRitual = spell.IsRitual,
+                isPrepared = spell.IsPrepared,
+                hasSpellAttackRoll = spell.HasSpellAttackRoll,
+                savingThrowAbility = spell.SavingThrowAbility?.ToString(),
+                resolution = GetSpellResolution(spell),
+                notes = spell.Notes,
+                cantripScalingSteps = spell.Level == 0 ? GetCantripScalingSteps() : 0,
+                activeConcentrationSpellId = Spellcasting?.ActiveConcentrationSpellId,
+                activeConcentrationSpellName = ActiveConcentrationSpell?.Name,
+                castSlots,
+                effects =
+                    spell.EffectComponents
+                        .OrderBy(x => x.SortOrder)
+                        .Select(
+                            x => new
+                            {
+                                effectType = x.EffectType.ToString(),
+                                expression = x.Expression,
+                                damageType = x.DamageType,
+                                effectLabel = GetSpellEffectLabel(x),
+                                addsSpellcastingAbilityModifier = x.AddsSpellcastingAbilityModifier,
+                                additionalBonus = x.AdditionalBonus,
+                                flatBonus = GetSpellEffectFlatBonus(x),
+                                upcastExpressionPerLevel = x.UpcastExpressionPerLevel,
+                                cantripScalingExpression = x.CantripScalingExpression,
+                                display = FormatSpellEffect(x)
+                            })
+                        .ToList()
+            });
     }
 
 
@@ -1713,6 +2289,279 @@ public class CharacterModel : PageModel
             _ =>
                 "—"
         };
+    }
+
+    public IActionResult OnPostSaveSpell(
+    Guid id,
+    Guid? spellId,
+    string spellName,
+    int spellLevel,
+    string? school,
+    string? castingTime,
+    string? range,
+    string? area,
+    string? duration,
+    bool hasVerbalComponent,
+    bool hasSomaticComponent,
+    bool hasMaterialComponent,
+    string? materialDescription,
+    bool requiresConcentration,
+    bool isRitual,
+    bool isPrepared,
+    bool hasSpellAttackRoll,
+    CharacterAbilityType? savingThrowAbility,
+    string? spellNotes,
+    List<SpellEffectInput>? effects)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        try
+        {
+            effects ??=
+                [];
+
+            var spell =
+                new PlayerCharacterSpell
+                {
+                    Name =
+                        spellName,
+
+                    Level =
+                        spellLevel,
+
+                    School =
+                        school,
+
+                    CastingTime =
+                        castingTime,
+
+                    Range =
+                        range,
+
+                    Area =
+                        area,
+
+                    Duration =
+                        duration,
+
+                    HasVerbalComponent =
+                        hasVerbalComponent,
+
+                    HasSomaticComponent =
+                        hasSomaticComponent,
+
+                    HasMaterialComponent =
+                        hasMaterialComponent,
+
+                    MaterialDescription =
+                        materialDescription,
+
+                    RequiresConcentration =
+                        requiresConcentration,
+
+                    IsRitual =
+                        isRitual,
+
+                    IsPrepared =
+                        isPrepared,
+
+                    HasSpellAttackRoll =
+                        hasSpellAttackRoll,
+
+                    SavingThrowAbility =
+                        savingThrowAbility,
+
+                    Notes =
+                        spellNotes,
+
+                    EffectComponents =
+                        effects
+                            .Select(
+                                (effect, index) =>
+                                    new PlayerCharacterSpellEffectComponent
+                                    {
+                                        EffectType =
+                                            effect.EffectType,
+
+                                        Expression =
+                                            effect.Expression,
+
+                                        DamageType =
+                                            effect.DamageType,
+
+                                        AddsSpellcastingAbilityModifier =
+                                            effect.AddsSpellcastingAbilityModifier,
+
+                                        AdditionalBonus =
+                                            effect.AdditionalBonus,
+
+                                        UpcastExpressionPerLevel =
+                                            effect.UpcastExpressionPerLevel,
+
+                                        CantripScalingExpression =
+                                            effect.CantripScalingExpression,
+
+                                        SortOrder =
+                                            index
+                                    })
+                            .ToList()
+                };
+
+            _characterService
+                .SaveSpell(
+                    character!.Id,
+                    spellId,
+                    spell);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException
+                  or InvalidOperationException)
+        {
+            TempData["SpellError"] =
+                ex.Message;
+        }
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public IActionResult OnPostCastSpell(
+        Guid id,
+        Guid spellId,
+        int? slotLevel,
+        bool castAsRitual)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        try
+        {
+            _characterService
+                .CastSpell(
+                    character!.Id,
+                    spellId,
+                    slotLevel,
+                    castAsRitual);
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or ArgumentOutOfRangeException
+                  or InvalidOperationException)
+        {
+            TempData["SpellError"] =
+                ex.Message;
+        }
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public IActionResult OnPostEndConcentration(
+        Guid id)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        _characterService
+            .EndConcentration(
+                character!.Id);
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public IActionResult OnPostDeleteSpell(
+    Guid id,
+    Guid spellId)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        _characterService
+            .DeleteSpell(
+                character!.Id,
+                spellId);
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
+    }
+
+    public IActionResult OnPostToggleSpellPrepared(
+        Guid id,
+        Guid spellId)
+    {
+        var ownershipResult =
+            ValidateOwnedCharacter(
+                id,
+                out var character,
+                out _);
+
+        if (ownershipResult is not null)
+        {
+            return ownershipResult;
+        }
+
+        _characterService
+            .ToggleSpellPrepared(
+                character!.Id,
+                spellId);
+
+        return RedirectToPage(
+            new
+            {
+                id,
+                tab = "spells"
+            });
     }
 
     public class CharacterConditionView
@@ -1774,6 +2623,58 @@ public class CharacterModel : PageModel
         }
 
         public int AdditionalDamageBonus
+        {
+            get;
+            set;
+        }
+    }
+
+    public class SpellSlotMaximumInput
+    {
+        public int Level { get; set; }
+
+        public int MaximumSlots { get; set; }
+    }
+
+    public class SpellEffectInput
+    {
+        public SpellEffectType EffectType
+        {
+            get;
+            set;
+        }
+
+        public string Expression
+        {
+            get;
+            set;
+        } = string.Empty;
+
+        public string? DamageType
+        {
+            get;
+            set;
+        }
+
+        public bool AddsSpellcastingAbilityModifier
+        {
+            get;
+            set;
+        }
+
+        public int AdditionalBonus
+        {
+            get;
+            set;
+        }
+
+        public string? UpcastExpressionPerLevel
+        {
+            get;
+            set;
+        }
+
+        public string? CantripScalingExpression
         {
             get;
             set;

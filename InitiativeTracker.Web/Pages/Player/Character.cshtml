@@ -565,8 +565,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#hpEditor"
                                     aria-expanded="@(Model.OpenEditor == "hp"
-                                                                                                                                            ? "true"
-                                                                                                                                            : "false")"
+                                                                                                                                                                                                                                            ? "true"
+                                                                                                                                                                                                                                            : "false")"
                                     aria-controls="hpEditor">
 
                                 <span class="combat-stat-value">
@@ -616,8 +616,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#temporaryHpEditor"
                                     aria-expanded="@(Model.OpenEditor == "temp"
-                                                                                                                                    ? "true"
-                                                                                                                                    : "false")"
+                                                                                                                                                                                                                                    ? "true"
+                                                                                                                                                                                                                                    : "false")"
                                     aria-controls="temporaryHpEditor">
 
                                 <span class="combat-stat-value">
@@ -1005,6 +1005,14 @@
                ATTACKS / SPELLS
                ======================================================== *@
 
+            @{
+                var spellsTabActive =
+                    string.Equals(
+                        Model.OpenTab,
+                        "spells",
+                        StringComparison.OrdinalIgnoreCase);
+            }
+
             <div class="card mb-3">
 
                 <div class="card-header
@@ -1018,14 +1026,14 @@
                         <li class="nav-item"
                             role="presentation">
 
-                            <button class="nav-link active"
+                            <button class="nav-link @(spellsTabActive ? "" : "active")"
                                     id="attacks-tab"
                                     data-bs-toggle="tab"
                                     data-bs-target="#attacks-panel"
                                     type="button"
                                     role="tab"
                                     aria-controls="attacks-panel"
-                                    aria-selected="true">
+                                    aria-selected="@(spellsTabActive ? "false" : "true")">
                                 Attacks
                             </button>
 
@@ -1035,14 +1043,14 @@
                         <li class="nav-item"
                             role="presentation">
 
-                            <button class="nav-link"
+                            <button class="nav-link @(spellsTabActive ? "active" : "")"
                                     id="spells-tab"
                                     data-bs-toggle="tab"
                                     data-bs-target="#spells-panel"
                                     type="button"
                                     role="tab"
                                     aria-controls="spells-panel"
-                                    aria-selected="false">
+                                    aria-selected="@(spellsTabActive ? "true" : "false")">
                                 Spells
                             </button>
 
@@ -1061,8 +1069,7 @@
 
                     <div class="tab-pane
                         fade
-                        show
-                        active"
+                        @(spellsTabActive ? "" : "show active")"
                          id="attacks-panel"
                          role="tabpanel"
                          aria-labelledby="attacks-tab"
@@ -1134,7 +1141,7 @@
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#characterAttackModal"
                                                             data-attack-config="@Model.GetCharacterAttackConfigurationJson(
-                                                                                                                        attack.SourceId)">
+                                                                                                                                                                                                                                                                                                attack.SourceId)">
                                                         Edit
                                                     </button>
                                                 }
@@ -1248,19 +1255,536 @@
                        ==================================================== *@
 
                     <div class="tab-pane
-                        fade"
+                        fade
+                        @(spellsTabActive ? "show active" : "")"
                          id="spells-panel"
                          role="tabpanel"
                          aria-labelledby="spells-tab"
                          tabindex="0">
 
-                        <div class="card-body
-                            text-muted">
+                        @if (TempData["SpellError"]
+                             is string spellError)
+                        {
+                            <div class="alert
+                                alert-danger
+                                rounded-0
+                                border-start-0
+                                border-end-0
+                                border-top-0
+                                mb-0">
+                                @spellError
+                            </div>
+                        }
 
-                            Spellcasting will appear here once
-                            spells are added to the character.
 
-                        </div>
+                        @if (Model.Spellcasting is null)
+                        {
+                            <div class="card-body">
+
+                                <div class="text-muted mb-3">
+                                    Spellcasting has not been configured.
+                                </div>
+
+
+                                <button type="button"
+                                        class="btn
+                                    btn-sm
+                                    btn-outline-primary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#spellcastingModal">
+                                    Configure Spellcasting
+                                </button>
+
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="spellcasting-summary">
+
+                                <div class="spellcasting-stat">
+
+                                    <span class="spellcasting-stat-value">
+                                        @Model.GetAbilityAbbreviation(
+                                            Model.SpellcastingSummary!.Ability)
+                                    </span>
+
+                                    <span class="spellcasting-stat-label">
+                                        Ability
+                                    </span>
+
+                                </div>
+
+
+                                <div class="spellcasting-stat">
+
+                                    <span class="spellcasting-stat-value">
+                                        @Model.FormatBonus(
+                                            Model.SpellcastingSummary.SpellAttackBonus)
+                                    </span>
+
+                                    <span class="spellcasting-stat-label">
+                                        Spell Attack
+                                    </span>
+
+                                </div>
+
+
+                                <div class="spellcasting-stat">
+
+                                    <span class="spellcasting-stat-value">
+                                        @Model.SpellcastingSummary.SpellSaveDc
+                                    </span>
+
+                                    <span class="spellcasting-stat-label">
+                                        Save DC
+                                    </span>
+
+                                </div>
+
+
+                                <div class="spellcasting-summary-actions">
+
+                                    <button type="button"
+                                            class="btn
+                                        btn-sm
+                                        btn-outline-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#spellcastingModal">
+                                        Configure
+                                    </button>
+
+
+                                    @if (Model.SpellSlotsByLevel.Count > 0)
+                                    {
+                                        <form method="post"
+                                              asp-page-handler="RestoreAllSpellSlots"
+                                              asp-route-id="@Model.Character.Id"
+                                              data-preserve-inventory-scroll="true">
+
+                                            <button type="submit"
+                                                    class="btn
+                                                btn-sm
+                                                btn-outline-secondary">
+                                                Restore All
+                                            </button>
+
+                                        </form>
+                                    }
+
+                                </div>
+
+                            </div>
+
+
+                            @if (Model.ActiveConcentrationSpell is not null)
+                            {
+                                var concentrationConfig =
+                                    Model.GetSpellConfigurationJson(
+                                        Model.ActiveConcentrationSpell.Id);
+
+                                <div class="spell-concentration-banner">
+
+                                    <div class="spell-concentration-current">
+                                        <span class="spell-concentration-label">
+                                            Concentrating
+                                        </span>
+
+                                        <button type="button"
+                                                class="btn
+                                            btn-link
+                                            spell-concentration-name"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#spellDetailsModal"
+                                                data-spell-config="@concentrationConfig">
+                                            @Model.ActiveConcentrationSpell.Name
+                                        </button>
+                                    </div>
+
+                                    <form method="post"
+                                          asp-page-handler="EndConcentration"
+                                          asp-route-id="@Model.Character.Id"
+                                          data-preserve-inventory-scroll="true">
+
+                                        <button type="submit"
+                                                class="btn
+                                            btn-sm
+                                            btn-outline-secondary">
+                                            End
+                                        </button>
+
+                                    </form>
+
+                                </div>
+                            }
+
+
+                            <div class="spell-toolbar">
+
+                                <div class="form-check
+                                    form-switch
+                                    mb-0">
+
+                                    <input type="checkbox"
+                                           class="form-check-input"
+                                           role="switch"
+                                           id="preparedSpellsOnly" />
+
+                                    <label class="form-check-label"
+                                           for="preparedSpellsOnly">
+                                        Prepared Only
+                                    </label>
+
+                                </div>
+
+
+                                <button type="button"
+                                        class="btn
+                                    btn-sm
+                                    btn-outline-primary"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#spellModal"
+                                        data-spell-config="">
+                                    + Add Spell
+                                </button>
+
+                            </div>
+
+
+                            @foreach (var level
+                                      in Model.GetVisibleSpellLevels())
+                            {
+                                var slot =
+                                    level == 0
+                                        ? null
+                                        : Model.GetSpellSlot(
+                                            level);
+
+                                var levelSpells =
+                                    Model.Spells
+                                        .Where(
+                                            x =>
+                                                x.Level ==
+                                                level)
+                                        .OrderBy(
+                                            x => x.SortOrder)
+                                        .ThenBy(
+                                            x => x.Name)
+                                        .ToList();
+
+
+                                var spellLevelCollapseId = $"spell-level-{level}";
+
+                                <div class="spell-level-section">
+
+                                    <div class="spell-level-header">
+
+                                        <button type="button"
+                                                class="spell-level-toggle"
+                                                data-bs-toggle="collapse"
+                                                data-bs-target="#@spellLevelCollapseId"
+                                                aria-expanded="true"
+                                                aria-controls="@spellLevelCollapseId">
+
+                                            <span class="spell-level-chevron"
+                                                  aria-hidden="true">
+                                                ▾
+                                            </span>
+
+                                            <span class="fw-semibold">
+                                                @Model.GetSpellLevelLabel(
+                                                    level)
+                                            </span>
+
+                                            @if (levelSpells.Count > 0)
+                                            {
+                                                <span class="spell-level-count">
+                                                    @levelSpells.Count
+                                                </span>
+                                            }
+
+                                        </button>
+
+
+                                        @*
+                                         * Keep slot controls OUTSIDE the collapse
+                                         * toggle so they remain usable even when
+                                         * this spell level is collapsed.
+                                         *@
+                                        @if (slot is not null)
+                                        {
+                                            <div class="spell-slot-control">
+
+                                                <form method="post"
+                                                      asp-page-handler="AdjustSpellSlot"
+                                                      asp-route-id="@Model.Character.Id"
+                                                      data-preserve-inventory-scroll="true">
+
+                                                    <input type="hidden"
+                                                           name="level"
+                                                           value="@level" />
+
+                                                    <button type="submit"
+                                                            name="amount"
+                                                            value="-1"
+                                                            class="btn
+                                                        btn-sm
+                                                        btn-outline-secondary
+                                                        spell-slot-button"
+                                                            disabled="@(slot.RemainingSlots <= 0)"
+                                                            title="Use one spell slot">
+                                                        −
+                                                    </button>
+
+                                                </form>
+
+
+                                                <span class="spell-slot-count">
+                                                    Slots
+                                                    <strong>
+                                                        @slot.RemainingSlots/@slot.MaximumSlots
+                                                    </strong>
+                                                </span>
+
+
+                                                <form method="post"
+                                                      asp-page-handler="AdjustSpellSlot"
+                                                      asp-route-id="@Model.Character.Id"
+                                                      data-preserve-inventory-scroll="true">
+
+                                                    <input type="hidden"
+                                                           name="level"
+                                                           value="@level" />
+
+                                                    <button type="submit"
+                                                            name="amount"
+                                                            value="1"
+                                                            class="btn
+                                                        btn-sm
+                                                        btn-outline-secondary
+                                                        spell-slot-button"
+                                                            disabled="@(slot.RemainingSlots >= slot.MaximumSlots)"
+                                                            title="Restore one spell slot">
+                                                        +
+                                                    </button>
+
+                                                </form>
+
+                                            </div>
+                                        }
+
+                                    </div>
+
+
+                                    <div id="@spellLevelCollapseId"
+                                         class="collapse show"
+                                         data-spell-level="@level">
+
+                                        @if (levelSpells.Count == 0)
+                                        {
+                                            <div class="spell-level-empty">
+                                                No spells added.
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="list-group
+                                                list-group-flush">
+
+                                                @foreach (var spell
+                                                          in levelSpells)
+                                                {
+                                                    var spellConfigJson =
+                                                        Model.GetSpellConfigurationJson(
+                                                            spell.Id);
+
+                                                    var spellComponents =
+                                                        Model.GetSpellComponents(
+                                                            spell);
+
+                                                    var spellResolution =
+                                                        Model.GetSpellResolution(
+                                                            spell);
+
+                                                    var spellRangeArea =
+                                                        Model.GetSpellRangeArea(
+                                                            spell);
+
+                                                    <div class="list-group-item
+                                                        spell-row
+                                                        @(spell.IsPrepared
+                                                            ? ""
+                                                            : "spell-unprepared")"
+                                                         data-spell-row
+                                                         data-spell-prepared="@spell.IsPrepared.ToString().ToLowerInvariant()">
+
+                                                        <div class="spell-primary">
+
+                                                            <form method="post"
+                                                                  asp-page-handler="ToggleSpellPrepared"
+                                                                  asp-route-id="@Model.Character.Id"
+                                                                  data-preserve-inventory-scroll="true"
+                                                                  class="spell-prepared-form">
+
+                                                                <input type="hidden"
+                                                                       name="spellId"
+                                                                       value="@spell.Id" />
+
+                                                                <button type="submit"
+                                                                        class="spell-prepared-toggle
+                                                                    @(spell.IsPrepared
+                                                                        ? "is-prepared"
+                                                                        : "")"
+                                                                        title="@(spell.IsPrepared
+                                                                                                                                                ? "Mark unprepared"
+                                                                                                                                                : "Mark prepared")"
+                                                                        aria-label="@(spell.IsPrepared
+                                                                                                                                                ? $"Mark {spell.Name} unprepared"
+                                                                                                                                                : $"Mark {spell.Name} prepared")">
+
+                                                                    @(spell.IsPrepared
+                                                                        ? "✓"
+                                                                        : "○")
+
+                                                                </button>
+
+                                                            </form>
+
+
+                                                            <button type="button"
+                                                                    class="btn
+                                                                btn-link
+                                                                spell-name-button"
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#spellDetailsModal"
+                                                                    data-spell-config="@spellConfigJson">
+                                                                @spell.Name
+                                                            </button>
+
+
+                                                            @if (spellComponents != "—")
+                                                            {
+                                                                <span class="spell-components-inline">
+                                                                    (@spellComponents)
+                                                                </span>
+                                                            }
+
+
+                                                            @if (spell.RequiresConcentration)
+                                                            {
+                                                                <span class="spell-marker"
+                                                                      title="Concentration">
+                                                                    C
+                                                                </span>
+                                                            }
+
+
+                                                            @if (spell.IsRitual)
+                                                            {
+                                                                <span class="spell-marker"
+                                                                      title="Ritual">
+                                                                    R
+                                                                </span>
+                                                            }
+
+                                                        </div>
+
+
+                                                        <div class="spell-quick-info">
+
+                                                            @if (!string.IsNullOrWhiteSpace(
+                                                                    spell.CastingTime))
+                                                            {
+                                                                <span>
+                                                                    @spell.CastingTime
+                                                                </span>
+                                                            }
+
+
+                                                            @if (spellResolution != "—")
+                                                            {
+                                                                <span>
+                                                                    @spellResolution
+                                                                </span>
+                                                            }
+
+
+                                                            @if (spellRangeArea != "—")
+                                                            {
+                                                                <span>
+                                                                    @spellRangeArea
+                                                                </span>
+                                                            }
+
+
+                                                            @if (!string.IsNullOrWhiteSpace(
+                                                                    spell.Duration))
+                                                            {
+                                                                <span>
+                                                                    @spell.Duration
+                                                                </span>
+                                                            }
+
+                                                        </div>
+
+
+                                                        <div class="spell-effect-actions">
+
+                                                            <div class="spell-effect-info">
+
+                                                                @if (spell.EffectComponents.Count == 0)
+                                                                {
+                                                                    <span class="text-muted">
+                                                                        —
+                                                                    </span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    @foreach (var effect
+                                                                              in spell.EffectComponents
+                                                                                  .OrderBy(
+                                                                                      x => x.SortOrder))
+                                                                    {
+                                                                        <div>
+                                                                            @Model.FormatSpellEffect(
+                                                                                effect)
+                                                                        </div>
+                                                                    }
+                                                                }
+
+                                                            </div>
+
+
+                                                            <button type="button"
+                                                                    class="btn
+                                                                btn-sm
+                                                                btn-outline-primary
+                                                                spell-cast-button"
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#spellCastModal"
+                                                                    data-spell-config="@spellConfigJson">
+                                                                Cast
+                                                            </button>
+
+                                                        </div>
+
+                                                    </div>
+                                                }
+
+                                            </div>
+
+
+                                            <div class="spell-level-empty
+                                                d-none"
+                                                 data-spell-filter-empty>
+                                                No prepared spells.
+                                            </div>
+                                        }
+
+                                    </div>
+
+                                </div>
+                            }
+                        }
 
                     </div>
 
@@ -1801,6 +2325,902 @@
             </div>
 
         </div>
+
+    </div>
+
+</div>
+
+@* ============================================================
+   SPELLCASTING MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="spellcastingModal"
+     tabindex="-1"
+     aria-labelledby="spellcastingModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-lg
+        modal-dialog-scrollable
+        modal-fullscreen-sm-down">
+
+        <form method="post"
+              asp-page-handler="SaveSpellcasting"
+              asp-route-id="@Model.Character.Id"
+              class="modal-content"
+              data-preserve-inventory-scroll="true">
+
+            <div class="modal-header">
+
+                <div>
+
+                    <h2 class="modal-title fs-5"
+                        id="spellcastingModalLabel">
+                        Configure Spellcasting
+                    </h2>
+
+                    <div class="small text-muted">
+                        @Model.Character.Name
+                    </div>
+
+                </div>
+
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+
+            <div class="modal-body">
+
+                <div class="row g-3 mb-4">
+
+                    <div class="col-12 col-sm-4">
+
+                        <label for="spellcastingAbility"
+                               class="form-label">
+                            Spellcasting Ability
+                        </label>
+
+                        <select id="spellcastingAbility"
+                                name="spellcastingAbility"
+                                class="form-select">
+
+                            @foreach (var ability
+                                      in Enum.GetValues<CharacterAbilityType>())
+                            {
+                                <option value="@ability"
+                                        selected="@(Model.Spellcasting?.SpellcastingAbility == ability)">
+                                    @ability
+                                </option>
+                            }
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="col-6 col-sm-4">
+
+                        <label for="additionalSpellAttackBonus"
+                               class="form-label">
+                            Attack Bonus
+                        </label>
+
+                        <input type="number"
+                               id="additionalSpellAttackBonus"
+                               name="additionalSpellAttackBonus"
+                               value="@(Model.Spellcasting?.AdditionalSpellAttackBonus ?? 0)"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="col-6 col-sm-4">
+
+                        <label for="additionalSpellSaveDcBonus"
+                               class="form-label">
+                            Save DC Bonus
+                        </label>
+
+                        <input type="number"
+                               id="additionalSpellSaveDcBonus"
+                               name="additionalSpellSaveDcBonus"
+                               value="@(Model.Spellcasting?.AdditionalSpellSaveDcBonus ?? 0)"
+                               class="form-control" />
+
+                    </div>
+
+                </div>
+
+
+                <div class="fw-semibold mb-1">
+                    Maximum Spell Slots
+                </div>
+
+                <div class="small text-muted mb-3">
+                    Leave a level at 0 if this character
+                    has no slots of that level.
+                </div>
+
+
+                <div class="spell-slot-config-grid">
+
+                    @for (var level = 1;
+                          level <= 9;
+                          level++)
+                    {
+                        var slot =
+                            Model.GetSpellSlot(
+                                level);
+
+                        var index =
+                            level - 1;
+
+
+                        <div>
+
+                            <label class="form-label
+                                small">
+                                @Model.GetSpellLevelLabel(
+                                    level)
+                            </label>
+
+                            <input type="hidden"
+                                   name="spellSlots[@index].Level"
+                                   value="@level" />
+
+                            <input type="number"
+                                   name="spellSlots[@index].MaximumSlots"
+                                   min="0"
+                                   value="@(slot?.MaximumSlots ?? 0)"
+                                   class="form-control
+                            form-control-sm" />
+
+                        </div>
+                    }
+
+                </div>
+
+            </div>
+
+
+            <div class="modal-footer">
+
+                <button type="button"
+                        class="btn
+                    btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+
+                <button type="submit"
+                        class="btn
+                    btn-primary">
+                    Save Spellcasting
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+@* ============================================================
+   SPELL DETAILS MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="spellDetailsModal"
+     tabindex="-1"
+     aria-labelledby="spellDetailsModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-lg
+        modal-dialog-scrollable
+        modal-fullscreen-sm-down">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <div>
+                    <h2 class="modal-title fs-5"
+                        id="spellDetailsModalLabel">
+                        Spell Details
+                    </h2>
+
+                    <div class="small text-muted"
+                         id="spellDetailsSubtitle">
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+
+            <div class="modal-body">
+
+                <div class="spell-details-badges mb-3"
+                     id="spellDetailsBadges">
+                </div>
+
+                <div class="spell-details-grid mb-4">
+
+                    <div class="spell-details-field">
+                        <span class="spell-details-label">
+                            Casting Time
+                        </span>
+                        <span id="spellDetailsCastingTime">—</span>
+                    </div>
+
+                    <div class="spell-details-field">
+                        <span class="spell-details-label">
+                            Range / Area
+                        </span>
+                        <span id="spellDetailsRangeArea">—</span>
+                    </div>
+
+                    <div class="spell-details-field">
+                        <span class="spell-details-label">
+                            Duration
+                        </span>
+                        <span id="spellDetailsDuration">—</span>
+                    </div>
+
+                    <div class="spell-details-field">
+                        <span class="spell-details-label">
+                            Attack / Save
+                        </span>
+                        <span id="spellDetailsResolution">—</span>
+                    </div>
+
+                    <div class="spell-details-field">
+                        <span class="spell-details-label">
+                            Components
+                        </span>
+                        <span id="spellDetailsComponents">—</span>
+                    </div>
+
+                </div>
+
+
+                <section class="mb-4">
+                    <h3 class="h6 mb-2">
+                        Effects
+                    </h3>
+
+                    <div id="spellDetailsEffects"
+                         class="spell-details-effects">
+                    </div>
+                </section>
+
+
+                <section class="mb-4 d-none"
+                         id="spellDetailsMaterialSection">
+                    <h3 class="h6 mb-2">
+                        Material Component
+                    </h3>
+
+                    <div id="spellDetailsMaterial"
+                         class="spell-details-text">
+                    </div>
+                </section>
+
+
+                <section class="d-none"
+                         id="spellDetailsNotesSection">
+                    <h3 class="h6 mb-2">
+                        Notes
+                    </h3>
+
+                    <div id="spellDetailsNotes"
+                         class="spell-details-text
+                        spell-details-notes">
+                    </div>
+                </section>
+
+            </div>
+
+
+            <div class="modal-footer">
+
+                <button type="button"
+                        class="btn
+                    btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Close
+                </button>
+
+                <button type="button"
+                        id="spellDetailsEdit"
+                        class="btn
+                    btn-outline-primary">
+                    Edit Spell
+                </button>
+
+                <button type="button"
+                        id="spellDetailsCast"
+                        class="btn
+                    btn-primary">
+                    Cast
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+@* ============================================================
+   CAST SPELL MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="spellCastModal"
+     tabindex="-1"
+     aria-labelledby="spellCastModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-dialog-centered">
+
+        <form method="post"
+              asp-page-handler="CastSpell"
+              asp-route-id="@Model.Character.Id"
+              id="spellCastForm"
+              class="modal-content"
+              data-preserve-inventory-scroll="true">
+
+            <input type="hidden"
+                   id="castSpellId"
+                   name="spellId" />
+
+            <div class="modal-header">
+
+                <div>
+                    <h2 class="modal-title fs-5"
+                        id="spellCastModalLabel">
+                        Cast Spell
+                    </h2>
+
+                    <div class="small text-muted"
+                         id="spellCastSubtitle">
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+
+            <div class="modal-body">
+
+                <div class="alert
+                    alert-warning
+                    py-2
+                    d-none"
+                     role="alert"
+                     id="spellCastConcentrationWarning">
+                </div>
+
+
+                <div id="spellCastSlotSection"
+                     class="mb-4">
+
+                    <div class="fw-semibold mb-2">
+                        Cast Using
+                    </div>
+
+                    <div id="spellCastSlots"
+                         class="spell-cast-slots">
+                    </div>
+
+                </div>
+
+
+                <div class="form-check mb-4 d-none"
+                     id="spellCastRitualContainer">
+
+                    <input type="checkbox"
+                           class="form-check-input"
+                           id="spellCastAsRitual"
+                           name="castAsRitual"
+                           value="true" />
+
+                    <label class="form-check-label"
+                           for="spellCastAsRitual">
+                        Cast as ritual
+                        <span class="text-muted">
+                            (no spell slot)
+                        </span>
+                    </label>
+
+                </div>
+
+
+                <div>
+                    <div class="fw-semibold mb-2">
+                        Effect at this casting level
+                    </div>
+
+                    <div id="spellCastEffects"
+                         class="spell-cast-effects">
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div class="modal-footer">
+
+                <button type="button"
+                        class="btn
+                    btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+                <button type="submit"
+                        id="confirmSpellCast"
+                        class="btn
+                    btn-primary">
+                    Cast Spell
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+@* ============================================================
+   ADD / EDIT SPELL MODAL
+   ============================================================ *@
+
+<div class="modal fade"
+     id="spellModal"
+     tabindex="-1"
+     aria-labelledby="spellModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog
+        modal-lg
+        modal-dialog-scrollable
+        modal-fullscreen-sm-down">
+
+        <form method="post"
+              asp-page-handler="SaveSpell"
+              asp-route-id="@Model.Character.Id"
+              id="spellForm"
+              class="modal-content"
+              data-preserve-inventory-scroll="true">
+
+            <input type="hidden"
+                   id="spellId"
+                   name="spellId" />
+
+
+            <div class="modal-header">
+
+                <div>
+
+                    <h2 class="modal-title fs-5"
+                        id="spellModalLabel">
+                        Add Spell
+                    </h2>
+
+                    <div class="small text-muted">
+                        @Model.Character.Name
+                    </div>
+
+                </div>
+
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+
+            <div class="modal-body">
+
+                <div class="row g-3 mb-4">
+
+                    <div class="col-8">
+
+                        <label for="spellName"
+                               class="form-label">
+                            Name
+                        </label>
+
+                        <input type="text"
+                               id="spellName"
+                               name="spellName"
+                               maxlength="150"
+                               class="form-control"
+                               required />
+
+                    </div>
+
+
+                    <div class="col-4">
+
+                        <label for="spellLevel"
+                               class="form-label">
+                            Level
+                        </label>
+
+                        <select id="spellLevel"
+                                name="spellLevel"
+                                class="form-select">
+
+                            <option value="0">
+                                Cantrip
+                            </option>
+
+                            @for (var level = 1;
+                                  level <= 9;
+                                  level++)
+                            {
+                                <option value="@level">
+                                    @level
+                                </option>
+                            }
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="col-6">
+
+                        <label for="spellSchool"
+                               class="form-label">
+                            School
+                        </label>
+
+                        <input type="text"
+                               id="spellSchool"
+                               name="school"
+                               maxlength="50"
+                               class="form-control"
+                               placeholder="Evocation" />
+
+                    </div>
+
+
+                    <div class="col-6
+                        d-flex
+                        align-items-end">
+
+                        <div class="form-check mb-2">
+
+                            <input type="checkbox"
+                                   id="spellPrepared"
+                                   name="isPrepared"
+                                   value="true"
+                                   class="form-check-input"
+                                   checked />
+
+                            <label for="spellPrepared"
+                                   class="form-check-label">
+                                Prepared
+                            </label>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <label for="spellCastingTime"
+                               class="form-label">
+                            Casting Time
+                        </label>
+
+                        <input type="text"
+                               id="spellCastingTime"
+                               name="castingTime"
+                               maxlength="100"
+                               class="form-control"
+                               placeholder="Action, Bonus Action, Reaction..." />
+
+                    </div>
+
+
+                    <div class="col-6 col-sm-3">
+
+                        <label for="spellRange"
+                               class="form-label">
+                            Range
+                        </label>
+
+                        <input type="text"
+                               id="spellRange"
+                               name="range"
+                               maxlength="100"
+                               class="form-control"
+                               placeholder="120 ft." />
+
+                    </div>
+
+
+                    <div class="col-6 col-sm-3">
+
+                        <label for="spellArea"
+                               class="form-label">
+                            Area
+                        </label>
+
+                        <input type="text"
+                               id="spellArea"
+                               name="area"
+                               maxlength="100"
+                               class="form-control"
+                               placeholder="20-ft radius" />
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <label for="spellDuration"
+                               class="form-label">
+                            Duration
+                        </label>
+
+                        <input type="text"
+                               id="spellDuration"
+                               name="duration"
+                               maxlength="100"
+                               class="form-control"
+                               placeholder="Instantaneous, 1 minute..." />
+
+                    </div>
+
+
+                    <div class="col-12 col-sm-6">
+
+                        <label for="spellSavingThrow"
+                               class="form-label">
+                            Saving Throw
+                        </label>
+
+                        <select id="spellSavingThrow"
+                                name="savingThrowAbility"
+                                class="form-select">
+
+                            <option value="">
+                                None
+                            </option>
+
+                            @foreach (var ability
+                                      in Enum.GetValues<CharacterAbilityType>())
+                            {
+                                <option value="@ability">
+                                    @Model.GetAbilityAbbreviation(
+                                        ability)
+                                </option>
+                            }
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+
+                <div class="row g-2 mb-4">
+
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="spellVerbal"
+                                   name="hasVerbalComponent"
+                                   value="true"
+                                   class="form-check-input" />
+                            <label for="spellVerbal"
+                                   class="form-check-label">V</label>
+                        </div>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="spellSomatic"
+                                   name="hasSomaticComponent"
+                                   value="true"
+                                   class="form-check-input" />
+                            <label for="spellSomatic"
+                                   class="form-check-label">S</label>
+                        </div>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="spellMaterial"
+                                   name="hasMaterialComponent"
+                                   value="true"
+                                   class="form-check-input" />
+                            <label for="spellMaterial"
+                                   class="form-check-label">M</label>
+                        </div>
+                    </div>
+
+                    <div class="col-auto ms-sm-3">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="spellConcentration"
+                                   name="requiresConcentration"
+                                   value="true"
+                                   class="form-check-input" />
+                            <label for="spellConcentration"
+                                   class="form-check-label">
+                                Concentration
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="spellRitual"
+                                   name="isRitual"
+                                   value="true"
+                                   class="form-check-input" />
+                            <label for="spellRitual"
+                                   class="form-check-label">
+                                Ritual
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="spellAttackRoll"
+                                   name="hasSpellAttackRoll"
+                                   value="true"
+                                   class="form-check-input" />
+                            <label for="spellAttackRoll"
+                                   class="form-check-label">
+                                Spell Attack
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <div class="mb-4"
+                     id="spellMaterialDescriptionContainer">
+
+                    <label for="spellMaterialDescription"
+                           class="form-label">
+                        Material Component
+                    </label>
+
+                    <input type="text"
+                           id="spellMaterialDescription"
+                           name="materialDescription"
+                           maxlength="500"
+                           class="form-control" />
+
+                </div>
+
+
+                <div class="d-flex
+                    justify-content-between
+                    align-items-center
+                    mb-2">
+
+                    <div>
+                        <div class="fw-semibold">
+                            Effects
+                        </div>
+                        <div class="small text-muted">
+                            Damage and healing shown on the compact spell row.
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            id="addSpellEffect"
+                            class="btn
+                        btn-sm
+                        btn-outline-secondary">
+                        + Add Effect
+                    </button>
+
+                </div>
+
+
+                <div id="spellEffects"
+                     class="d-flex
+                    flex-column
+                    gap-3
+                    mb-4">
+                </div>
+
+
+                <div>
+
+                    <label for="spellNotes"
+                           class="form-label">
+                        Notes
+                    </label>
+
+                    <textarea id="spellNotes"
+                              name="spellNotes"
+                              maxlength="2000"
+                              rows="4"
+                              class="form-control"></textarea>
+
+                </div>
+
+            </div>
+
+
+            <div class="modal-footer">
+
+                <button type="submit"
+                        id="deleteSpell"
+                        asp-page-handler="DeleteSpell"
+                        asp-route-id="@Model.Character.Id"
+                        class="btn
+                    btn-outline-danger
+                    me-auto"
+                        onclick="return confirm('Delete this spell?');">
+                    Delete
+                </button>
+
+
+                <button type="button"
+                        class="btn
+                    btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+
+                <button type="submit"
+                        class="btn
+                    btn-primary">
+                    Save Spell
+                </button>
+
+            </div>
+
+        </form>
 
     </div>
 
@@ -2755,8 +4175,8 @@
          aria-labelledby="conditionsModalLabel"
          aria-hidden="true"
          data-auto-open="@(Model.OpenModal == "conditions"
-                                     ? "true"
-                                     : "false")">
+                                                             ? "true"
+                                                             : "false")">
 
         <div class="modal-dialog
             modal-dialog-centered
@@ -3052,6 +4472,10 @@
     </script>
 
     <script src="~/js/player-attacks.js"
+            asp-append-version="true">
+    </script>
+
+    <script src="~/js/player-spells.js"
             asp-append-version="true">
     </script>
 }
