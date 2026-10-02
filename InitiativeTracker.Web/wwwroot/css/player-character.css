@@ -3,15 +3,88 @@
     --character-temp-hp: var(--bs-info);
     --character-inspiration: var(--bs-warning);
     --character-exhaustion: var(--bs-danger);
-}
-
-.character-sheet {
     max-width: 1400px;
+    padding-bottom: 6rem !important;
 }
 
 .character-header {
     overflow: hidden;
 }
+
+/* ==============================================================
+   CHARACTER DASHBOARD / PLAYER LAYOUT
+   ============================================================== */
+
+.character-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 6fr) minmax(0, 3fr);
+    align-items: start;
+    gap: 1rem;
+}
+
+.character-desktop-column {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.character-section {
+    min-width: 0;
+}
+
+.character-dashboard > .character-section--full {
+    grid-column: 1 / -1;
+}
+
+.character-section-card {
+    margin: 0 !important;
+}
+
+.character-layout-item {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3.5rem;
+}
+
+.character-layout-position {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.character-layout-name {
+    min-width: 0;
+    font-weight: 600;
+}
+
+.character-layout-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.character-layout-move {
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+
+/* ==============================================================
+   CHARACTER SUMMARY
+   ============================================================== */
 
 .character-portrait-placeholder {
     width: 5rem;
@@ -28,7 +101,7 @@
 }
 
 .ability-score {
-    min-height: 7rem;
+    min-height: 6rem;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -123,6 +196,11 @@
     gap: 1rem;
 }
 
+.saving-throw-row {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
 .save-proficiency,
 .skill-proficiency {
     width: 1rem;
@@ -157,15 +235,14 @@
     gap: 0.75rem;
 }
 
-
 .combat-stat-tile {
     width: 100%;
-    min-height: 6rem;
+    min-height: 5.5rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.75rem;
+    padding: 0.65rem;
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     background: var(--bs-tertiary-bg);
@@ -173,17 +250,14 @@
     text-align: center;
 }
 
-
 button.combat-stat-tile {
     font: inherit;
 }
-
 
 .combat-stat-action {
     cursor: pointer;
     transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
 }
-
 
     .combat-stat-action:hover,
     .combat-stat-action:focus-visible {
@@ -191,11 +265,9 @@ button.combat-stat-tile {
         background: var(--bs-secondary-bg);
     }
 
-
     .combat-stat-action:active {
         transform: scale(0.98);
     }
-
 
 .combat-stat-value {
     font-size: 1.65rem;
@@ -203,12 +275,10 @@ button.combat-stat-tile {
     line-height: 1.1;
 }
 
-
 .combat-stat-divider {
     color: var(--bs-secondary-color);
     font-weight: 400;
 }
-
 
 .combat-stat-label {
     margin-top: 0.35rem;
@@ -219,21 +289,17 @@ button.combat-stat-tile {
     color: var(--bs-secondary-color);
 }
 
-
 .combat-temp-hp .combat-stat-value {
     color: var(--character-temp-hp);
 }
-
 
 .combat-inspiration-form {
     margin: 0;
 }
 
-
 .inspiration-stat.is-active {
     border-color: var(--character-inspiration);
 }
-
 
 .inspiration-star {
     display: flex;
@@ -252,14 +318,12 @@ button.combat-stat-tile {
     color: var(--character-inspiration);
 }
 
-
 .combat-editor {
     padding: 1rem;
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
     background: var(--bs-tertiary-bg);
 }
-
 
 .combat-state-row {
     display: flex;
@@ -270,7 +334,6 @@ button.combat-stat-tile {
     margin-top: 1rem;
     border-top: 1px solid var(--bs-border-color);
 }
-
 
 /* ==============================================================
    EXHAUSTION
@@ -283,7 +346,6 @@ button.combat-stat-tile {
     margin: 0;
 }
 
-
 .exhaustion-clear,
 .exhaustion-pip {
     border: 1px solid var(--bs-border-color);
@@ -292,14 +354,12 @@ button.combat-stat-tile {
     cursor: pointer;
 }
 
-
 .exhaustion-clear {
     min-height: 2rem;
     padding: 0.25rem 0.5rem;
     border-radius: var(--bs-border-radius);
     font-size: 0.75rem;
 }
-
 
 .exhaustion-pip {
     width: 2rem;
@@ -313,19 +373,16 @@ button.combat-stat-tile {
     font-weight: 700;
 }
 
-
     .exhaustion-pip.is-active {
         border-color: var(--character-exhaustion);
         background: var(--character-exhaustion);
         color: var(--bs-white);
     }
 
-
 .exhaustion-clear.is-active {
     border-color: var(--character-accent);
     color: var(--character-accent);
 }
-
 
 .exhaustion-clear:hover,
 .exhaustion-pip:hover {
@@ -343,12 +400,10 @@ button.combat-stat-tile {
     gap: 1rem;
 }
 
-
 .attack-identity {
     min-width: 0;
     justify-self: start;
 }
-
 
 .attack-hit {
     min-width: 4rem;
@@ -356,13 +411,11 @@ button.combat-stat-tile {
     text-align: center;
 }
 
-
 .attack-hit-value {
     font-size: 1.2rem;
     font-weight: 700;
     line-height: 1.1;
 }
-
 
 .attack-hit-label {
     margin-top: 0.2rem;
@@ -373,13 +426,11 @@ button.combat-stat-tile {
     text-transform: uppercase;
 }
 
-
 .attack-damage {
     min-width: 0;
     justify-self: end;
     text-align: right;
 }
-
 
 .attack-damage-line {
     display: flex;
@@ -389,11 +440,9 @@ button.combat-stat-tile {
     gap: 0.35rem;
 }
 
-
     .attack-damage-line + .attack-damage-line {
         margin-top: 0.2rem;
     }
-
 
 /* ==============================================================
    MOBILE ATTACKS
@@ -406,16 +455,13 @@ button.combat-stat-tile {
         gap: 0.5rem;
     }
 
-
     .attack-hit {
         min-width: 3.25rem;
     }
 
-
     .attack-hit-value {
         font-size: 1.1rem;
     }
-
 
     .attack-damage {
         grid-column: auto;
@@ -437,12 +483,10 @@ button.combat-stat-tile {
     border-bottom: 1px solid var(--bs-border-color);
 }
 
-
 .spellcasting-stat {
     min-width: 0;
     text-align: center;
 }
-
 
 .spellcasting-stat-value {
     display: block;
@@ -450,7 +494,6 @@ button.combat-stat-tile {
     font-weight: 700;
     line-height: 1.1;
 }
-
 
 .spellcasting-stat-label {
     display: block;
@@ -462,7 +505,6 @@ button.combat-stat-tile {
     text-transform: uppercase;
 }
 
-
 .spellcasting-summary-actions {
     display: flex;
     flex-wrap: wrap;
@@ -470,12 +512,10 @@ button.combat-stat-tile {
     gap: 0.35rem;
 }
 
-
 .spell-level-section +
 .spell-level-section {
     border-top: 1px solid var(--bs-border-color);
 }
-
 
 .spell-level-header {
     min-height: 2.5rem;
@@ -486,7 +526,6 @@ button.combat-stat-tile {
     padding: 0.35rem 0.75rem;
     background: var(--bs-tertiary-bg);
 }
-
 
 .spell-level-toggle {
     min-width: 0;
@@ -501,11 +540,9 @@ button.combat-stat-tile {
     text-align: left;
 }
 
-
     .spell-level-toggle:hover {
         color: var(--bs-primary);
     }
-
 
 .spell-level-chevron {
     display: inline-block;
@@ -513,12 +550,10 @@ button.combat-stat-tile {
     transition: transform 0.15s ease;
 }
 
-
 .spell-level-toggle.collapsed
 .spell-level-chevron {
     transform: rotate(-90deg);
 }
-
 
 .spell-level-count {
     display: inline-flex;
@@ -534,18 +569,15 @@ button.combat-stat-tile {
     font-weight: 600;
 }
 
-
 .spell-slot-control {
     display: flex;
     align-items: center;
     gap: 0.4rem;
 }
 
-
     .spell-slot-control form {
         margin: 0;
     }
-
 
 .spell-slot-button {
     width: 1.9rem;
@@ -556,20 +588,17 @@ button.combat-stat-tile {
     justify-content: center;
 }
 
-
 .spell-slot-count {
     white-space: nowrap;
     color: var(--bs-secondary-color);
     font-size: 0.8rem;
 }
 
-
 .spell-level-empty {
     padding: 0.55rem 1rem;
     color: var(--bs-secondary-color);
     font-size: 0.85rem;
 }
-
 
 /* ==============================================================
    SPELL TOOLBAR / ROWS
@@ -584,7 +613,6 @@ button.combat-stat-tile {
     border-bottom: 1px solid var(--bs-border-color);
 }
 
-
 .spell-row {
     display: grid;
     grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1.2fr) minmax(9rem, 1fr);
@@ -594,11 +622,9 @@ button.combat-stat-tile {
     padding-bottom: 0.5rem;
 }
 
-
 .spell-unprepared {
     opacity: 0.62;
 }
-
 
 .spell-primary {
     min-width: 0;
@@ -608,12 +634,10 @@ button.combat-stat-tile {
     white-space: nowrap;
 }
 
-
 .spell-prepared-form {
     flex: 0 0 auto;
     margin: 0;
 }
-
 
 .spell-prepared-toggle {
     width: 1.45rem;
@@ -631,12 +655,10 @@ button.combat-stat-tile {
     font-weight: 700;
 }
 
-
     .spell-prepared-toggle.is-prepared {
         border-color: var(--bs-primary);
         color: var(--bs-primary);
     }
-
 
 .spell-name-button {
     min-width: 0;
@@ -651,12 +673,10 @@ button.combat-stat-tile {
     white-space: nowrap;
 }
 
-
     .spell-name-button:hover {
         color: var(--bs-primary);
         text-decoration: underline;
     }
-
 
 .spell-components-inline {
     flex: 0 0 auto;
@@ -666,14 +686,12 @@ button.combat-stat-tile {
     letter-spacing: 0.04em;
 }
 
-
 .spell-marker {
     flex: 0 0 auto;
     color: var(--bs-secondary-color);
     font-size: 0.7rem;
     font-weight: 800;
 }
-
 
 .spell-quick-info {
     min-width: 0;
@@ -685,13 +703,11 @@ button.combat-stat-tile {
     font-size: 0.78rem;
 }
 
-
     .spell-quick-info > span:not(:last-child)::after {
         content: "·";
         margin-left: 0.4rem;
         color: var(--bs-secondary-color);
     }
-
 
 .spell-effect-actions {
     min-width: 0;
@@ -701,7 +717,6 @@ button.combat-stat-tile {
     gap: 0.55rem;
 }
 
-
 .spell-effect-info {
     min-width: 0;
     color: var(--bs-body-color);
@@ -710,11 +725,9 @@ button.combat-stat-tile {
     text-align: right;
 }
 
-
 .spell-cast-button {
     flex: 0 0 auto;
 }
-
 
 @media (max-width: 767.98px) {
 
@@ -728,22 +741,18 @@ button.combat-stat-tile {
         padding-bottom: 0.42rem;
     }
 
-
     .spell-primary {
         grid-area: primary;
         gap: 0.25rem;
     }
 
-
     .spell-components-inline {
         font-size: 0.66rem;
     }
 
-
     .spell-marker {
         font-size: 0.66rem;
     }
-
 
     .spell-effect-actions {
         grid-area: effect;
@@ -751,17 +760,14 @@ button.combat-stat-tile {
         gap: 0.35rem;
     }
 
-
     .spell-effect-info {
         font-size: 0.76rem;
     }
-
 
     .spell-cast-button {
         padding: 0.2rem 0.45rem;
         font-size: 0.7rem;
     }
-
 
     .spell-quick-info {
         grid-area: quick;
@@ -770,12 +776,10 @@ button.combat-stat-tile {
         font-size: 0.7rem;
     }
 
-
         .spell-quick-info > span:not(:last-child)::after {
             margin-left: 0.3rem;
         }
 }
-
 
 /* ==============================================================
    ACTIVE CONCENTRATION
@@ -791,14 +795,12 @@ button.combat-stat-tile {
     background: var(--bs-tertiary-bg);
 }
 
-
 .spell-concentration-current {
     min-width: 0;
     display: flex;
     align-items: center;
     gap: 0.45rem;
 }
-
 
 .spell-concentration-label {
     flex: 0 0 auto;
@@ -808,7 +810,6 @@ button.combat-stat-tile {
     letter-spacing: 0.05em;
     text-transform: uppercase;
 }
-
 
 .spell-concentration-name {
     min-width: 0;
@@ -821,12 +822,10 @@ button.combat-stat-tile {
     white-space: nowrap;
 }
 
-
     .spell-concentration-name:hover {
         color: var(--bs-primary);
         text-decoration: underline;
     }
-
 
 /* ==============================================================
    SPELL DETAILS / CASTING
@@ -838,13 +837,11 @@ button.combat-stat-tile {
     gap: 0.35rem;
 }
 
-
 .spell-details-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
 }
-
 
 .spell-details-field {
     min-width: 0;
@@ -853,7 +850,6 @@ button.combat-stat-tile {
     border-radius: var(--bs-border-radius);
     background: var(--bs-tertiary-bg);
 }
-
 
 .spell-details-label {
     display: block;
@@ -865,14 +861,12 @@ button.combat-stat-tile {
     text-transform: uppercase;
 }
 
-
 .spell-details-effects,
 .spell-cast-effects {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
 }
-
 
 .spell-details-effect,
 .spell-cast-effect {
@@ -883,7 +877,6 @@ button.combat-stat-tile {
     font-weight: 600;
 }
 
-
 .spell-details-text {
     padding: 0.7rem 0.8rem;
     border: 1px solid var(--bs-border-color);
@@ -891,17 +884,14 @@ button.combat-stat-tile {
     background: var(--bs-tertiary-bg);
 }
 
-
 .spell-details-notes {
     white-space: pre-wrap;
 }
-
 
 .spell-cast-slots {
     display: grid;
     gap: 0.45rem;
 }
-
 
 .spell-cast-slot-option {
     display: flex;
@@ -913,18 +903,15 @@ button.combat-stat-tile {
     cursor: pointer;
 }
 
-
     .spell-cast-slot-option:has(input:checked) {
         border-color: var(--bs-primary);
         background: var(--bs-primary-bg-subtle);
     }
 
-
     .spell-cast-slot-option:has(input:disabled) {
         opacity: 0.55;
         cursor: not-allowed;
     }
-
 
 .spell-cast-slot-text {
     min-width: 0;
@@ -935,12 +922,10 @@ button.combat-stat-tile {
     gap: 1rem;
 }
 
-
     .spell-cast-slot-text > span {
         color: var(--bs-secondary-color);
         font-size: 0.8rem;
     }
-
 
 .spell-slot-config-grid {
     display: grid;
@@ -948,46 +933,38 @@ button.combat-stat-tile {
     gap: 0.75rem;
 }
 
-
 @media (max-width: 575.98px) {
 
     .spellcasting-summary {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-
     .spellcasting-summary-actions {
         grid-column: 1 / -1;
         justify-content: center;
     }
 
-
     .spell-details-grid {
         grid-template-columns: 1fr;
     }
-
 
     .spell-concentration-banner {
         padding-left: 0.75rem;
         padding-right: 0.75rem;
     }
 
-
     .spell-cast-slot-text {
         gap: 0.5rem;
     }
-
 
     .spell-row {
         grid-template-columns: minmax(0, 1fr) auto;
     }
 
-
         .spell-row
         .spell-quick-detail:last-child {
             display: none;
         }
-
 
     .spell-slot-config-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1014,11 +991,9 @@ button.combat-stat-tile {
     text-align: left;
 }
 
-
     .inventory-section-toggle:hover {
         background: var(--bs-secondary-bg);
     }
-
 
 .inventory-section-chevron {
     display: inline-block;
@@ -1026,12 +1001,10 @@ button.combat-stat-tile {
     transition: transform 0.15s ease;
 }
 
-
 .inventory-section-toggle.collapsed
 .inventory-section-chevron {
     transform: rotate(-90deg);
 }
-
 
 /* ==============================================================
    MOBILE
@@ -1055,17 +1028,14 @@ button.combat-stat-tile {
         font-size: 1.45rem;
     }
 
-
     .combat-state-row {
         flex-direction: column;
         align-items: stretch;
     }
 
-
     .exhaustion-control {
         justify-content: space-between;
     }
-
 
     .exhaustion-pip {
         width: 2.15rem;
@@ -1076,24 +1046,14 @@ button.combat-stat-tile {
 @media (max-width: 991.98px) {
 
     .skill-list {
-        font-size: 1rem;
+        font-size: 0.92rem;
     }
 
     .skill-row {
-        padding-top: 0.7rem;
-        padding-bottom: 0.7rem;
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
     }
 }
-
-
-/*
- * Keep the fixed combat bar from covering
- * the bottom of the character sheet.
- */
-.character-sheet {
-    padding-bottom: 6rem !important;
-}
-
 
 @media (max-width: 575.98px) {
 
@@ -1102,8 +1062,22 @@ button.combat-stat-tile {
     }
 }
 
-
 /* Mobile */
+
+@media (max-width: 991.98px) {
+
+    .character-dashboard {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .character-section,
+    .character-section--wide,
+    .character-section--full {
+        width: 100%;
+    }
+}
 
 @media (max-width: 767.98px) {
 
@@ -1115,7 +1089,7 @@ button.combat-stat-tile {
     }
 
     .ability-score {
-        min-height: 6rem;
+        min-height: 5.25rem;
     }
 
     .ability-modifier {

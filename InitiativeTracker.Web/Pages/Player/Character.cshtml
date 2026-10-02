@@ -89,10 +89,13 @@
                         ← Characters
                     </a>
 
-                    @*
-                        We'll enable this in the next
-                        checkpoint.
-                    *@
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#characterLayoutModal">
+                        Layout
+                    </button>
+
                     <a asp-page="/Player/EditCharacter"
                        asp-route-id="@Model.Character.Id"
                        class="btn btn-outline-primary">
@@ -109,421 +112,20 @@
 
 
 
+
     @* ============================================================
-       MOBILE / DESKTOP MAIN GRID
+       REORDERABLE CHARACTER DASHBOARD
        ============================================================ *@
 
-    <div class="row g-3">
-
-
-        @* ========================================================
-           ABILITY SCORES
-           ======================================================== *@
-
-        <div class="col-12
-            col-lg-3
-            order-2
-            order-lg-1">
-
-            <div class="card mb-3">
-
-                <div class="card-header">
-                    Ability Scores
-                </div>
-
-
-                <div class="card-body">
-
-                    <div class="row
-                        row-cols-3
-                        row-cols-lg-2
-                        g-2">
-
-
-                        <div class="col">
-
-                            <div class="ability-score">
-
-                                <div class="ability-name">
-                                    STR
-                                </div>
-
-                                <div class="ability-modifier">
-                                    @Model.FormatModifier(
-                                        Model.Character.Strength)
-                                </div>
-
-                                <div class="ability-value">
-                                    @Model.Character.Strength
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="col">
-
-                            <div class="ability-score">
-
-                                <div class="ability-name">
-                                    DEX
-                                </div>
-
-                                <div class="ability-modifier">
-                                    @Model.FormatModifier(
-                                        Model.Character.Dexterity)
-                                </div>
-
-                                <div class="ability-value">
-                                    @Model.Character.Dexterity
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="col">
-
-                            <div class="ability-score">
-
-                                <div class="ability-name">
-                                    CON
-                                </div>
-
-                                <div class="ability-modifier">
-                                    @Model.FormatModifier(
-                                        Model.Character.Constitution)
-                                </div>
-
-                                <div class="ability-value">
-                                    @Model.Character.Constitution
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="col">
-
-                            <div class="ability-score">
-
-                                <div class="ability-name">
-                                    INT
-                                </div>
-
-                                <div class="ability-modifier">
-                                    @Model.FormatModifier(
-                                        Model.Character.Intelligence)
-                                </div>
-
-                                <div class="ability-value">
-                                    @Model.Character.Intelligence
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="col">
-
-                            <div class="ability-score">
-
-                                <div class="ability-name">
-                                    WIS
-                                </div>
-
-                                <div class="ability-modifier">
-                                    @Model.FormatModifier(
-                                        Model.Character.Wisdom)
-                                </div>
-
-                                <div class="ability-value">
-                                    @Model.Character.Wisdom
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        <div class="col">
-
-                            <div class="ability-score">
-
-                                <div class="ability-name">
-                                    CHA
-                                </div>
-
-                                <div class="ability-modifier">
-                                    @Model.FormatModifier(
-                                        Model.Character.Charisma)
-                                </div>
-
-                                <div class="ability-value">
-                                    @Model.Character.Charisma
-                                </div>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            <div class="card">
-
-                <div class="card-header">
-                    Saving Throws
-                </div>
-
-
-                <div class="list-group
-                    list-group-flush">
-
-                    <div class="list-group-item
-                        saving-throw-row">
-
-                        <div class="d-flex
-                            align-items-center
-                            gap-2">
-
-                            @if (Model.Character.StrengthSaveProficient)
-                            {
-                                <span class="save-proficiency"
-                                      title="Proficient">
-                                    ●
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="save-proficiency
-                                    text-muted"
-                                      title="Not proficient">
-                                    ○
-                                </span>
-                            }
-
-                            <span class="fw-semibold">
-                                Strength
-                            </span>
-
-                            <span class="text-muted
-                                small">
-                                STR
-                            </span>
-
-                        </div>
-
-                        <strong>
-                            @Model.FormatBonus(
-                                Model.GetSavingThrowBonus(
-                                    Model.Character.Strength,
-                                    Model.Character.StrengthSaveProficient))
-                        </strong>
-
-                    </div>
-
-
-                    <div class="list-group-item saving-throw-row">
-
-                        <div class="d-flex align-items-center gap-2">
-
-                            @if (Model.Character.DexteritySaveProficient)
-                            {
-                                <span class="save-proficiency"
-                                      title="Proficient">●</span>
-                            }
-                            else
-                            {
-                                <span class="save-proficiency text-muted"
-                                      title="Not proficient">○</span>
-                            }
-
-                            <span class="fw-semibold">
-                                Dexterity
-                            </span>
-
-                            <span class="text-muted small">
-                                DEX
-                            </span>
-
-                        </div>
-
-                        <strong>
-                            @Model.FormatBonus(
-                                Model.GetSavingThrowBonus(
-                                    Model.Character.Dexterity,
-                                    Model.Character.DexteritySaveProficient))
-                        </strong>
-
-                    </div>
-
-
-                    <div class="list-group-item saving-throw-row">
-
-                        <div class="d-flex align-items-center gap-2">
-
-                            @if (Model.Character.ConstitutionSaveProficient)
-                            {
-                                <span class="save-proficiency"
-                                      title="Proficient">●</span>
-                            }
-                            else
-                            {
-                                <span class="save-proficiency text-muted"
-                                      title="Not proficient">○</span>
-                            }
-
-                            <span class="fw-semibold">
-                                Constitution
-                            </span>
-
-                            <span class="text-muted small">
-                                CON
-                            </span>
-
-                        </div>
-
-                        <strong>
-                            @Model.FormatBonus(
-                                Model.GetSavingThrowBonus(
-                                    Model.Character.Constitution,
-                                    Model.Character.ConstitutionSaveProficient))
-                        </strong>
-
-                    </div>
-
-
-                    <div class="list-group-item saving-throw-row">
-
-                        <div class="d-flex align-items-center gap-2">
-
-                            @if (Model.Character.IntelligenceSaveProficient)
-                            {
-                                <span class="save-proficiency"
-                                      title="Proficient">●</span>
-                            }
-                            else
-                            {
-                                <span class="save-proficiency text-muted"
-                                      title="Not proficient">○</span>
-                            }
-
-                            <span class="fw-semibold">
-                                Intelligence
-                            </span>
-
-                            <span class="text-muted small">
-                                INT
-                            </span>
-
-                        </div>
-
-                        <strong>
-                            @Model.FormatBonus(
-                                Model.GetSavingThrowBonus(
-                                    Model.Character.Intelligence,
-                                    Model.Character.IntelligenceSaveProficient))
-                        </strong>
-
-                    </div>
-
-
-                    <div class="list-group-item saving-throw-row">
-
-                        <div class="d-flex align-items-center gap-2">
-
-                            @if (Model.Character.WisdomSaveProficient)
-                            {
-                                <span class="save-proficiency"
-                                      title="Proficient">●</span>
-                            }
-                            else
-                            {
-                                <span class="save-proficiency text-muted"
-                                      title="Not proficient">○</span>
-                            }
-
-                            <span class="fw-semibold">
-                                Wisdom
-                            </span>
-
-                            <span class="text-muted small">
-                                WIS
-                            </span>
-
-                        </div>
-
-                        <strong>
-                            @Model.FormatBonus(
-                                Model.GetSavingThrowBonus(
-                                    Model.Character.Wisdom,
-                                    Model.Character.WisdomSaveProficient))
-                        </strong>
-
-                    </div>
-
-
-                    <div class="list-group-item saving-throw-row">
-
-                        <div class="d-flex align-items-center gap-2">
-
-                            @if (Model.Character.CharismaSaveProficient)
-                            {
-                                <span class="save-proficiency"
-                                      title="Proficient">●</span>
-                            }
-                            else
-                            {
-                                <span class="save-proficiency text-muted"
-                                      title="Not proficient">○</span>
-                            }
-
-                            <span class="fw-semibold">
-                                Charisma
-                            </span>
-
-                            <span class="text-muted small">
-                                CHA
-                            </span>
-
-                        </div>
-
-                        <strong>
-                            @Model.FormatBonus(
-                                Model.GetSavingThrowBonus(
-                                    Model.Character.Charisma,
-                                    Model.Character.CharismaSaveProficient))
-                        </strong>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-
-        @* ========================================================
-           MAIN CHARACTER INFORMATION
-           ======================================================== *@
-
-        <div class="col-12
-            col-lg-6
-            order-1
-            order-lg-2">
-
-            @* Combat / vitals *@
-            <div class="card mb-3">
+    <div class="character-dashboard"
+         id="characterDashboard"
+         data-character-layout
+         data-character-id="@Model.Character.Id">
+
+        <section class="character-section character-section--wide"
+                 data-character-section="combat"
+                 data-section-title="Combat">
+            <div class="card character-section-card">
 
                 <div class="card-header
                     d-flex
@@ -565,8 +167,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#hpEditor"
                                     aria-expanded="@(Model.OpenEditor == "hp"
-                                                                                                                                                                                                                                            ? "true"
-                                                                                                                                                                                                                                            : "false")"
+                                                                                                                                                                                                                                                                                                            ? "true"
+                                                                                                                                                                                                                                                                                                            : "false")"
                                     aria-controls="hpEditor">
 
                                 <span class="combat-stat-value">
@@ -616,8 +218,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#temporaryHpEditor"
                                     aria-expanded="@(Model.OpenEditor == "temp"
-                                                                                                                                                                                                                                    ? "true"
-                                                                                                                                                                                                                                    : "false")"
+                                                                                                                                                                                                                                                                                                    ? "true"
+                                                                                                                                                                                                                                                                                                    : "false")"
                                     aria-controls="temporaryHpEditor">
 
                                 <span class="combat-stat-value">
@@ -1000,11 +602,167 @@
                 </div>
 
             </div>
+        </section>
 
-            @* ========================================================
-               ATTACKS / SPELLS
-               ======================================================== *@
+        <section class="character-section"
+                 data-character-section="abilities"
+                 data-section-title="Ability Scores">
+            <div class="card character-section-card">
 
+                <div class="card-header">
+                    Ability Scores
+                </div>
+
+
+                <div class="card-body">
+
+                    <div class="row
+                        row-cols-3
+                        row-cols-lg-2
+                        g-2">
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    STR
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Strength)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Strength
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    DEX
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Dexterity)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Dexterity
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    CON
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Constitution)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Constitution
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    INT
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Intelligence)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Intelligence
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    WIS
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Wisdom)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Wisdom
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col">
+
+                            <div class="ability-score">
+
+                                <div class="ability-name">
+                                    CHA
+                                </div>
+
+                                <div class="ability-modifier">
+                                    @Model.FormatModifier(
+                                        Model.Character.Charisma)
+                                </div>
+
+                                <div class="ability-value">
+                                    @Model.Character.Charisma
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+        </section>
+
+        <section class="character-section character-section--wide"
+                 data-character-section="actions"
+                 data-section-title="Attacks / Spells">
             @{
                 var spellsTabActive =
                     string.Equals(
@@ -1013,7 +771,7 @@
                         StringComparison.OrdinalIgnoreCase);
             }
 
-            <div class="card mb-3">
+            <div class="card character-section-card">
 
                 <div class="card-header
                     pb-0">
@@ -1141,7 +899,7 @@
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#characterAttackModal"
                                                             data-attack-config="@Model.GetCharacterAttackConfigurationJson(
-                                                                                                                                                                                                                                                                                                attack.SourceId)">
+                                                                                                                                                                                                                                                                                                                                                                                                                attack.SourceId)">
                                                         Edit
                                                     </button>
                                                 }
@@ -1635,11 +1393,11 @@
                                                                         ? "is-prepared"
                                                                         : "")"
                                                                         title="@(spell.IsPrepared
-                                                                                                                                                ? "Mark unprepared"
-                                                                                                                                                : "Mark prepared")"
+                                                                                                                                                                                                                                                                                        ? "Mark unprepared"
+                                                                                                                                                                                                                                                                                        : "Mark prepared")"
                                                                         aria-label="@(spell.IsPrepared
-                                                                                                                                                ? $"Mark {spell.Name} unprepared"
-                                                                                                                                                : $"Mark {spell.Name} prepared")">
+                                                                                                                                                                                                                                                                                        ? $"Mark {spell.Name} unprepared"
+                                                                                                                                                                                                                                                                                        : $"Mark {spell.Name} prepared")">
 
                                                                     @(spell.IsPrepared
                                                                         ? "✓"
@@ -1791,13 +1549,466 @@
                 </div>
 
             </div>
+        </section>
+
+        <section class="character-section"
+                 data-character-section="saving-throws"
+                 data-section-title="Saving Throws">
+            <div class="card character-section-card">
+
+                <div class="card-header">
+                    Saving Throws
+                </div>
 
 
-            @* ========================================================
-               INVENTORY
-               ======================================================== *@
+                <div class="list-group
+                    list-group-flush">
 
-            <div class="card">
+                    <div class="list-group-item
+                        saving-throw-row">
+
+                        <div class="d-flex
+                            align-items-center
+                            gap-2">
+
+                            @if (Model.Character.StrengthSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">
+                                    ●
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency
+                                    text-muted"
+                                      title="Not proficient">
+                                    ○
+                                </span>
+                            }
+
+                            <span class="fw-semibold">
+                                Strength
+                            </span>
+
+                            <span class="text-muted
+                                small">
+                                STR
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Strength,
+                                    Model.Character.StrengthSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.DexteritySaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Dexterity
+                            </span>
+
+                            <span class="text-muted small">
+                                DEX
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Dexterity,
+                                    Model.Character.DexteritySaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.ConstitutionSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Constitution
+                            </span>
+
+                            <span class="text-muted small">
+                                CON
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Constitution,
+                                    Model.Character.ConstitutionSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.IntelligenceSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Intelligence
+                            </span>
+
+                            <span class="text-muted small">
+                                INT
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Intelligence,
+                                    Model.Character.IntelligenceSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.WisdomSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Wisdom
+                            </span>
+
+                            <span class="text-muted small">
+                                WIS
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Wisdom,
+                                    Model.Character.WisdomSaveProficient))
+                        </strong>
+
+                    </div>
+
+
+                    <div class="list-group-item saving-throw-row">
+
+                        <div class="d-flex align-items-center gap-2">
+
+                            @if (Model.Character.CharismaSaveProficient)
+                            {
+                                <span class="save-proficiency"
+                                      title="Proficient">●</span>
+                            }
+                            else
+                            {
+                                <span class="save-proficiency text-muted"
+                                      title="Not proficient">○</span>
+                            }
+
+                            <span class="fw-semibold">
+                                Charisma
+                            </span>
+
+                            <span class="text-muted small">
+                                CHA
+                            </span>
+
+                        </div>
+
+                        <strong>
+                            @Model.FormatBonus(
+                                Model.GetSavingThrowBonus(
+                                    Model.Character.Charisma,
+                                    Model.Character.CharismaSaveProficient))
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+        </section>
+
+        <section class="character-section"
+                 data-character-section="skills"
+                 data-section-title="Skills">
+            <div class="card character-section-card">
+
+                <div class="card-header
+                    d-flex
+                    justify-content-between
+                    align-items-center">
+
+                    <span>
+                        Skills
+                    </span>
+
+                    <span class="small text-muted">
+                        Bonus
+                    </span>
+
+                </div>
+
+
+                <div class="list-group
+                    list-group-flush
+                    skill-list">
+
+                    @foreach (var skill
+                              in Model.Skills
+                                  .OrderBy(
+                                      x =>
+                                          Model.GetSkillName(
+                                              x.Skill)))
+                    {
+                        var bonus =
+                            Model.GetSkillBonus(
+                                skill);
+
+
+                        <div class="list-group-item
+                            skill-row">
+
+                            <div class="d-flex
+                                align-items-center
+                                gap-2
+                                min-width-0">
+
+                                <div class="skill-proficiency">
+
+                                    @switch (skill.ProficiencyLevel)
+                                    {
+                                        case SkillProficiencyLevel.Expertise:
+
+                                            <span title="Expertise">
+                                                ◆
+                                            </span>
+
+                                            break;
+
+
+                                        case SkillProficiencyLevel.Proficient:
+
+                                            <span title="Proficient">
+                                                ●
+                                            </span>
+
+                                            break;
+
+
+                                        default:
+
+                                            <span class="text-muted"
+                                                  title="Not proficient">
+                                                ○
+                                            </span>
+
+                                            break;
+                                    }
+
+                                </div>
+
+
+                                <div>
+
+                                    <div class="fw-semibold
+                                        skill-name">
+                                        @Model.GetSkillName(
+                                            skill.Skill)
+                                    </div>
+
+                                    <div class="small
+                                        text-muted">
+
+                                        @Model.GetSkillAbilityName(
+                                            skill.Skill)
+
+
+                                        @if (skill.AdditionalBonus != 0)
+                                        {
+                                            <span>
+                                                ·
+                                                @(skill.AdditionalBonus > 0
+                                                    ? $"+{skill.AdditionalBonus}"
+                                                    : skill.AdditionalBonus.ToString())
+                                                bonus
+                                            </span>
+                                        }
+
+
+                                        @if (skill.OverrideBonus.HasValue)
+                                        {
+                                            <span>
+                                                · Override
+                                            </span>
+                                        }
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="skill-bonus">
+                                @Model.FormatBonus(
+                                    bonus)
+                            </div>
+
+                        </div>
+                    }
+
+                </div>
+
+
+                <div class="card-footer
+                    small
+                    text-muted">
+
+                    <span class="me-3">
+                        ○ None
+                    </span>
+
+                    <span class="me-3">
+                        ● Proficient
+                    </span>
+
+                    <span>
+                        ◆ Expertise
+                    </span>
+
+                </div>
+
+            </div>
+        </section>
+
+        <section class="character-section"
+                 data-character-section="details"
+                 data-section-title="Character Details">
+            <div class="card character-section-card">
+
+                <div class="card-header">
+                    Character Details
+                </div>
+
+
+                <div class="card-body">
+
+                    <dl class="mb-0 character-details">
+
+                        <dt>
+                            Level
+                        </dt>
+
+                        <dd>
+                            @Model.Character.Level
+                        </dd>
+
+                        <dt>
+                            Movement Speed
+                        </dt>
+
+                        <dd>
+                            @Model.Character.MovementSpeed ft.
+                        </dd>
+
+                        <dt>
+                            Proficiency Bonus
+                        </dt>
+
+                        <dd>
+                            +@Model.Character.ProficiencyBonus
+                        </dd>
+
+                    </dl>
+
+                </div>
+
+            </div>
+        </section>
+
+        <section class="character-section"
+                 data-character-section="party"
+                 data-section-title="Party">
+            <div class="card character-section-card">
+
+                <div class="card-header">
+                    Party
+                </div>
+
+
+                <div class="card-body text-muted">
+
+                    Shared party information and party
+                    inventory will appear here later.
+
+                </div>
+
+            </div>
+        </section>
+
+        <section class="character-section character-section--full"
+                 data-character-section="inventory"
+                 data-section-title="Inventory">
+            <div class="card character-section-card">
 
                 <div class="card-header
                     d-flex
@@ -2102,1163 +2313,43 @@
                 }
 
             </div>
-
-        </div>
-
-
-
-        @* ========================================================
-           CHARACTER DETAILS
-           ======================================================== *@
-
-        <div class="col-12
-            col-lg-3
-            order-3
-            order-lg-3">
-
-            <div class="card mb-3">
-
-                <div class="card-header
-                    d-flex
-                    justify-content-between
-                    align-items-center">
-
-                    <span>
-                        Skills
-                    </span>
-
-                    <span class="small text-muted">
-                        Bonus
-                    </span>
-
-                </div>
-
-
-                <div class="list-group
-                    list-group-flush
-                    skill-list">
-
-                    @foreach (var skill
-                              in Model.Skills
-                                  .OrderBy(
-                                      x =>
-                                          Model.GetSkillName(
-                                              x.Skill)))
-                    {
-                        var bonus =
-                            Model.GetSkillBonus(
-                                skill);
-
-
-                        <div class="list-group-item
-                            skill-row">
-
-                            <div class="d-flex
-                                align-items-center
-                                gap-2
-                                min-width-0">
-
-                                <div class="skill-proficiency">
-
-                                    @switch (skill.ProficiencyLevel)
-                                    {
-                                        case SkillProficiencyLevel.Expertise:
-
-                                            <span title="Expertise">
-                                                ◆
-                                            </span>
-
-                                            break;
-
-
-                                        case SkillProficiencyLevel.Proficient:
-
-                                            <span title="Proficient">
-                                                ●
-                                            </span>
-
-                                            break;
-
-
-                                        default:
-
-                                            <span class="text-muted"
-                                                  title="Not proficient">
-                                                ○
-                                            </span>
-
-                                            break;
-                                    }
-
-                                </div>
-
-
-                                <div>
-
-                                    <div class="fw-semibold
-                                        skill-name">
-                                        @Model.GetSkillName(
-                                            skill.Skill)
-                                    </div>
-
-                                    <div class="small
-                                        text-muted">
-
-                                        @Model.GetSkillAbilityName(
-                                            skill.Skill)
-
-
-                                        @if (skill.AdditionalBonus != 0)
-                                        {
-                                            <span>
-                                                ·
-                                                @(skill.AdditionalBonus > 0
-                                                    ? $"+{skill.AdditionalBonus}"
-                                                    : skill.AdditionalBonus.ToString())
-                                                bonus
-                                            </span>
-                                        }
-
-
-                                        @if (skill.OverrideBonus.HasValue)
-                                        {
-                                            <span>
-                                                · Override
-                                            </span>
-                                        }
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-
-                            <div class="skill-bonus">
-                                @Model.FormatBonus(
-                                    bonus)
-                            </div>
-
-                        </div>
-                    }
-
-                </div>
-
-
-                <div class="card-footer
-                    small
-                    text-muted">
-
-                    <span class="me-3">
-                        ○ None
-                    </span>
-
-                    <span class="me-3">
-                        ● Proficient
-                    </span>
-
-                    <span>
-                        ◆ Expertise
-                    </span>
-
-                </div>
-
-            </div>
-
-            <div class="card mb-3">
-
-                <div class="card-header">
-                    Character Details
-                </div>
-
-
-                <div class="card-body">
-
-                    <dl class="mb-0 character-details">
-
-                        <dt>
-                            Level
-                        </dt>
-
-                        <dd>
-                            @Model.Character.Level
-                        </dd>
-
-                        <dt>
-                            Movement Speed
-                        </dt>
-
-                        <dd>
-                            @Model.Character.MovementSpeed ft.
-                        </dd>
-
-                        <dt>
-                            Proficiency Bonus
-                        </dt>
-
-                        <dd>
-                            +@Model.Character.ProficiencyBonus
-                        </dd>
-
-                    </dl>
-
-                </div>
-
-            </div>
-
-
-
-            <div class="card">
-
-                <div class="card-header">
-                    Party
-                </div>
-
-
-                <div class="card-body text-muted">
-
-                    Shared party information and party
-                    inventory will appear here later.
-
-                </div>
-
-            </div>
-
-        </div>
+        </section>
 
     </div>
 
-</div>
 
-@* ============================================================
+
+    @* ============================================================
    SPELLCASTING MODAL
    ============================================================ *@
 
-<div class="modal fade"
-     id="spellcastingModal"
-     tabindex="-1"
-     aria-labelledby="spellcastingModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-lg
-        modal-dialog-scrollable
-        modal-fullscreen-sm-down">
-
-        <form method="post"
-              asp-page-handler="SaveSpellcasting"
-              asp-route-id="@Model.Character.Id"
-              class="modal-content"
-              data-preserve-inventory-scroll="true">
-
-            <div class="modal-header">
-
-                <div>
-
-                    <h2 class="modal-title fs-5"
-                        id="spellcastingModalLabel">
-                        Configure Spellcasting
-                    </h2>
-
-                    <div class="small text-muted">
-                        @Model.Character.Name
-                    </div>
-
-                </div>
-
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close">
-                </button>
-
-            </div>
-
-
-            <div class="modal-body">
-
-                <div class="row g-3 mb-4">
-
-                    <div class="col-12 col-sm-4">
-
-                        <label for="spellcastingAbility"
-                               class="form-label">
-                            Spellcasting Ability
-                        </label>
-
-                        <select id="spellcastingAbility"
-                                name="spellcastingAbility"
-                                class="form-select">
-
-                            @foreach (var ability
-                                      in Enum.GetValues<CharacterAbilityType>())
-                            {
-                                <option value="@ability"
-                                        selected="@(Model.Spellcasting?.SpellcastingAbility == ability)">
-                                    @ability
-                                </option>
-                            }
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="col-6 col-sm-4">
-
-                        <label for="additionalSpellAttackBonus"
-                               class="form-label">
-                            Attack Bonus
-                        </label>
-
-                        <input type="number"
-                               id="additionalSpellAttackBonus"
-                               name="additionalSpellAttackBonus"
-                               value="@(Model.Spellcasting?.AdditionalSpellAttackBonus ?? 0)"
-                               class="form-control" />
-
-                    </div>
-
-
-                    <div class="col-6 col-sm-4">
-
-                        <label for="additionalSpellSaveDcBonus"
-                               class="form-label">
-                            Save DC Bonus
-                        </label>
-
-                        <input type="number"
-                               id="additionalSpellSaveDcBonus"
-                               name="additionalSpellSaveDcBonus"
-                               value="@(Model.Spellcasting?.AdditionalSpellSaveDcBonus ?? 0)"
-                               class="form-control" />
-
-                    </div>
-
-                </div>
-
-
-                <div class="fw-semibold mb-1">
-                    Maximum Spell Slots
-                </div>
-
-                <div class="small text-muted mb-3">
-                    Leave a level at 0 if this character
-                    has no slots of that level.
-                </div>
-
-
-                <div class="spell-slot-config-grid">
-
-                    @for (var level = 1;
-                          level <= 9;
-                          level++)
-                    {
-                        var slot =
-                            Model.GetSpellSlot(
-                                level);
-
-                        var index =
-                            level - 1;
-
-
-                        <div>
-
-                            <label class="form-label
-                                small">
-                                @Model.GetSpellLevelLabel(
-                                    level)
-                            </label>
-
-                            <input type="hidden"
-                                   name="spellSlots[@index].Level"
-                                   value="@level" />
-
-                            <input type="number"
-                                   name="spellSlots[@index].MaximumSlots"
-                                   min="0"
-                                   value="@(slot?.MaximumSlots ?? 0)"
-                                   class="form-control
-                            form-control-sm" />
-
-                        </div>
-                    }
-
-                </div>
-
-            </div>
-
-
-            <div class="modal-footer">
-
-                <button type="button"
-                        class="btn
-                    btn-outline-secondary"
-                        data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-
-                <button type="submit"
-                        class="btn
-                    btn-primary">
-                    Save Spellcasting
-                </button>
-
-            </div>
-
-        </form>
-
-    </div>
-
-</div>
-
-@* ============================================================
-   SPELL DETAILS MODAL
-   ============================================================ *@
-
-<div class="modal fade"
-     id="spellDetailsModal"
-     tabindex="-1"
-     aria-labelledby="spellDetailsModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-lg
-        modal-dialog-scrollable
-        modal-fullscreen-sm-down">
-
-        <div class="modal-content">
-
-            <div class="modal-header">
-
-                <div>
-                    <h2 class="modal-title fs-5"
-                        id="spellDetailsModalLabel">
-                        Spell Details
-                    </h2>
-
-                    <div class="small text-muted"
-                         id="spellDetailsSubtitle">
-                    </div>
-                </div>
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close">
-                </button>
-
-            </div>
-
-
-            <div class="modal-body">
-
-                <div class="spell-details-badges mb-3"
-                     id="spellDetailsBadges">
-                </div>
-
-                <div class="spell-details-grid mb-4">
-
-                    <div class="spell-details-field">
-                        <span class="spell-details-label">
-                            Casting Time
-                        </span>
-                        <span id="spellDetailsCastingTime">—</span>
-                    </div>
-
-                    <div class="spell-details-field">
-                        <span class="spell-details-label">
-                            Range / Area
-                        </span>
-                        <span id="spellDetailsRangeArea">—</span>
-                    </div>
-
-                    <div class="spell-details-field">
-                        <span class="spell-details-label">
-                            Duration
-                        </span>
-                        <span id="spellDetailsDuration">—</span>
-                    </div>
-
-                    <div class="spell-details-field">
-                        <span class="spell-details-label">
-                            Attack / Save
-                        </span>
-                        <span id="spellDetailsResolution">—</span>
-                    </div>
-
-                    <div class="spell-details-field">
-                        <span class="spell-details-label">
-                            Components
-                        </span>
-                        <span id="spellDetailsComponents">—</span>
-                    </div>
-
-                </div>
-
-
-                <section class="mb-4">
-                    <h3 class="h6 mb-2">
-                        Effects
-                    </h3>
-
-                    <div id="spellDetailsEffects"
-                         class="spell-details-effects">
-                    </div>
-                </section>
-
-
-                <section class="mb-4 d-none"
-                         id="spellDetailsMaterialSection">
-                    <h3 class="h6 mb-2">
-                        Material Component
-                    </h3>
-
-                    <div id="spellDetailsMaterial"
-                         class="spell-details-text">
-                    </div>
-                </section>
-
-
-                <section class="d-none"
-                         id="spellDetailsNotesSection">
-                    <h3 class="h6 mb-2">
-                        Notes
-                    </h3>
-
-                    <div id="spellDetailsNotes"
-                         class="spell-details-text
-                        spell-details-notes">
-                    </div>
-                </section>
-
-            </div>
-
-
-            <div class="modal-footer">
-
-                <button type="button"
-                        class="btn
-                    btn-outline-secondary"
-                        data-bs-dismiss="modal">
-                    Close
-                </button>
-
-                <button type="button"
-                        id="spellDetailsEdit"
-                        class="btn
-                    btn-outline-primary">
-                    Edit Spell
-                </button>
-
-                <button type="button"
-                        id="spellDetailsCast"
-                        class="btn
-                    btn-primary">
-                    Cast
-                </button>
-
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-
-@* ============================================================
-   CAST SPELL MODAL
-   ============================================================ *@
-
-<div class="modal fade"
-     id="spellCastModal"
-     tabindex="-1"
-     aria-labelledby="spellCastModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-dialog-centered">
-
-        <form method="post"
-              asp-page-handler="CastSpell"
-              asp-route-id="@Model.Character.Id"
-              id="spellCastForm"
-              class="modal-content"
-              data-preserve-inventory-scroll="true">
-
-            <input type="hidden"
-                   id="castSpellId"
-                   name="spellId" />
-
-            <div class="modal-header">
-
-                <div>
-                    <h2 class="modal-title fs-5"
-                        id="spellCastModalLabel">
-                        Cast Spell
-                    </h2>
-
-                    <div class="small text-muted"
-                         id="spellCastSubtitle">
-                    </div>
-                </div>
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close">
-                </button>
-
-            </div>
-
-
-            <div class="modal-body">
-
-                <div class="alert
-                    alert-warning
-                    py-2
-                    d-none"
-                     role="alert"
-                     id="spellCastConcentrationWarning">
-                </div>
-
-
-                <div id="spellCastSlotSection"
-                     class="mb-4">
-
-                    <div class="fw-semibold mb-2">
-                        Cast Using
-                    </div>
-
-                    <div id="spellCastSlots"
-                         class="spell-cast-slots">
-                    </div>
-
-                </div>
-
-
-                <div class="form-check mb-4 d-none"
-                     id="spellCastRitualContainer">
-
-                    <input type="checkbox"
-                           class="form-check-input"
-                           id="spellCastAsRitual"
-                           name="castAsRitual"
-                           value="true" />
-
-                    <label class="form-check-label"
-                           for="spellCastAsRitual">
-                        Cast as ritual
-                        <span class="text-muted">
-                            (no spell slot)
-                        </span>
-                    </label>
-
-                </div>
-
-
-                <div>
-                    <div class="fw-semibold mb-2">
-                        Effect at this casting level
-                    </div>
-
-                    <div id="spellCastEffects"
-                         class="spell-cast-effects">
-                    </div>
-                </div>
-
-            </div>
-
-
-            <div class="modal-footer">
-
-                <button type="button"
-                        class="btn
-                    btn-outline-secondary"
-                        data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-                <button type="submit"
-                        id="confirmSpellCast"
-                        class="btn
-                    btn-primary">
-                    Cast Spell
-                </button>
-
-            </div>
-
-        </form>
-
-    </div>
-
-</div>
-
-
-@* ============================================================
-   ADD / EDIT SPELL MODAL
-   ============================================================ *@
-
-<div class="modal fade"
-     id="spellModal"
-     tabindex="-1"
-     aria-labelledby="spellModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-lg
-        modal-dialog-scrollable
-        modal-fullscreen-sm-down">
-
-        <form method="post"
-              asp-page-handler="SaveSpell"
-              asp-route-id="@Model.Character.Id"
-              id="spellForm"
-              class="modal-content"
-              data-preserve-inventory-scroll="true">
-
-            <input type="hidden"
-                   id="spellId"
-                   name="spellId" />
-
-
-            <div class="modal-header">
-
-                <div>
-
-                    <h2 class="modal-title fs-5"
-                        id="spellModalLabel">
-                        Add Spell
-                    </h2>
-
-                    <div class="small text-muted">
-                        @Model.Character.Name
-                    </div>
-
-                </div>
-
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close">
-                </button>
-
-            </div>
-
-
-            <div class="modal-body">
-
-                <div class="row g-3 mb-4">
-
-                    <div class="col-8">
-
-                        <label for="spellName"
-                               class="form-label">
-                            Name
-                        </label>
-
-                        <input type="text"
-                               id="spellName"
-                               name="spellName"
-                               maxlength="150"
-                               class="form-control"
-                               required />
-
-                    </div>
-
-
-                    <div class="col-4">
-
-                        <label for="spellLevel"
-                               class="form-label">
-                            Level
-                        </label>
-
-                        <select id="spellLevel"
-                                name="spellLevel"
-                                class="form-select">
-
-                            <option value="0">
-                                Cantrip
-                            </option>
-
-                            @for (var level = 1;
-                                  level <= 9;
-                                  level++)
-                            {
-                                <option value="@level">
-                                    @level
-                                </option>
-                            }
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="spellSchool"
-                               class="form-label">
-                            School
-                        </label>
-
-                        <input type="text"
-                               id="spellSchool"
-                               name="school"
-                               maxlength="50"
-                               class="form-control"
-                               placeholder="Evocation" />
-
-                    </div>
-
-
-                    <div class="col-6
-                        d-flex
-                        align-items-end">
-
-                        <div class="form-check mb-2">
-
-                            <input type="checkbox"
-                                   id="spellPrepared"
-                                   name="isPrepared"
-                                   value="true"
-                                   class="form-check-input"
-                                   checked />
-
-                            <label for="spellPrepared"
-                                   class="form-check-label">
-                                Prepared
-                            </label>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <label for="spellCastingTime"
-                               class="form-label">
-                            Casting Time
-                        </label>
-
-                        <input type="text"
-                               id="spellCastingTime"
-                               name="castingTime"
-                               maxlength="100"
-                               class="form-control"
-                               placeholder="Action, Bonus Action, Reaction..." />
-
-                    </div>
-
-
-                    <div class="col-6 col-sm-3">
-
-                        <label for="spellRange"
-                               class="form-label">
-                            Range
-                        </label>
-
-                        <input type="text"
-                               id="spellRange"
-                               name="range"
-                               maxlength="100"
-                               class="form-control"
-                               placeholder="120 ft." />
-
-                    </div>
-
-
-                    <div class="col-6 col-sm-3">
-
-                        <label for="spellArea"
-                               class="form-label">
-                            Area
-                        </label>
-
-                        <input type="text"
-                               id="spellArea"
-                               name="area"
-                               maxlength="100"
-                               class="form-control"
-                               placeholder="20-ft radius" />
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <label for="spellDuration"
-                               class="form-label">
-                            Duration
-                        </label>
-
-                        <input type="text"
-                               id="spellDuration"
-                               name="duration"
-                               maxlength="100"
-                               class="form-control"
-                               placeholder="Instantaneous, 1 minute..." />
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <label for="spellSavingThrow"
-                               class="form-label">
-                            Saving Throw
-                        </label>
-
-                        <select id="spellSavingThrow"
-                                name="savingThrowAbility"
-                                class="form-select">
-
-                            <option value="">
-                                None
-                            </option>
-
-                            @foreach (var ability
-                                      in Enum.GetValues<CharacterAbilityType>())
-                            {
-                                <option value="@ability">
-                                    @Model.GetAbilityAbbreviation(
-                                        ability)
-                                </option>
-                            }
-
-                        </select>
-
-                    </div>
-
-                </div>
-
-
-                <div class="row g-2 mb-4">
-
-                    <div class="col-auto">
-                        <div class="form-check">
-                            <input type="checkbox"
-                                   id="spellVerbal"
-                                   name="hasVerbalComponent"
-                                   value="true"
-                                   class="form-check-input" />
-                            <label for="spellVerbal"
-                                   class="form-check-label">V</label>
-                        </div>
-                    </div>
-
-                    <div class="col-auto">
-                        <div class="form-check">
-                            <input type="checkbox"
-                                   id="spellSomatic"
-                                   name="hasSomaticComponent"
-                                   value="true"
-                                   class="form-check-input" />
-                            <label for="spellSomatic"
-                                   class="form-check-label">S</label>
-                        </div>
-                    </div>
-
-                    <div class="col-auto">
-                        <div class="form-check">
-                            <input type="checkbox"
-                                   id="spellMaterial"
-                                   name="hasMaterialComponent"
-                                   value="true"
-                                   class="form-check-input" />
-                            <label for="spellMaterial"
-                                   class="form-check-label">M</label>
-                        </div>
-                    </div>
-
-                    <div class="col-auto ms-sm-3">
-                        <div class="form-check">
-                            <input type="checkbox"
-                                   id="spellConcentration"
-                                   name="requiresConcentration"
-                                   value="true"
-                                   class="form-check-input" />
-                            <label for="spellConcentration"
-                                   class="form-check-label">
-                                Concentration
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="col-auto">
-                        <div class="form-check">
-                            <input type="checkbox"
-                                   id="spellRitual"
-                                   name="isRitual"
-                                   value="true"
-                                   class="form-check-input" />
-                            <label for="spellRitual"
-                                   class="form-check-label">
-                                Ritual
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="col-auto">
-                        <div class="form-check">
-                            <input type="checkbox"
-                                   id="spellAttackRoll"
-                                   name="hasSpellAttackRoll"
-                                   value="true"
-                                   class="form-check-input" />
-                            <label for="spellAttackRoll"
-                                   class="form-check-label">
-                                Spell Attack
-                            </label>
-                        </div>
-                    </div>
-
-                </div>
-
-
-                <div class="mb-4"
-                     id="spellMaterialDescriptionContainer">
-
-                    <label for="spellMaterialDescription"
-                           class="form-label">
-                        Material Component
-                    </label>
-
-                    <input type="text"
-                           id="spellMaterialDescription"
-                           name="materialDescription"
-                           maxlength="500"
-                           class="form-control" />
-
-                </div>
-
-
-                <div class="d-flex
-                    justify-content-between
-                    align-items-center
-                    mb-2">
-
-                    <div>
-                        <div class="fw-semibold">
-                            Effects
-                        </div>
-                        <div class="small text-muted">
-                            Damage and healing shown on the compact spell row.
-                        </div>
-                    </div>
-
-                    <button type="button"
-                            id="addSpellEffect"
-                            class="btn
-                        btn-sm
-                        btn-outline-secondary">
-                        + Add Effect
-                    </button>
-
-                </div>
-
-
-                <div id="spellEffects"
-                     class="d-flex
-                    flex-column
-                    gap-3
-                    mb-4">
-                </div>
-
-
-                <div>
-
-                    <label for="spellNotes"
-                           class="form-label">
-                        Notes
-                    </label>
-
-                    <textarea id="spellNotes"
-                              name="spellNotes"
-                              maxlength="2000"
-                              rows="4"
-                              class="form-control"></textarea>
-
-                </div>
-
-            </div>
-
-
-            <div class="modal-footer">
-
-                <button type="submit"
-                        id="deleteSpell"
-                        asp-page-handler="DeleteSpell"
-                        asp-route-id="@Model.Character.Id"
-                        class="btn
-                    btn-outline-danger
-                    me-auto"
-                        onclick="return confirm('Delete this spell?');">
-                    Delete
-                </button>
-
-
-                <button type="button"
-                        class="btn
-                    btn-outline-secondary"
-                        data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-
-                <button type="submit"
-                        class="btn
-                    btn-primary">
-                    Save Spell
-                </button>
-
-            </div>
-
-        </form>
-
-    </div>
-
-</div>
-
-@* ============================================================
-   ADD INVENTORY ITEM MODAL
-   ============================================================ *@
-
-<div class="modal fade"
-     id="addInventoryItemModal"
-     tabindex="-1"
-     aria-labelledby="addInventoryItemModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-dialog-centered">
-
-        <div class="modal-content">
+    <div class="modal fade"
+         id="spellcastingModal"
+         tabindex="-1"
+         aria-labelledby="spellcastingModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog
+            modal-lg
+            modal-dialog-scrollable
+            modal-fullscreen-sm-down">
 
             <form method="post"
-                  asp-page-handler="AddInventoryItem"
+                  asp-page-handler="SaveSpellcasting"
                   asp-route-id="@Model.Character.Id"
+                  class="modal-content"
                   data-preserve-inventory-scroll="true">
-
 
                 <div class="modal-header">
 
                     <div>
 
-                        <h2 class="modal-title
-                            fs-5"
-                            id="addInventoryItemModalLabel">
-                            Add Inventory Item
+                        <h2 class="modal-title fs-5"
+                            id="spellcastingModalLabel">
+                            Configure Spellcasting
                         </h2>
 
-                        <div class="small
-                            text-muted">
+                        <div class="small text-muted">
                             @Model.Character.Name
                         </div>
 
@@ -3276,43 +2367,25 @@
 
                 <div class="modal-body">
 
+                    <div class="row g-3 mb-4">
 
-                    <div class="mb-3">
+                        <div class="col-12 col-sm-4">
 
-                        <label for="itemName"
-                               class="form-label">
-                            Name
-                        </label>
-
-                        <input type="text"
-                               id="itemName"
-                               name="itemName"
-                               maxlength="150"
-                               class="form-control"
-                               required />
-
-                    </div>
-
-
-                    <div class="row g-3 mb-3">
-
-
-                        <div class="col-8">
-
-                            <label for="itemType"
+                            <label for="spellcastingAbility"
                                    class="form-label">
-                                Type
+                                Spellcasting Ability
                             </label>
 
-                            <select id="itemType"
-                                    name="itemType"
+                            <select id="spellcastingAbility"
+                                    name="spellcastingAbility"
                                     class="form-select">
 
-                                @foreach (var itemType
-                                          in Enum.GetValues<CharacterItemType>())
+                                @foreach (var ability
+                                          in Enum.GetValues<CharacterAbilityType>())
                                 {
-                                    <option value="@itemType">
-                                        @itemType
+                                    <option value="@ability"
+                                            selected="@(Model.Spellcasting?.SpellcastingAbility == ability)">
+                                        @ability
                                     </option>
                                 }
 
@@ -3321,18 +2394,33 @@
                         </div>
 
 
-                        <div class="col-4">
+                        <div class="col-6 col-sm-4">
 
-                            <label for="quantity"
+                            <label for="additionalSpellAttackBonus"
                                    class="form-label">
-                                Quantity
+                                Attack Bonus
                             </label>
 
                             <input type="number"
-                                   id="quantity"
-                                   name="quantity"
-                                   value="1"
-                                   min="1"
+                                   id="additionalSpellAttackBonus"
+                                   name="additionalSpellAttackBonus"
+                                   value="@(Model.Spellcasting?.AdditionalSpellAttackBonus ?? 0)"
+                                   class="form-control" />
+
+                        </div>
+
+
+                        <div class="col-6 col-sm-4">
+
+                            <label for="additionalSpellSaveDcBonus"
+                                   class="form-label">
+                                Save DC Bonus
+                            </label>
+
+                            <input type="number"
+                                   id="additionalSpellSaveDcBonus"
+                                   name="additionalSpellSaveDcBonus"
+                                   value="@(Model.Spellcasting?.AdditionalSpellSaveDcBonus ?? 0)"
                                    class="form-control" />
 
                         </div>
@@ -3340,35 +2428,51 @@
                     </div>
 
 
-                    <div class="mb-3">
+                    <div class="fw-semibold mb-1">
+                        Maximum Spell Slots
+                    </div>
 
-                        <label for="itemNotes"
-                               class="form-label">
-                            Notes
-                        </label>
-
-                        <textarea id="itemNotes"
-                                  name="itemNotes"
-                                  maxlength="2000"
-                                  rows="3"
-                                  class="form-control"
-                                  placeholder="Optional notes"></textarea>
-
+                    <div class="small text-muted mb-3">
+                        Leave a level at 0 if this character
+                        has no slots of that level.
                     </div>
 
 
-                    <div class="form-check">
+                    <div class="spell-slot-config-grid">
 
-                        <input type="checkbox"
-                               id="isEquipped"
-                               name="isEquipped"
-                               value="true"
-                               class="form-check-input" />
+                        @for (var level = 1;
+                              level <= 9;
+                              level++)
+                        {
+                            var slot =
+                                Model.GetSpellSlot(
+                                    level);
 
-                        <label for="isEquipped"
-                               class="form-check-label">
-                            Equipped
-                        </label>
+                            var index =
+                                level - 1;
+
+
+                            <div>
+
+                                <label class="form-label
+                                    small">
+                                    @Model.GetSpellLevelLabel(
+                                        level)
+                                </label>
+
+                                <input type="hidden"
+                                       name="spellSlots[@index].Level"
+                                       value="@level" />
+
+                                <input type="number"
+                                       name="spellSlots[@index].MaximumSlots"
+                                       min="0"
+                                       value="@(slot?.MaximumSlots ?? 0)"
+                                       class="form-control
+                                form-control-sm" />
+
+                            </div>
+                        }
 
                     </div>
 
@@ -3388,7 +2492,7 @@
                     <button type="submit"
                             class="btn
                         btn-primary">
-                        Add Item
+                        Save Spellcasting
                     </button>
 
                 </div>
@@ -3399,31 +2503,1182 @@
 
     </div>
 
-</div>
+    @* ============================================================
+   SPELL DETAILS MODAL
+   ============================================================ *@
 
-@* ============================================================
+    <div class="modal fade"
+         id="spellDetailsModal"
+         tabindex="-1"
+         aria-labelledby="spellDetailsModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog
+            modal-lg
+            modal-dialog-scrollable
+            modal-fullscreen-sm-down">
+
+            <div class="modal-content">
+
+                <div class="modal-header">
+
+                    <div>
+                        <h2 class="modal-title fs-5"
+                            id="spellDetailsModalLabel">
+                            Spell Details
+                        </h2>
+
+                        <div class="small text-muted"
+                             id="spellDetailsSubtitle">
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+
+                <div class="modal-body">
+
+                    <div class="spell-details-badges mb-3"
+                         id="spellDetailsBadges">
+                    </div>
+
+                    <div class="spell-details-grid mb-4">
+
+                        <div class="spell-details-field">
+                            <span class="spell-details-label">
+                                Casting Time
+                            </span>
+                            <span id="spellDetailsCastingTime">—</span>
+                        </div>
+
+                        <div class="spell-details-field">
+                            <span class="spell-details-label">
+                                Range / Area
+                            </span>
+                            <span id="spellDetailsRangeArea">—</span>
+                        </div>
+
+                        <div class="spell-details-field">
+                            <span class="spell-details-label">
+                                Duration
+                            </span>
+                            <span id="spellDetailsDuration">—</span>
+                        </div>
+
+                        <div class="spell-details-field">
+                            <span class="spell-details-label">
+                                Attack / Save
+                            </span>
+                            <span id="spellDetailsResolution">—</span>
+                        </div>
+
+                        <div class="spell-details-field">
+                            <span class="spell-details-label">
+                                Components
+                            </span>
+                            <span id="spellDetailsComponents">—</span>
+                        </div>
+
+                    </div>
+
+
+                    <section class="mb-4">
+                        <h3 class="h6 mb-2">
+                            Effects
+                        </h3>
+
+                        <div id="spellDetailsEffects"
+                             class="spell-details-effects">
+                        </div>
+                    </section>
+
+
+                    <section class="mb-4 d-none"
+                             id="spellDetailsMaterialSection">
+                        <h3 class="h6 mb-2">
+                            Material Component
+                        </h3>
+
+                        <div id="spellDetailsMaterial"
+                             class="spell-details-text">
+                        </div>
+                    </section>
+
+
+                    <section class="d-none"
+                             id="spellDetailsNotesSection">
+                        <h3 class="h6 mb-2">
+                            Notes
+                        </h3>
+
+                        <div id="spellDetailsNotes"
+                             class="spell-details-text
+                            spell-details-notes">
+                        </div>
+                    </section>
+
+                </div>
+
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn
+                        btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Close
+                    </button>
+
+                    <button type="button"
+                            id="spellDetailsEdit"
+                            class="btn
+                        btn-outline-primary">
+                        Edit Spell
+                    </button>
+
+                    <button type="button"
+                            id="spellDetailsCast"
+                            class="btn
+                        btn-primary">
+                        Cast
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    @* ============================================================
+   CAST SPELL MODAL
+   ============================================================ *@
+
+    <div class="modal fade"
+         id="spellCastModal"
+         tabindex="-1"
+         aria-labelledby="spellCastModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog
+            modal-dialog-centered">
+
+            <form method="post"
+                  asp-page-handler="CastSpell"
+                  asp-route-id="@Model.Character.Id"
+                  id="spellCastForm"
+                  class="modal-content"
+                  data-preserve-inventory-scroll="true">
+
+                <input type="hidden"
+                       id="castSpellId"
+                       name="spellId" />
+
+                <div class="modal-header">
+
+                    <div>
+                        <h2 class="modal-title fs-5"
+                            id="spellCastModalLabel">
+                            Cast Spell
+                        </h2>
+
+                        <div class="small text-muted"
+                             id="spellCastSubtitle">
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+
+                <div class="modal-body">
+
+                    <div class="alert
+                        alert-warning
+                        py-2
+                        d-none"
+                         role="alert"
+                         id="spellCastConcentrationWarning">
+                    </div>
+
+
+                    <div id="spellCastSlotSection"
+                         class="mb-4">
+
+                        <div class="fw-semibold mb-2">
+                            Cast Using
+                        </div>
+
+                        <div id="spellCastSlots"
+                             class="spell-cast-slots">
+                        </div>
+
+                    </div>
+
+
+                    <div class="form-check mb-4 d-none"
+                         id="spellCastRitualContainer">
+
+                        <input type="checkbox"
+                               class="form-check-input"
+                               id="spellCastAsRitual"
+                               name="castAsRitual"
+                               value="true" />
+
+                        <label class="form-check-label"
+                               for="spellCastAsRitual">
+                            Cast as ritual
+                            <span class="text-muted">
+                                (no spell slot)
+                            </span>
+                        </label>
+
+                    </div>
+
+
+                    <div>
+                        <div class="fw-semibold mb-2">
+                            Effect at this casting level
+                        </div>
+
+                        <div id="spellCastEffects"
+                             class="spell-cast-effects">
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn
+                        btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+
+                    <button type="submit"
+                            id="confirmSpellCast"
+                            class="btn
+                        btn-primary">
+                        Cast Spell
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    @* ============================================================
+   ADD / EDIT SPELL MODAL
+   ============================================================ *@
+
+    <div class="modal fade"
+         id="spellModal"
+         tabindex="-1"
+         aria-labelledby="spellModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog
+            modal-lg
+            modal-dialog-scrollable
+            modal-fullscreen-sm-down">
+
+            <form method="post"
+                  asp-page-handler="SaveSpell"
+                  asp-route-id="@Model.Character.Id"
+                  id="spellForm"
+                  class="modal-content"
+                  data-preserve-inventory-scroll="true">
+
+                <input type="hidden"
+                       id="spellId"
+                       name="spellId" />
+
+
+                <div class="modal-header">
+
+                    <div>
+
+                        <h2 class="modal-title fs-5"
+                            id="spellModalLabel">
+                            Add Spell
+                        </h2>
+
+                        <div class="small text-muted">
+                            @Model.Character.Name
+                        </div>
+
+                    </div>
+
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+
+                <div class="modal-body">
+
+                    <div class="row g-3 mb-4">
+
+                        <div class="col-8">
+
+                            <label for="spellName"
+                                   class="form-label">
+                                Name
+                            </label>
+
+                            <input type="text"
+                                   id="spellName"
+                                   name="spellName"
+                                   maxlength="150"
+                                   class="form-control"
+                                   required />
+
+                        </div>
+
+
+                        <div class="col-4">
+
+                            <label for="spellLevel"
+                                   class="form-label">
+                                Level
+                            </label>
+
+                            <select id="spellLevel"
+                                    name="spellLevel"
+                                    class="form-select">
+
+                                <option value="0">
+                                    Cantrip
+                                </option>
+
+                                @for (var level = 1;
+                                      level <= 9;
+                                      level++)
+                                {
+                                    <option value="@level">
+                                        @level
+                                    </option>
+                                }
+
+                            </select>
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="spellSchool"
+                                   class="form-label">
+                                School
+                            </label>
+
+                            <input type="text"
+                                   id="spellSchool"
+                                   name="school"
+                                   maxlength="50"
+                                   class="form-control"
+                                   placeholder="Evocation" />
+
+                        </div>
+
+
+                        <div class="col-6
+                            d-flex
+                            align-items-end">
+
+                            <div class="form-check mb-2">
+
+                                <input type="checkbox"
+                                       id="spellPrepared"
+                                       name="isPrepared"
+                                       value="true"
+                                       class="form-check-input"
+                                       checked />
+
+                                <label for="spellPrepared"
+                                       class="form-check-label">
+                                    Prepared
+                                </label>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-12 col-sm-6">
+
+                            <label for="spellCastingTime"
+                                   class="form-label">
+                                Casting Time
+                            </label>
+
+                            <input type="text"
+                                   id="spellCastingTime"
+                                   name="castingTime"
+                                   maxlength="100"
+                                   class="form-control"
+                                   placeholder="Action, Bonus Action, Reaction..." />
+
+                        </div>
+
+
+                        <div class="col-6 col-sm-3">
+
+                            <label for="spellRange"
+                                   class="form-label">
+                                Range
+                            </label>
+
+                            <input type="text"
+                                   id="spellRange"
+                                   name="range"
+                                   maxlength="100"
+                                   class="form-control"
+                                   placeholder="120 ft." />
+
+                        </div>
+
+
+                        <div class="col-6 col-sm-3">
+
+                            <label for="spellArea"
+                                   class="form-label">
+                                Area
+                            </label>
+
+                            <input type="text"
+                                   id="spellArea"
+                                   name="area"
+                                   maxlength="100"
+                                   class="form-control"
+                                   placeholder="20-ft radius" />
+
+                        </div>
+
+
+                        <div class="col-12 col-sm-6">
+
+                            <label for="spellDuration"
+                                   class="form-label">
+                                Duration
+                            </label>
+
+                            <input type="text"
+                                   id="spellDuration"
+                                   name="duration"
+                                   maxlength="100"
+                                   class="form-control"
+                                   placeholder="Instantaneous, 1 minute..." />
+
+                        </div>
+
+
+                        <div class="col-12 col-sm-6">
+
+                            <label for="spellSavingThrow"
+                                   class="form-label">
+                                Saving Throw
+                            </label>
+
+                            <select id="spellSavingThrow"
+                                    name="savingThrowAbility"
+                                    class="form-select">
+
+                                <option value="">
+                                    None
+                                </option>
+
+                                @foreach (var ability
+                                          in Enum.GetValues<CharacterAbilityType>())
+                                {
+                                    <option value="@ability">
+                                        @Model.GetAbilityAbbreviation(
+                                            ability)
+                                    </option>
+                                }
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="row g-2 mb-4">
+
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input type="checkbox"
+                                       id="spellVerbal"
+                                       name="hasVerbalComponent"
+                                       value="true"
+                                       class="form-check-input" />
+                                <label for="spellVerbal"
+                                       class="form-check-label">V</label>
+                            </div>
+                        </div>
+
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input type="checkbox"
+                                       id="spellSomatic"
+                                       name="hasSomaticComponent"
+                                       value="true"
+                                       class="form-check-input" />
+                                <label for="spellSomatic"
+                                       class="form-check-label">S</label>
+                            </div>
+                        </div>
+
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input type="checkbox"
+                                       id="spellMaterial"
+                                       name="hasMaterialComponent"
+                                       value="true"
+                                       class="form-check-input" />
+                                <label for="spellMaterial"
+                                       class="form-check-label">M</label>
+                            </div>
+                        </div>
+
+                        <div class="col-auto ms-sm-3">
+                            <div class="form-check">
+                                <input type="checkbox"
+                                       id="spellConcentration"
+                                       name="requiresConcentration"
+                                       value="true"
+                                       class="form-check-input" />
+                                <label for="spellConcentration"
+                                       class="form-check-label">
+                                    Concentration
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input type="checkbox"
+                                       id="spellRitual"
+                                       name="isRitual"
+                                       value="true"
+                                       class="form-check-input" />
+                                <label for="spellRitual"
+                                       class="form-check-label">
+                                    Ritual
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input type="checkbox"
+                                       id="spellAttackRoll"
+                                       name="hasSpellAttackRoll"
+                                       value="true"
+                                       class="form-check-input" />
+                                <label for="spellAttackRoll"
+                                       class="form-check-label">
+                                    Spell Attack
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    <div class="mb-4"
+                         id="spellMaterialDescriptionContainer">
+
+                        <label for="spellMaterialDescription"
+                               class="form-label">
+                            Material Component
+                        </label>
+
+                        <input type="text"
+                               id="spellMaterialDescription"
+                               name="materialDescription"
+                               maxlength="500"
+                               class="form-control" />
+
+                    </div>
+
+
+                    <div class="d-flex
+                        justify-content-between
+                        align-items-center
+                        mb-2">
+
+                        <div>
+                            <div class="fw-semibold">
+                                Effects
+                            </div>
+                            <div class="small text-muted">
+                                Damage and healing shown on the compact spell row.
+                            </div>
+                        </div>
+
+                        <button type="button"
+                                id="addSpellEffect"
+                                class="btn
+                            btn-sm
+                            btn-outline-secondary">
+                            + Add Effect
+                        </button>
+
+                    </div>
+
+
+                    <div id="spellEffects"
+                         class="d-flex
+                        flex-column
+                        gap-3
+                        mb-4">
+                    </div>
+
+
+                    <div>
+
+                        <label for="spellNotes"
+                               class="form-label">
+                            Notes
+                        </label>
+
+                        <textarea id="spellNotes"
+                                  name="spellNotes"
+                                  maxlength="2000"
+                                  rows="4"
+                                  class="form-control"></textarea>
+
+                    </div>
+
+                </div>
+
+
+                <div class="modal-footer">
+
+                    <button type="submit"
+                            id="deleteSpell"
+                            asp-page-handler="DeleteSpell"
+                            asp-route-id="@Model.Character.Id"
+                            class="btn
+                        btn-outline-danger
+                        me-auto"
+                            onclick="return confirm('Delete this spell?');">
+                        Delete
+                    </button>
+
+
+                    <button type="button"
+                            class="btn
+                        btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+
+
+                    <button type="submit"
+                            class="btn
+                        btn-primary">
+                        Save Spell
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+    @* ============================================================
+   CHARACTER LAYOUT MODAL
+   ============================================================ *@
+
+    <div class="modal fade"
+         id="characterLayoutModal"
+         tabindex="-1"
+         aria-labelledby="characterLayoutModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog modal-dialog-centered">
+
+            <div class="modal-content">
+
+                <div class="modal-header">
+
+                    <div>
+                        <h2 class="modal-title fs-5"
+                            id="characterLayoutModalLabel">
+                            Customize Character Sheet
+                        </h2>
+
+                        <div class="small text-muted mt-1">
+                            Set the section order used on phones and tablets.
+                            Changes save automatically on this device.
+                        </div>
+                    </div>
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close">
+                    </button>
+
+                </div>
+
+                <div class="modal-body">
+
+                    <div class="character-layout-list list-group"
+                         id="characterLayoutList">
+                    </div>
+
+                    <div class="small text-muted mt-3">
+                        Desktop keeps the classic three-column character sheet.
+                        This order is used when the sheet stacks on smaller screens.
+                    </div>
+
+                    <div class="visually-hidden"
+                         id="characterLayoutStatus"
+                         aria-live="polite">
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-outline-secondary me-auto"
+                            id="resetCharacterLayout">
+                        Reset Default
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-primary"
+                            data-bs-dismiss="modal">
+                        Done
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    @* ============================================================
+   ADD INVENTORY ITEM MODAL
+   ============================================================ *@
+
+    <div class="modal fade"
+         id="addInventoryItemModal"
+         tabindex="-1"
+         aria-labelledby="addInventoryItemModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog
+            modal-dialog-centered">
+
+            <div class="modal-content">
+
+                <form method="post"
+                      asp-page-handler="AddInventoryItem"
+                      asp-route-id="@Model.Character.Id"
+                      data-preserve-inventory-scroll="true">
+
+
+                    <div class="modal-header">
+
+                        <div>
+
+                            <h2 class="modal-title
+                                fs-5"
+                                id="addInventoryItemModalLabel">
+                                Add Inventory Item
+                            </h2>
+
+                            <div class="small
+                                text-muted">
+                                @Model.Character.Name
+                            </div>
+
+                        </div>
+
+
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close">
+                        </button>
+
+                    </div>
+
+
+                    <div class="modal-body">
+
+
+                        <div class="mb-3">
+
+                            <label for="itemName"
+                                   class="form-label">
+                                Name
+                            </label>
+
+                            <input type="text"
+                                   id="itemName"
+                                   name="itemName"
+                                   maxlength="150"
+                                   class="form-control"
+                                   required />
+
+                        </div>
+
+
+                        <div class="row g-3 mb-3">
+
+
+                            <div class="col-8">
+
+                                <label for="itemType"
+                                       class="form-label">
+                                    Type
+                                </label>
+
+                                <select id="itemType"
+                                        name="itemType"
+                                        class="form-select">
+
+                                    @foreach (var itemType
+                                              in Enum.GetValues<CharacterItemType>())
+                                    {
+                                        <option value="@itemType">
+                                            @itemType
+                                        </option>
+                                    }
+
+                                </select>
+
+                            </div>
+
+
+                            <div class="col-4">
+
+                                <label for="quantity"
+                                       class="form-label">
+                                    Quantity
+                                </label>
+
+                                <input type="number"
+                                       id="quantity"
+                                       name="quantity"
+                                       value="1"
+                                       min="1"
+                                       class="form-control" />
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="mb-3">
+
+                            <label for="itemNotes"
+                                   class="form-label">
+                                Notes
+                            </label>
+
+                            <textarea id="itemNotes"
+                                      name="itemNotes"
+                                      maxlength="2000"
+                                      rows="3"
+                                      class="form-control"
+                                      placeholder="Optional notes"></textarea>
+
+                        </div>
+
+
+                        <div class="form-check">
+
+                            <input type="checkbox"
+                                   id="isEquipped"
+                                   name="isEquipped"
+                                   value="true"
+                                   class="form-check-input" />
+
+                            <label for="isEquipped"
+                                   class="form-check-label">
+                                Equipped
+                            </label>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="modal-footer">
+
+                        <button type="button"
+                                class="btn
+                            btn-outline-secondary"
+                                data-bs-dismiss="modal">
+                            Cancel
+                        </button>
+
+
+                        <button type="submit"
+                                class="btn
+                            btn-primary">
+                            Add Item
+                        </button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    @* ============================================================
    EDIT INVENTORY ITEM MODAL
    ============================================================ *@
 
-<div class="modal fade"
-     id="editInventoryItemModal"
-     tabindex="-1"
-     aria-labelledby="editInventoryItemModalLabel"
-     aria-hidden="true">
+    <div class="modal fade"
+         id="editInventoryItemModal"
+         tabindex="-1"
+         aria-labelledby="editInventoryItemModalLabel"
+         aria-hidden="true">
 
-    <div class="modal-dialog
-        modal-dialog-centered">
+        <div class="modal-dialog
+            modal-dialog-centered">
 
-        <div class="modal-content">
+            <div class="modal-content">
+
+                <form method="post"
+                      asp-page-handler="UpdateInventoryItem"
+                      asp-route-id="@Model.Character.Id"
+                      data-preserve-inventory-scroll="true">
+
+
+                    <input type="hidden"
+                           id="editItemId"
+                           name="itemId" />
+
+
+                    <div class="modal-header">
+
+                        <div>
+
+                            <h2 class="modal-title
+                                fs-5"
+                                id="editInventoryItemModalLabel">
+                                Edit Inventory Item
+                            </h2>
+
+                            <div class="small
+                                text-muted">
+                                @Model.Character.Name
+                            </div>
+
+                        </div>
+
+
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close">
+                        </button>
+
+                    </div>
+
+
+                    <div class="modal-body">
+
+
+                        <div class="mb-3">
+
+                            <label for="editItemName"
+                                   class="form-label">
+                                Name
+                            </label>
+
+                            <input type="text"
+                                   id="editItemName"
+                                   name="itemName"
+                                   maxlength="150"
+                                   class="form-control"
+                                   required />
+
+                        </div>
+
+
+                        <div class="row
+                            g-3
+                            mb-3">
+
+
+                            <div class="col-8">
+
+                                <label for="editItemType"
+                                       class="form-label">
+                                    Type
+                                </label>
+
+                                <select id="editItemType"
+                                        name="itemType"
+                                        class="form-select">
+
+                                    @foreach (var itemType
+                                              in Enum.GetValues<CharacterItemType>())
+                                    {
+                                        <option value="@itemType">
+                                            @itemType
+                                        </option>
+                                    }
+
+                                </select>
+
+                            </div>
+
+
+                            <div class="col-4">
+
+                                <label for="editItemQuantity"
+                                       class="form-label">
+                                    Quantity
+                                </label>
+
+                                <input type="number"
+                                       id="editItemQuantity"
+                                       name="quantity"
+                                       min="1"
+                                       class="form-control"
+                                       required />
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="mb-3">
+
+                            <label for="editItemNotes"
+                                   class="form-label">
+                                Notes
+                            </label>
+
+                            <textarea id="editItemNotes"
+                                      name="itemNotes"
+                                      maxlength="2000"
+                                      rows="3"
+                                      class="form-control"
+                                      placeholder="Optional notes"></textarea>
+
+                        </div>
+
+
+                        <div class="form-check">
+
+                            <input type="checkbox"
+                                   id="editIsEquipped"
+                                   name="isEquipped"
+                                   value="true"
+                                   class="form-check-input" />
+
+                            <label for="editIsEquipped"
+                                   class="form-check-label">
+                                Equipped
+                            </label>
+
+                            <div class="form-text">
+                                Available for weapons, armor,
+                                and equipment.
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="modal-footer">
+
+                        <button type="button"
+                                class="btn
+                            btn-outline-secondary"
+                                data-bs-dismiss="modal">
+                            Cancel
+                        </button>
+
+
+                        <button type="submit"
+                                class="btn
+                            btn-primary">
+                            Save Changes
+                        </button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    @* ============================================================
+   WEAPON CONFIGURATION MODAL
+   ============================================================ *@
+
+    <div class="modal fade"
+         id="weaponConfigurationModal"
+         tabindex="-1"
+         aria-labelledby="weaponConfigurationModalLabel"
+         aria-hidden="true">
+
+        <div class="modal-dialog
+            modal-lg
+            modal-dialog-scrollable
+            modal-fullscreen-sm-down">
 
             <form method="post"
-                  asp-page-handler="UpdateInventoryItem"
+                  asp-page-handler="SaveWeaponConfiguration"
                   asp-route-id="@Model.Character.Id"
-                  data-preserve-inventory-scroll="true">
+                  data-preserve-inventory-scroll="true"
+                  id="weaponConfigurationForm"
+                  class="modal-content">
 
 
                 <input type="hidden"
-                       id="editItemId"
+                       id="weaponItemId"
                        name="itemId" />
 
 
@@ -3431,15 +3686,13 @@
 
                     <div>
 
-                        <h2 class="modal-title
-                            fs-5"
-                            id="editInventoryItemModalLabel">
-                            Edit Inventory Item
+                        <h2 class="modal-title fs-5"
+                            id="weaponConfigurationModalLabel">
+                            Configure Weapon
                         </h2>
 
-                        <div class="small
-                            text-muted">
-                            @Model.Character.Name
+                        <div class="small text-muted"
+                             id="weaponConfigurationItemName">
                         </div>
 
                     </div>
@@ -3456,45 +3709,59 @@
 
                 <div class="modal-body">
 
+                    <div class="mb-4">
 
-                    <div class="mb-3">
-
-                        <label for="editItemName"
+                        <label for="weaponTemplate"
                                class="form-label">
-                            Name
+                            Standard Weapon Template
                         </label>
 
-                        <input type="text"
-                               id="editItemName"
-                               name="itemName"
-                               maxlength="150"
-                               class="form-control"
-                               required />
+                        <select id="weaponTemplate"
+                                class="form-select">
+
+                            <option value="">
+                                Custom / Current Values
+                            </option>
+
+                            @foreach (var weapon
+                                      in Model.StandardWeapons
+                                          .OrderBy(
+                                              x => x.Name))
+                            {
+                                <option value="@weapon.Key">
+                                    @weapon.Name
+                                </option>
+                            }
+
+                        </select>
+
+                        <div class="form-text">
+                            Choosing a template replaces the
+                            weapon fields below. You can still
+                            modify them afterward.
+                        </div>
 
                     </div>
 
 
-                    <div class="row
-                        g-3
-                        mb-3">
+                    <div class="row g-3 mb-4">
 
+                        <div class="col-12 col-sm-6">
 
-                        <div class="col-8">
-
-                            <label for="editItemType"
+                            <label for="weaponAttackAbility"
                                    class="form-label">
-                                Type
+                                Attack Ability
                             </label>
 
-                            <select id="editItemType"
-                                    name="itemType"
+                            <select id="weaponAttackAbility"
+                                    name="attackAbility"
                                     class="form-select">
 
-                                @foreach (var itemType
-                                          in Enum.GetValues<CharacterItemType>())
+                                @foreach (var ability
+                                          in Enum.GetValues<CharacterAbilityType>())
                                 {
-                                    <option value="@itemType">
-                                        @itemType
+                                    <option value="@ability">
+                                        @ability
                                     </option>
                                 }
 
@@ -3503,60 +3770,148 @@
                         </div>
 
 
-                        <div class="col-4">
+                        <div class="col-12 col-sm-6">
 
-                            <label for="editItemQuantity"
+                            <label class="form-label d-block">
+                                Proficiency
+                            </label>
+
+                            <div class="form-check
+                                mt-sm-2">
+
+                                <input type="checkbox"
+                                       id="weaponUsesProficiency"
+                                       name="usesProficiency"
+                                       value="true"
+                                       class="form-check-input"
+                                       checked />
+
+                                <label for="weaponUsesProficiency"
+                                       class="form-check-label">
+                                    Add proficiency bonus to hit
+                                </label>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="weaponAttackBonus"
                                    class="form-label">
-                                Quantity
+                                Additional Hit Bonus
                             </label>
 
                             <input type="number"
-                                   id="editItemQuantity"
-                                   name="quantity"
-                                   min="1"
-                                   class="form-control"
-                                   required />
+                                   id="weaponAttackBonus"
+                                   name="attackBonus"
+                                   value="0"
+                                   class="form-control" />
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="weaponPrimaryDamageBonus"
+                                   class="form-label">
+                                Additional Damage Bonus
+                            </label>
+
+                            <input type="number"
+                                   id="weaponPrimaryDamageBonus"
+                                   name="primaryDamageBonus"
+                                   value="0"
+                                   class="form-control" />
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="weaponNormalRange"
+                                   class="form-label">
+                                Normal Range
+                            </label>
+
+                            <div class="input-group">
+
+                                <input type="number"
+                                       id="weaponNormalRange"
+                                       name="normalRange"
+                                       min="1"
+                                       class="form-control" />
+
+                                <span class="input-group-text">
+                                    ft.
+                                </span>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="weaponLongRange"
+                                   class="form-label">
+                                Long Range
+                            </label>
+
+                            <div class="input-group">
+
+                                <input type="number"
+                                       id="weaponLongRange"
+                                       name="longRange"
+                                       min="1"
+                                       class="form-control" />
+
+                                <span class="input-group-text">
+                                    ft.
+                                </span>
+
+                            </div>
 
                         </div>
 
                     </div>
 
 
-                    <div class="mb-3">
+                    <div class="d-flex
+                        justify-content-between
+                        align-items-center
+                        mb-2">
 
-                        <label for="editItemNotes"
-                               class="form-label">
-                            Notes
-                        </label>
+                        <div>
 
-                        <textarea id="editItemNotes"
-                                  name="itemNotes"
-                                  maxlength="2000"
-                                  rows="3"
-                                  class="form-control"
-                                  placeholder="Optional notes"></textarea>
+                            <div class="fw-semibold">
+                                Damage
+                            </div>
+
+                            <div class="small text-muted">
+                                The first damage entry is the
+                                weapon's primary damage.
+                            </div>
+
+                        </div>
+
+
+                        <button type="button"
+                                id="addWeaponDamageComponent"
+                                class="btn
+                            btn-sm
+                            btn-outline-secondary">
+                            + Add Damage
+                        </button>
 
                     </div>
 
 
-                    <div class="form-check">
-
-                        <input type="checkbox"
-                               id="editIsEquipped"
-                               name="isEquipped"
-                               value="true"
-                               class="form-check-input" />
-
-                        <label for="editIsEquipped"
-                               class="form-check-label">
-                            Equipped
-                        </label>
-
-                        <div class="form-text">
-                            Available for weapons, armor,
-                            and equipment.
-                        </div>
-
+                    <div id="weaponDamageComponents"
+                         class="d-flex
+                        flex-column
+                        gap-3">
                     </div>
 
                 </div>
@@ -3575,7 +3930,7 @@
                     <button type="submit"
                             class="btn
                         btn-primary">
-                        Save Changes
+                        Save Weapon
                     </button>
 
                 </div>
@@ -3586,617 +3941,45 @@
 
     </div>
 
-</div>
 
-@* ============================================================
-   WEAPON CONFIGURATION MODAL
-   ============================================================ *@
+    <script type="application/json"
+            id="weaponCatalogData">
+            @Html.Raw(Model.GetWeaponCatalogJson())
+    </script>
 
-<div class="modal fade"
-     id="weaponConfigurationModal"
-     tabindex="-1"
-     aria-labelledby="weaponConfigurationModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-lg
-        modal-dialog-scrollable
-        modal-fullscreen-sm-down">
-
-        <form method="post"
-              asp-page-handler="SaveWeaponConfiguration"
-              asp-route-id="@Model.Character.Id"
-              data-preserve-inventory-scroll="true"
-              id="weaponConfigurationForm"
-              class="modal-content">
-
-
-            <input type="hidden"
-                   id="weaponItemId"
-                   name="itemId" />
-
-
-            <div class="modal-header">
-
-                <div>
-
-                    <h2 class="modal-title fs-5"
-                        id="weaponConfigurationModalLabel">
-                        Configure Weapon
-                    </h2>
-
-                    <div class="small text-muted"
-                         id="weaponConfigurationItemName">
-                    </div>
-
-                </div>
-
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close">
-                </button>
-
-            </div>
-
-
-            <div class="modal-body">
-
-                <div class="mb-4">
-
-                    <label for="weaponTemplate"
-                           class="form-label">
-                        Standard Weapon Template
-                    </label>
-
-                    <select id="weaponTemplate"
-                            class="form-select">
-
-                        <option value="">
-                            Custom / Current Values
-                        </option>
-
-                        @foreach (var weapon
-                                  in Model.StandardWeapons
-                                      .OrderBy(
-                                          x => x.Name))
-                        {
-                            <option value="@weapon.Key">
-                                @weapon.Name
-                            </option>
-                        }
-
-                    </select>
-
-                    <div class="form-text">
-                        Choosing a template replaces the
-                        weapon fields below. You can still
-                        modify them afterward.
-                    </div>
-
-                </div>
-
-
-                <div class="row g-3 mb-4">
-
-                    <div class="col-12 col-sm-6">
-
-                        <label for="weaponAttackAbility"
-                               class="form-label">
-                            Attack Ability
-                        </label>
-
-                        <select id="weaponAttackAbility"
-                                name="attackAbility"
-                                class="form-select">
-
-                            @foreach (var ability
-                                      in Enum.GetValues<CharacterAbilityType>())
-                            {
-                                <option value="@ability">
-                                    @ability
-                                </option>
-                            }
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <label class="form-label d-block">
-                            Proficiency
-                        </label>
-
-                        <div class="form-check
-                            mt-sm-2">
-
-                            <input type="checkbox"
-                                   id="weaponUsesProficiency"
-                                   name="usesProficiency"
-                                   value="true"
-                                   class="form-check-input"
-                                   checked />
-
-                            <label for="weaponUsesProficiency"
-                                   class="form-check-label">
-                                Add proficiency bonus to hit
-                            </label>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="weaponAttackBonus"
-                               class="form-label">
-                            Additional Hit Bonus
-                        </label>
-
-                        <input type="number"
-                               id="weaponAttackBonus"
-                               name="attackBonus"
-                               value="0"
-                               class="form-control" />
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="weaponPrimaryDamageBonus"
-                               class="form-label">
-                            Additional Damage Bonus
-                        </label>
-
-                        <input type="number"
-                               id="weaponPrimaryDamageBonus"
-                               name="primaryDamageBonus"
-                               value="0"
-                               class="form-control" />
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="weaponNormalRange"
-                               class="form-label">
-                            Normal Range
-                        </label>
-
-                        <div class="input-group">
-
-                            <input type="number"
-                                   id="weaponNormalRange"
-                                   name="normalRange"
-                                   min="1"
-                                   class="form-control" />
-
-                            <span class="input-group-text">
-                                ft.
-                            </span>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="weaponLongRange"
-                               class="form-label">
-                            Long Range
-                        </label>
-
-                        <div class="input-group">
-
-                            <input type="number"
-                                   id="weaponLongRange"
-                                   name="longRange"
-                                   min="1"
-                                   class="form-control" />
-
-                            <span class="input-group-text">
-                                ft.
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-                <div class="d-flex
-                    justify-content-between
-                    align-items-center
-                    mb-2">
-
-                    <div>
-
-                        <div class="fw-semibold">
-                            Damage
-                        </div>
-
-                        <div class="small text-muted">
-                            The first damage entry is the
-                            weapon's primary damage.
-                        </div>
-
-                    </div>
-
-
-                    <button type="button"
-                            id="addWeaponDamageComponent"
-                            class="btn
-                        btn-sm
-                        btn-outline-secondary">
-                        + Add Damage
-                    </button>
-
-                </div>
-
-
-                <div id="weaponDamageComponents"
-                     class="d-flex
-                    flex-column
-                    gap-3">
-                </div>
-
-            </div>
-
-
-            <div class="modal-footer">
-
-                <button type="button"
-                        class="btn
-                    btn-outline-secondary"
-                        data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-
-                <button type="submit"
-                        class="btn
-                    btn-primary">
-                    Save Weapon
-                </button>
-
-            </div>
-
-        </form>
-
-    </div>
-
-</div>
-
-
-<script type="application/json"
-        id="weaponCatalogData">
-    @Html.Raw(Model.GetWeaponCatalogJson())
-</script>
-
-<div class="modal fade"
-     id="characterAttackModal"
-     tabindex="-1"
-     aria-labelledby="characterAttackModalLabel"
-     aria-hidden="true">
-
-    <div class="modal-dialog
-        modal-lg
-        modal-dialog-scrollable
-        modal-fullscreen-sm-down">
-
-        <form method="post"
-              asp-page-handler="SaveCharacterAttack"
-              asp-route-id="@Model.Character.Id"
-              id="characterAttackForm"
-              class="modal-content">
-
-
-            <input type="hidden"
-                   id="characterAttackId"
-                   name="attackId" />
-
-
-            <div class="modal-header">
-
-                <div>
-
-                    <h2 class="modal-title fs-5"
-                        id="characterAttackModalLabel">
-                        Add Attack
-                    </h2>
-
-                    <div class="small text-muted">
-                        @Model.Character.Name
-                    </div>
-
-                </div>
-
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close">
-                </button>
-
-            </div>
-
-
-            <div class="modal-body">
-
-                @if (TempData["AttackError"]
-                     is string attackError)
-                {
-                    <div class="alert alert-danger">
-                        @attackError
-                    </div>
-                }
-
-
-                <div class="mb-3">
-
-                    <label for="characterAttackName"
-                           class="form-label">
-                        Name
-                    </label>
-
-                    <input type="text"
-                           id="characterAttackName"
-                           name="attackName"
-                           maxlength="150"
-                           class="form-control"
-                           required />
-
-                </div>
-
-
-                <div class="row g-3 mb-4">
-
-                    <div class="col-12 col-sm-6">
-
-                        <label for="characterAttackAbility"
-                               class="form-label">
-                            Attack Ability
-                        </label>
-
-                        <select id="characterAttackAbility"
-                                name="attackAbility"
-                                class="form-select">
-
-                            @foreach (var ability
-                                      in Enum.GetValues<CharacterAbilityType>())
-                            {
-                                <option value="@ability">
-                                    @ability
-                                </option>
-                            }
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <label for="characterAttackBonus"
-                               class="form-label">
-                            Additional Hit Bonus
-                        </label>
-
-                        <input type="number"
-                               id="characterAttackBonus"
-                               name="attackBonus"
-                               value="0"
-                               class="form-control" />
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <div class="form-check">
-
-                            <input type="checkbox"
-                                   id="characterAttackAddsAbility"
-                                   name="addsAbilityModifierToHit"
-                                   value="true"
-                                   class="form-check-input"
-                                   checked />
-
-                            <label for="characterAttackAddsAbility"
-                                   class="form-check-label">
-                                Add ability modifier to hit
-                            </label>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="col-12 col-sm-6">
-
-                        <div class="form-check">
-
-                            <input type="checkbox"
-                                   id="characterAttackUsesProficiency"
-                                   name="usesProficiency"
-                                   value="true"
-                                   class="form-check-input"
-                                   checked />
-
-                            <label for="characterAttackUsesProficiency"
-                                   class="form-check-label">
-                                Add proficiency bonus
-                            </label>
-
-                        </div>
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="characterAttackNormalRange"
-                               class="form-label">
-                            Normal Range
-                        </label>
-
-                        <input type="number"
-                               id="characterAttackNormalRange"
-                               name="normalRange"
-                               min="1"
-                               class="form-control" />
-
-                    </div>
-
-
-                    <div class="col-6">
-
-                        <label for="characterAttackLongRange"
-                               class="form-label">
-                            Long Range
-                        </label>
-
-                        <input type="number"
-                               id="characterAttackLongRange"
-                               name="longRange"
-                               min="1"
-                               class="form-control" />
-
-                    </div>
-
-                </div>
-
-
-                <div class="d-flex
-                    justify-content-between
-                    align-items-center
-                    mb-2">
-
-                    <div>
-
-                        <div class="fw-semibold">
-                            Damage
-                        </div>
-
-                        <div class="small text-muted">
-                            Add one or more damage components.
-                        </div>
-
-                    </div>
-
-
-                    <button type="button"
-                            id="addCharacterAttackDamage"
-                            class="btn
-                        btn-sm
-                        btn-outline-secondary">
-                        + Add Damage
-                    </button>
-
-                </div>
-
-
-                <div id="characterAttackDamageComponents"
-                     class="d-flex
-                    flex-column
-                    gap-3
-                    mb-4">
-                </div>
-
-
-                <div>
-
-                    <label for="characterAttackNotes"
-                           class="form-label">
-                        Notes
-                    </label>
-
-                    <textarea id="characterAttackNotes"
-                              name="attackNotes"
-                              maxlength="2000"
-                              rows="3"
-                              class="form-control"
-                              placeholder="Optional attack notes"></textarea>
-
-                </div>
-
-            </div>
-
-
-            <div class="modal-footer">
-
-                <button type="submit"
-                        id="deleteCharacterAttack"
-                        asp-page-handler="DeleteCharacterAttack"
-                        asp-route-id="@Model.Character.Id"
-                        class="btn
-                    btn-outline-danger
-                    me-auto"
-                        onclick="return confirm('Delete this attack?');">
-                    Delete
-                </button>
-
-
-                <button type="button"
-                        class="btn
-                    btn-outline-secondary"
-                        data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-
-                <button type="submit"
-                        class="btn
-                    btn-primary">
-                    Save Attack
-                </button>
-
-            </div>
-
-        </form>
-
-    </div>
-
-</div>
-
-@if (Model.CanChangeConditions)
-{
     <div class="modal fade"
-         id="conditionsModal"
+         id="characterAttackModal"
          tabindex="-1"
-         aria-labelledby="conditionsModalLabel"
-         aria-hidden="true"
-         data-auto-open="@(Model.OpenModal == "conditions"
-                                                             ? "true"
-                                                             : "false")">
+         aria-labelledby="characterAttackModalLabel"
+         aria-hidden="true">
 
         <div class="modal-dialog
-            modal-dialog-centered
-            modal-dialog-scrollable">
+            modal-lg
+            modal-dialog-scrollable
+            modal-fullscreen-sm-down">
 
-            <div class="modal-content">
+            <form method="post"
+                  asp-page-handler="SaveCharacterAttack"
+                  asp-route-id="@Model.Character.Id"
+                  id="characterAttackForm"
+                  class="modal-content">
+
+
+                <input type="hidden"
+                       id="characterAttackId"
+                       name="attackId" />
 
 
                 <div class="modal-header">
 
                     <div>
 
-                        <h2 class="modal-title
-                            fs-5"
-                            id="conditionsModalLabel">
-                            Manage Conditions
+                        <h2 class="modal-title fs-5"
+                            id="characterAttackModalLabel">
+                            Add Attack
                         </h2>
 
-                        <div class="small
-                            text-muted">
+                        <div class="small text-muted">
                             @Model.Character.Name
                         </div>
 
@@ -4214,268 +3997,551 @@
 
                 <div class="modal-body">
 
-
-                    @if (TempData["ConditionError"]
-                         is string conditionError)
+                    @if (TempData["AttackError"]
+                         is string attackError)
                     {
-                        <div class="alert
-                            alert-danger">
-                            @conditionError
+                        <div class="alert alert-danger">
+                            @attackError
                         </div>
                     }
 
 
-                    <div class="fw-semibold mb-2">
-                        Standard Conditions
+                    <div class="mb-3">
+
+                        <label for="characterAttackName"
+                               class="form-label">
+                            Name
+                        </label>
+
+                        <input type="text"
+                               id="characterAttackName"
+                               name="attackName"
+                               maxlength="150"
+                               class="form-control"
+                               required />
+
                     </div>
 
 
-                    <div class="condition-selector-grid">
+                    <div class="row g-3 mb-4">
 
-                        @foreach (var conditionName
-                                  in Model.StandardConditions)
+                        <div class="col-12 col-sm-6">
+
+                            <label for="characterAttackAbility"
+                                   class="form-label">
+                                Attack Ability
+                            </label>
+
+                            <select id="characterAttackAbility"
+                                    name="attackAbility"
+                                    class="form-select">
+
+                                @foreach (var ability
+                                          in Enum.GetValues<CharacterAbilityType>())
+                                {
+                                    <option value="@ability">
+                                        @ability
+                                    </option>
+                                }
+
+                            </select>
+
+                        </div>
+
+
+                        <div class="col-12 col-sm-6">
+
+                            <label for="characterAttackBonus"
+                                   class="form-label">
+                                Additional Hit Bonus
+                            </label>
+
+                            <input type="number"
+                                   id="characterAttackBonus"
+                                   name="attackBonus"
+                                   value="0"
+                                   class="form-control" />
+
+                        </div>
+
+
+                        <div class="col-12 col-sm-6">
+
+                            <div class="form-check">
+
+                                <input type="checkbox"
+                                       id="characterAttackAddsAbility"
+                                       name="addsAbilityModifierToHit"
+                                       value="true"
+                                       class="form-check-input"
+                                       checked />
+
+                                <label for="characterAttackAddsAbility"
+                                       class="form-check-label">
+                                    Add ability modifier to hit
+                                </label>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-12 col-sm-6">
+
+                            <div class="form-check">
+
+                                <input type="checkbox"
+                                       id="characterAttackUsesProficiency"
+                                       name="usesProficiency"
+                                       value="true"
+                                       class="form-check-input"
+                                       checked />
+
+                                <label for="characterAttackUsesProficiency"
+                                       class="form-check-label">
+                                    Add proficiency bonus
+                                </label>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="characterAttackNormalRange"
+                                   class="form-label">
+                                Normal Range
+                            </label>
+
+                            <input type="number"
+                                   id="characterAttackNormalRange"
+                                   name="normalRange"
+                                   min="1"
+                                   class="form-control" />
+
+                        </div>
+
+
+                        <div class="col-6">
+
+                            <label for="characterAttackLongRange"
+                                   class="form-label">
+                                Long Range
+                            </label>
+
+                            <input type="number"
+                                   id="characterAttackLongRange"
+                                   name="longRange"
+                                   min="1"
+                                   class="form-control" />
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="d-flex
+                        justify-content-between
+                        align-items-center
+                        mb-2">
+
+                        <div>
+
+                            <div class="fw-semibold">
+                                Damage
+                            </div>
+
+                            <div class="small text-muted">
+                                Add one or more damage components.
+                            </div>
+
+                        </div>
+
+
+                        <button type="button"
+                                id="addCharacterAttackDamage"
+                                class="btn
+                            btn-sm
+                            btn-outline-secondary">
+                            + Add Damage
+                        </button>
+
+                    </div>
+
+
+                    <div id="characterAttackDamageComponents"
+                         class="d-flex
+                        flex-column
+                        gap-3
+                        mb-4">
+                    </div>
+
+
+                    <div>
+
+                        <label for="characterAttackNotes"
+                               class="form-label">
+                            Notes
+                        </label>
+
+                        <textarea id="characterAttackNotes"
+                                  name="attackNotes"
+                                  maxlength="2000"
+                                  rows="3"
+                                  class="form-control"
+                                  placeholder="Optional attack notes"></textarea>
+
+                    </div>
+
+                </div>
+
+
+                <div class="modal-footer">
+
+                    <button type="submit"
+                            id="deleteCharacterAttack"
+                            asp-page-handler="DeleteCharacterAttack"
+                            asp-route-id="@Model.Character.Id"
+                            class="btn
+                        btn-outline-danger
+                        me-auto"
+                            onclick="return confirm('Delete this attack?');">
+                        Delete
+                    </button>
+
+
+                    <button type="button"
+                            class="btn
+                        btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+
+
+                    <button type="submit"
+                            class="btn
+                        btn-primary">
+                        Save Attack
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+    @if (Model.CanChangeConditions)
+    {
+        <div class="modal fade"
+             id="conditionsModal"
+             tabindex="-1"
+             aria-labelledby="conditionsModalLabel"
+             aria-hidden="true"
+             data-auto-open="@(Model.OpenModal == "conditions"
+                                                                                     ? "true"
+                                                                                     : "false")">
+
+            <div class="modal-dialog
+                modal-dialog-centered
+                modal-dialog-scrollable">
+
+                <div class="modal-content">
+
+
+                    <div class="modal-header">
+
+                        <div>
+
+                            <h2 class="modal-title
+                                fs-5"
+                                id="conditionsModalLabel">
+                                Manage Conditions
+                            </h2>
+
+                            <div class="small
+                                text-muted">
+                                @Model.Character.Name
+                            </div>
+
+                        </div>
+
+
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close">
+                        </button>
+
+                    </div>
+
+
+                    <div class="modal-body">
+
+
+                        @if (TempData["ConditionError"]
+                             is string conditionError)
                         {
-                            var activeCondition =
-                                Model.GetActiveCondition(
-                                    conditionName);
-
-                            var isActive =
-                                activeCondition is not null;
-
-
-                            <form method="post"
-                                  asp-page-handler="ToggleCondition"
-                                  asp-route-id="@Model.Character.Id">
-
-                                <input type="hidden"
-                                       name="conditionName"
-                                       value="@conditionName" />
-
-
-                                <button type="submit"
-                                        class="condition-option
-                                    @(isActive
-                                        ? "is-active"
-                                        : "")">
-
-                                    <span class="condition-option-marker">
-                                        @(isActive
-                                            ? "✓"
-                                            : "")
-                                    </span>
-
-                                    <span>
-                                        @conditionName
-                                    </span>
-
-                                </button>
-
-                            </form>
+                            <div class="alert
+                                alert-danger">
+                                @conditionError
+                            </div>
                         }
 
-                    </div>
+
+                        <div class="fw-semibold mb-2">
+                            Standard Conditions
+                        </div>
 
 
-                    <hr class="my-4" />
+                        <div class="condition-selector-grid">
 
-
-                    <div class="fw-semibold mb-2">
-                        Custom Conditions
-                    </div>
-
-
-                    @if (Model.ActiveConditions
-                        .Any(x => x.IsCustom))
-                    {
-                        <div class="d-flex
-                            flex-column
-                            gap-2
-                            mb-3">
-
-                            @foreach (var condition
-                                      in Model.ActiveConditions
-                                          .Where(
-                                              x => x.IsCustom))
+                            @foreach (var conditionName
+                                      in Model.StandardConditions)
                             {
-                                <div class="custom-condition-row">
+                                var activeCondition =
+                                    Model.GetActiveCondition(
+                                        conditionName);
 
-                                    <div>
-
-                                        <div class="fw-semibold">
-                                            @condition.Name
-                                        </div>
-
-                                        @if (!string.IsNullOrWhiteSpace(
-                                            condition.Notes))
-                                        {
-                                            <div class="small
-                                                text-muted">
-                                                @condition.Notes
-                                            </div>
-                                        }
-
-                                    </div>
+                                var isActive =
+                                    activeCondition is not null;
 
 
-                                    <form method="post"
-                                          asp-page-handler="RemoveCondition"
-                                          asp-route-id="@Model.Character.Id">
+                                <form method="post"
+                                      asp-page-handler="ToggleCondition"
+                                      asp-route-id="@Model.Character.Id">
 
-                                        <input type="hidden"
-                                               name="conditionId"
-                                               value="@condition.Id" />
+                                    <input type="hidden"
+                                           name="conditionName"
+                                           value="@conditionName" />
 
 
-                                        <button type="submit"
-                                                class="btn
-                                            btn-sm
-                                            btn-outline-danger">
-                                            Remove
-                                        </button>
+                                    <button type="submit"
+                                            class="condition-option
+                                        @(isActive
+                                            ? "is-active"
+                                            : "")">
 
-                                    </form>
+                                        <span class="condition-option-marker">
+                                            @(isActive
+                                                ? "✓"
+                                                : "")
+                                        </span>
 
-                                </div>
+                                        <span>
+                                            @conditionName
+                                        </span>
+
+                                    </button>
+
+                                </form>
                             }
 
                         </div>
-                    }
 
 
-                    <form method="post"
-                          asp-page-handler="AddCustomCondition"
-                          asp-route-id="@Model.Character.Id">
+                        <hr class="my-4" />
 
-                        <div class="mb-2">
 
-                            <label for="customConditionName"
-                                   class="form-label">
-                                Name
-                            </label>
-
-                            <input type="text"
-                                   id="customConditionName"
-                                   name="customConditionName"
-                                   maxlength="100"
-                                   class="form-control"
-                                   placeholder="Custom condition" />
-
+                        <div class="fw-semibold mb-2">
+                            Custom Conditions
                         </div>
 
 
-                        <div class="mb-3">
+                        @if (Model.ActiveConditions
+                            .Any(x => x.IsCustom))
+                        {
+                            <div class="d-flex
+                                flex-column
+                                gap-2
+                                mb-3">
 
-                            <label for="customConditionNotes"
-                                   class="form-label">
-                                Notes
-                            </label>
+                                @foreach (var condition
+                                          in Model.ActiveConditions
+                                              .Where(
+                                                  x => x.IsCustom))
+                                {
+                                    <div class="custom-condition-row">
 
-                            <textarea id="customConditionNotes"
-                                      name="customConditionNotes"
-                                      maxlength="1000"
-                                      rows="2"
-                                      class="form-control"
-                                      placeholder="Optional notes"></textarea>
+                                        <div>
 
-                        </div>
+                                            <div class="fw-semibold">
+                                                @condition.Name
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(
+                                                condition.Notes))
+                                            {
+                                                <div class="small
+                                                    text-muted">
+                                                    @condition.Notes
+                                                </div>
+                                            }
+
+                                        </div>
 
 
-                        <button type="submit"
-                                class="btn
-                            btn-outline-primary
-                            w-100">
-                            Add Custom Condition
-                        </button>
+                                        <form method="post"
+                                              asp-page-handler="RemoveCondition"
+                                              asp-route-id="@Model.Character.Id">
 
-                    </form>
+                                            <input type="hidden"
+                                                   name="conditionId"
+                                                   value="@condition.Id" />
+
+
+                                            <button type="submit"
+                                                    class="btn
+                                                btn-sm
+                                                btn-outline-danger">
+                                                Remove
+                                            </button>
+
+                                        </form>
+
+                                    </div>
+                                }
+
+                            </div>
+                        }
+
+
+                        <form method="post"
+                              asp-page-handler="AddCustomCondition"
+                              asp-route-id="@Model.Character.Id">
+
+                            <div class="mb-2">
+
+                                <label for="customConditionName"
+                                       class="form-label">
+                                    Name
+                                </label>
+
+                                <input type="text"
+                                       id="customConditionName"
+                                       name="customConditionName"
+                                       maxlength="100"
+                                       class="form-control"
+                                       placeholder="Custom condition" />
+
+                            </div>
+
+
+                            <div class="mb-3">
+
+                                <label for="customConditionNotes"
+                                       class="form-label">
+                                    Notes
+                                </label>
+
+                                <textarea id="customConditionNotes"
+                                          name="customConditionNotes"
+                                          maxlength="1000"
+                                          rows="2"
+                                          class="form-control"
+                                          placeholder="Optional notes"></textarea>
+
+                            </div>
+
+
+                            <button type="submit"
+                                    class="btn
+                                btn-outline-primary
+                                w-100">
+                                Add Custom Condition
+                            </button>
+
+                        </form>
+
+                    </div>
 
                 </div>
 
             </div>
 
         </div>
+    }
 
-    </div>
-}
+    @if (Model.EncounterCombatant is not null &&
+         Model.IsEncounterStarted &&
+         Model.IsControlled)
+    {
+        <div class="character-combat-bar">
 
-@if (Model.EncounterCombatant is not null &&
-     Model.IsEncounterStarted &&
-     Model.IsControlled)
-{
-    <div class="character-combat-bar">
+            <div class="container
+                character-combat-bar-content">
 
-        <div class="container
-            character-combat-bar-content">
+                @if (Model.IsCurrent)
+                {
+                    <div>
 
-            @if (Model.IsCurrent)
-            {
-                <div>
+                        <div class="fw-bold">
+                            Your Turn
+                        </div>
 
-                    <div class="fw-bold">
-                        Your Turn
+                        <div class="small text-muted">
+                            Round @Model.EncounterRound
+                        </div>
+
                     </div>
 
-                    <div class="small text-muted">
-                        Round @Model.EncounterRound
+
+                    <form method="post"
+                          asp-page-handler="EndTurn"
+                          asp-route-id="@Model.Character.Id">
+
+                        <button type="submit"
+                                class="btn
+                            btn-primary">
+                            End Turn →
+                        </button>
+
+                    </form>
+                }
+                else
+                {
+                    <div>
+
+                        <div class="fw-semibold">
+                            In Combat
+                        </div>
+
+                        <div class="small text-muted">
+                            Round @Model.EncounterRound
+                            · Waiting for your turn
+                        </div>
+
                     </div>
+                }
 
-                </div>
-
-
-                <form method="post"
-                      asp-page-handler="EndTurn"
-                      asp-route-id="@Model.Character.Id">
-
-                    <button type="submit"
-                            class="btn
-                        btn-primary">
-                        End Turn →
-                    </button>
-
-                </form>
-            }
-            else
-            {
-                <div>
-
-                    <div class="fw-semibold">
-                        In Combat
-                    </div>
-
-                    <div class="small text-muted">
-                        Round @Model.EncounterRound
-                        · Waiting for your turn
-                    </div>
-
-                </div>
-            }
+            </div>
 
         </div>
+    }
 
-    </div>
-}
+    @section Scripts {
 
-@section Scripts {
+        <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
 
-    <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+        <script src="~/js/player.js"
+                asp-append-version="true">
+        </script>
 
-    <script src="~/js/player.js"
-            asp-append-version="true">
-    </script>
+        <script src="~/js/player-character.js"
+                asp-append-version="true">
+        </script>
 
-    <script src="~/js/player-character.js"
-            asp-append-version="true">
-    </script>
+        <script src="~/js/player-inventory.js"
+                asp-append-version="true">
+        </script>
 
-    <script src="~/js/player-inventory.js"
-            asp-append-version="true">
-    </script>
+        <script src="~/js/player-attacks.js"
+                asp-append-version="true">
+        </script>
 
-    <script src="~/js/player-attacks.js"
-            asp-append-version="true">
-    </script>
-
-    <script src="~/js/player-spells.js"
-            asp-append-version="true">
-    </script>
-}
+        <script src="~/js/player-spells.js"
+                asp-append-version="true">
+        </script>
+    }
