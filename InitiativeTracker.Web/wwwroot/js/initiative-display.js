@@ -96,18 +96,17 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
 
+    /*
+     * Use the display's locally saved theme immediately so the
+     * page does not flash back to Dark while SignalR connects.
+     * Once connected, the hub's persisted theme becomes
+     * authoritative and is synchronized below.
+     */
     applyTheme(
         loadSavedTheme(),
         false);
 
 
-    /*
-     * The server does not broadcast this event yet.
-     *
-     * Keeping the listener here means the later DM theme
-     * control can simply broadcast the theme name and every
-     * connected display will immediately use the same theme.
-     */
     function handleRemoteTheme(
         theme) {
 
@@ -265,6 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 "connected",
                 "Connected");
 
+            await syncDisplayTheme();
             await syncEncounter();
         });
 
@@ -323,6 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 "Connected");
 
 
+            await syncDisplayTheme();
             await syncEncounter();
         }
         catch (error) {
@@ -841,6 +842,27 @@ document.addEventListener("DOMContentLoaded", () => {
             block:
                 "center"
         });
+    }
+
+
+    async function syncDisplayTheme() {
+
+        try {
+
+            const theme =
+                await connection.invoke(
+                    "GetDisplayTheme");
+
+
+            handleRemoteTheme(
+                theme);
+        }
+        catch (error) {
+
+            console.error(
+                "Unable to synchronize display theme.",
+                error);
+        }
     }
 
 

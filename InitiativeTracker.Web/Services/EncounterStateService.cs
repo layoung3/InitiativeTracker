@@ -50,6 +50,7 @@ public class EncounterStateService
             characterService;
 
         LoadPersistedState();
+        LoadApplicationSettings();
     }
 
     public Encounter CurrentEncounter { get; private set; } = new()
@@ -86,8 +87,31 @@ public class EncounterStateService
 
         lock (_lock)
         {
+            if (string.Equals(
+                    _currentDisplayTheme,
+                    normalized,
+                    StringComparison.Ordinal))
+            {
+                return _currentDisplayTheme;
+            }
+
+            var previousTheme =
+                _currentDisplayTheme;
+
             _currentDisplayTheme =
                 normalized;
+
+            try
+            {
+                PersistApplicationSettingsLocked();
+            }
+            catch
+            {
+                _currentDisplayTheme =
+                    previousTheme;
+
+                throw;
+            }
 
             return _currentDisplayTheme;
         }
@@ -102,6 +126,66 @@ public class EncounterStateService
                 return _undoHistory.Count > 0;
             }
         }
+    }
+
+    private void LoadApplicationSettings()
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var settings =
+            db.ApplicationSettings
+                .AsNoTracking()
+                .SingleOrDefault(
+                    x => x.Id == 1);
+
+        if (settings is null)
+        {
+            return;
+        }
+
+        var normalized =
+            settings.DisplayTheme?
+                .Trim()
+                .ToLowerInvariant();
+
+        if (!string.IsNullOrWhiteSpace(normalized) &&
+            AllowedDisplayThemes.Contains(normalized))
+        {
+            _currentDisplayTheme =
+                normalized;
+        }
+    }
+
+    private void PersistApplicationSettingsLocked()
+    {
+        using var db =
+            _dbContextFactory.CreateDbContext();
+
+        var settings =
+            db.ApplicationSettings
+                .SingleOrDefault(
+                    x => x.Id == 1);
+
+        if (settings is null)
+        {
+            settings =
+                new ApplicationSettingsRecord
+                {
+                    Id = 1
+                };
+
+            db.ApplicationSettings.Add(
+                settings);
+        }
+
+        settings.DisplayTheme =
+            _currentDisplayTheme;
+
+        settings.UpdatedAtUtc =
+            DateTime.UtcNow;
+
+        db.SaveChanges();
     }
 
     private void LoadPersistedState()

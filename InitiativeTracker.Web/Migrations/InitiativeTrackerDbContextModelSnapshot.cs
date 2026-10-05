@@ -17,6 +17,25 @@ namespace InitiativeTracker.Web.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.ApplicationSettingsRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DisplayTheme")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ApplicationSettings", (string)null);
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.DevicePairingRequest", b =>
                 {
                     b.Property<Guid>("Id")

@@ -10,6 +10,9 @@ public class InitiativeTrackerDbContext : DbContext
     {
     }
 
+    public DbSet<ApplicationSettingsRecord> ApplicationSettings =>
+        Set<ApplicationSettingsRecord>();
+
     public DbSet<PersistedEncounterState> EncounterStates =>
         Set<PersistedEncounterState>();
 
@@ -68,6 +71,18 @@ public class InitiativeTrackerDbContext : DbContext
         ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<ApplicationSettingsRecord>(
+            entity =>
+            {
+                entity.ToTable("ApplicationSettings");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.DisplayTheme)
+                    .IsRequired()
+                    .HasMaxLength(50);
+            });
 
         modelBuilder.Entity<PersistedEncounterState>(
             entity =>

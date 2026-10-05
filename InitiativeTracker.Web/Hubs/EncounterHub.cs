@@ -21,6 +21,11 @@ public class EncounterHub : Hub
         return _encounterState.GetDisplayState();
     }
 
+    public string GetDisplayTheme()
+    {
+        return _encounterState.CurrentDisplayTheme;
+    }
+
     public override async Task OnConnectedAsync()
     {
         var deviceClaim =
