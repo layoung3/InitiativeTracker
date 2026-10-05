@@ -23,15 +23,15 @@
         </div>
 
         <div>
-            <a href="/dm/profiles"
+            <a href="/dm/players"
                class="btn btn-outline-secondary">
-                Player Profiles
+                Stored Players
             </a>
             <a href="/dm"
                class="btn btn-outline-secondary">
                 Back to DM
             </a>
-        </div>      
+        </div>
 
     </div>
 
@@ -166,10 +166,34 @@
                                        name="id"
                                        value="@device.Id" />
 
-                                <input type="text"
-                                       name="name"
-                                       value="@device.Name"
-                                       class="form-control" />
+                                <div>
+
+                                    <input type="text"
+                                           name="name"
+                                           value="@device.Name"
+                                           class="form-control" />
+
+                                    <div class="small
+                                        text-muted
+                                        mt-1">
+
+                                        @if (device.LastSeenAtUtc.HasValue)
+                                        {
+                                            <span>
+                                                Last connected
+                                                @device.LastSeenAtUtc.Value.ToString("u")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span>
+                                                Approved · waiting for first connection
+                                            </span>
+                                        }
+
+                                    </div>
+
+                                </div>
 
                                 <button type="submit"
                                         class="btn

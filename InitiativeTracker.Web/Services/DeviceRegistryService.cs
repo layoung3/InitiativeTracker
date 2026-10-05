@@ -222,6 +222,35 @@ public class DeviceRegistryService
                 x.DeviceType == "Display");
     }
 
+    public void MarkDeviceSeen(
+        Guid deviceId)
+    {
+        lock (_lock)
+        {
+            using var db =
+                _dbContextFactory.CreateDbContext();
+
+            var device =
+                db.RegisteredDevices
+                    .SingleOrDefault(
+                        x =>
+                            x.Id ==
+                            deviceId &&
+                            x.IsTrusted);
+
+            if (device is null)
+            {
+                return;
+            }
+
+            device.LastSeenAtUtc =
+                DateTime.UtcNow;
+
+            db.SaveChanges();
+        }
+    }
+
+
     public void ForgetDevice(
         Guid deviceId)
     {

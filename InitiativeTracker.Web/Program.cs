@@ -4,6 +4,7 @@ using InitiativeTracker.Web.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,22 @@ var dataDirectory = Path.Combine(
     "App_Data");
 
 Directory.CreateDirectory(dataDirectory);
+
+var dataProtectionDirectory =
+    Path.Combine(
+        dataDirectory,
+        "DataProtection-Keys");
+
+Directory.CreateDirectory(
+    dataProtectionDirectory);
+
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(
+        new DirectoryInfo(
+            dataProtectionDirectory))
+    .SetApplicationName(
+        "InitiativeTracker");
 
 var databasePath = Path.Combine(
     dataDirectory,
@@ -256,7 +273,12 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (builder.Configuration
+    .GetValue<bool>(
+        "Tracker:UseHttpsRedirection"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseRouting();
 

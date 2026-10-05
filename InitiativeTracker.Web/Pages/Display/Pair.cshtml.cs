@@ -12,6 +12,11 @@ public class PairModel : PageModel
     private const string PairingCookie =
         "InitiativeTracker.PairingRequest";
 
+    private static readonly TimeSpan
+        DisplayAuthenticationLifetime =
+            TimeSpan.FromDays(
+                365 * 5);
+
     private readonly DeviceRegistryService
         _deviceRegistry;
 
@@ -102,7 +107,7 @@ public class PairModel : PageModel
                     _gameSession.CurrentSession,
                     "Display",
                     request.ApprovedDeviceId,
-                    TimeSpan.FromDays(180));
+                    DisplayAuthenticationLifetime);
 
             _deviceRegistry
                 .MarkPairingClaimed(

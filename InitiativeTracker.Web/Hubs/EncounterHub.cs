@@ -10,10 +10,18 @@ public class EncounterHub : Hub
 {
     private readonly EncounterStateService _encounterState;
 
+    private readonly DeviceRegistryService
+        _deviceRegistry;
+
     public EncounterHub(
-        EncounterStateService encounterState)
+        EncounterStateService encounterState,
+        DeviceRegistryService deviceRegistry)
     {
-        _encounterState = encounterState;
+        _encounterState =
+            encounterState;
+
+        _deviceRegistry =
+            deviceRegistry;
     }
 
     public EncounterDisplayState GetEncounterState()
@@ -38,6 +46,10 @@ public class EncounterHub : Hub
                 deviceClaim,
                 out var deviceId))
         {
+            _deviceRegistry
+                .MarkDeviceSeen(
+                    deviceId);
+
             await Groups.AddToGroupAsync(
                 Context.ConnectionId,
                 GetDeviceGroup(
