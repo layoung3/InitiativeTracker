@@ -14,7 +14,8 @@ public static class DeviceAuthenticationService
         Guid? deviceId = null,
         TimeSpan? lifetime = null,
         Guid? playerId = null,
-        Guid? playerProfileId = null)
+        Guid? playerProfileId = null,
+        Guid? playerDeviceCredentialId = null)
     {
         var claims =
             new List<Claim>
@@ -48,6 +49,14 @@ public static class DeviceAuthenticationService
                 new Claim(
                     "player_profile_id",
                     playerProfileId.Value.ToString()));
+        }
+
+        if (playerDeviceCredentialId.HasValue)
+        {
+            claims.Add(
+                new Claim(
+                    "player_device_id",
+                    playerDeviceCredentialId.Value.ToString()));
         }
 
         var identity =

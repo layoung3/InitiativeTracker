@@ -5,98 +5,289 @@
     ViewData["Title"] = "Join Game";
 }
 
-<div class="container py-5"
-     style="max-width: 480px;">
+<div class="container py-4 py-md-5"
+     style="max-width: 520px;">
 
     <div class="card">
 
         <div class="card-body p-4">
 
-            <h1 class="h3 mb-3">
-                Join Game
-            </h1>
-
-
-            @if (!ViewData.ModelState.IsValid)
+            @if (Model.JoinCompleted)
             {
-                <div asp-validation-summary="All"
-                     class="text-danger mb-3">
-                </div>
-            }
+                <h1 class="h3 mb-3">
+                    Player Profile Ready
+                </h1>
 
 
-            @if (Model.TokenAccepted)
-            {
-                <div class="alert alert-success">
-                    Game found. Enter your name to join.
-                </div>
-            }
-
-
-            <form method="post">
-
-                <input asp-for="JoinToken"
-                       type="hidden" />
-
-
-                @if (!Model.TokenAccepted &&
-                     string.IsNullOrWhiteSpace(
-                         Model.JoinToken))
+                @if (!string.IsNullOrWhiteSpace(
+                         Model.RecoveryKeyToShow))
                 {
-                    <div class="mb-3">
+                    <div class="alert alert-warning">
 
-                        <label asp-for="JoinCode"
-                               class="form-label">
-                            Game Code
-                        </label>
+                        <div class="fw-bold mb-2">
+                            Save your recovery key
+                        </div>
 
-                        <input asp-for="JoinCode"
-                               maxlength="6"
-                               autocomplete="off"
-                               class="form-control
-                        form-control-lg
-                        text-uppercase
-                        font-monospace
-                        text-center"
-                               placeholder="ABC123" />
+                        <p class="mb-3">
+                            You will use this to open the same player
+                            profile and characters on another phone,
+                            tablet, or computer connected to this hub.
+                        </p>
+
+                        <div class="form-control
+                            form-control-lg
+                            font-monospace
+                            text-center
+                            fw-bold
+                            user-select-all">
+                            @Model.RecoveryKeyToShow
+                        </div>
+
+                        <div class="small mt-2">
+                            The hub stores only a hash of this key, so
+                            this exact value cannot be shown again.
+                        </div>
 
                     </div>
                 }
 
 
-                <div class="mb-3">
-
-                    <label asp-for="PlayerName"
-                           class="form-label">
-                        Your Name
-                    </label>
-
-                    <input asp-for="PlayerName"
-                           maxlength="40"
-                           autocomplete="off"
-                           class="form-control
-                    form-control-lg"
-                           placeholder="Logan" />
-
-                </div>
-
-
-                <button type="submit"
-                        class="btn
-                    btn-primary
-                    btn-lg
-                    w-100">
+                <a asp-page="/Player/Index"
+                   class="btn btn-primary btn-lg w-100">
+                    Continue to My Characters
+                </a>
+            }
+            else
+            {
+                <h1 class="h3 mb-3">
                     Join Game
-                </button>
+                </h1>
 
-            </form>
+
+                @if (!ViewData.ModelState.IsValid)
+                {
+                    <div asp-validation-summary="All"
+                         class="text-danger mb-3">
+                    </div>
+                }
+
+
+                @if (Model.TokenAccepted)
+                {
+                    <div class="alert alert-success">
+                        Game found.
+                    </div>
+                }
+
+
+                <form method="post">
+
+                    <input asp-for="JoinToken"
+                           type="hidden" />
+
+
+                    @if (!Model.TokenAccepted &&
+                         string.IsNullOrWhiteSpace(
+                             Model.JoinToken))
+                    {
+                        <div class="mb-4">
+
+                            <label asp-for="JoinCode"
+                                   class="form-label">
+                                Game Code
+                            </label>
+
+                            <input asp-for="JoinCode"
+                                   maxlength="6"
+                                   autocomplete="off"
+                                   class="form-control
+                            form-control-lg
+                            text-uppercase
+                            font-monospace
+                            text-center"
+                                   placeholder="ABC123" />
+
+                        </div>
+                    }
+                    else
+                    {
+                        <input asp-for="JoinCode"
+                               type="hidden" />
+                    }
+
+
+                    @if (Model.HasRememberedProfile)
+                    {
+                        <div class="card
+                            border-primary
+                            mb-4">
+
+                            <div class="card-body">
+
+                                <div class="small
+                                    text-body-secondary
+                                    mb-1">
+                                    Saved on this device
+                                </div>
+
+                                <div class="fw-bold fs-5 mb-3">
+                                    @Model.RememberedProfile!.Name
+                                </div>
+
+                                <button type="submit"
+                                        name="JoinMode"
+                                        value="continue"
+                                        class="btn
+                                    btn-primary
+                                    w-100">
+                                    Continue as
+                                    @Model.RememberedProfile.Name
+                                </button>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="text-center
+                            text-body-secondary
+                            small
+                            mb-3">
+                            or use a different player
+                        </div>
+                    }
+
+
+                    <div class="accordion"
+                         id="playerJoinOptions">
+
+                        <div class="accordion-item">
+
+                            <h2 class="accordion-header">
+
+                                <button class="accordion-button"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#newPlayerJoin"
+                                        aria-expanded="true"
+                                        aria-controls="newPlayerJoin">
+                                    New Player
+                                </button>
+
+                            </h2>
+
+
+                            <div id="newPlayerJoin"
+                                 class="accordion-collapse
+                                collapse
+                                show"
+                                 data-bs-parent="#playerJoinOptions">
+
+                                <div class="accordion-body">
+
+                                    <label asp-for="PlayerName"
+                                           class="form-label">
+                                        Your Name
+                                    </label>
+
+                                    <input asp-for="PlayerName"
+                                           maxlength="40"
+                                           autocomplete="name"
+                                           class="form-control
+                                    form-control-lg
+                                    mb-3"
+                                           placeholder="Logan" />
+
+                                    <button type="submit"
+                                            name="JoinMode"
+                                            value="new"
+                                            class="btn
+                                        btn-outline-primary
+                                        w-100">
+                                        Create Player Profile
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="accordion-item">
+
+                            <h2 class="accordion-header">
+
+                                <button class="accordion-button
+                                    collapsed"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#recoverPlayerJoin"
+                                        aria-expanded="false"
+                                        aria-controls="recoverPlayerJoin">
+                                    I Already Have a Profile
+                                </button>
+
+                            </h2>
+
+
+                            <div id="recoverPlayerJoin"
+                                 class="accordion-collapse
+                                collapse"
+                                 data-bs-parent="#playerJoinOptions">
+
+                                <div class="accordion-body">
+
+                                    <label asp-for="RecoveryKey"
+                                           class="form-label">
+                                        Recovery Key
+                                    </label>
+
+                                    <input asp-for="RecoveryKey"
+                                           autocomplete="off"
+                                           autocapitalize="characters"
+                                           spellcheck="false"
+                                           class="form-control
+                                    form-control-lg
+                                    font-monospace
+                                    text-uppercase
+                                    mb-2"
+                                           placeholder="ABCDE-FGHIJ-KLMNO-PQRST-UVWXY" />
+
+                                    <div class="small
+                                        text-body-secondary
+                                        mb-3">
+                                        This links this browser to your
+                                        existing profile and characters.
+                                    </div>
+
+                                    <button type="submit"
+                                            name="JoinMode"
+                                            value="recover"
+                                            class="btn
+                                        btn-outline-secondary
+                                        w-100">
+                                        Recover Profile
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </form>
+            }
 
         </div>
 
     </div>
 
 
-    @if (!Model.TokenAccepted)
+    @if (!Model.JoinCompleted &&
+         !Model.TokenAccepted)
     {
         <div class="text-center
             text-muted

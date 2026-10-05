@@ -18,4 +18,6 @@ public class PlayerConnection
     public DateTime? LastSeenAtUtc { get; set; }
 
     public Guid PlayerProfileId { get; set; }
+
+    public Guid? PlayerDeviceCredentialId { get; set; }
 }

@@ -132,10 +132,6 @@ builder.Services
                     return;
                 }
 
-                if (!principal.IsInRole("Display"))
-                {
-                    return;
-                }
 
                 if (principal.IsInRole("Player"))
                 {
@@ -143,9 +139,23 @@ builder.Services
                         principal.FindFirst(
                             "player_id")?.Value;
 
+                    var profileClaim =
+                        principal.FindFirst(
+                            "player_profile_id")?.Value;
+
+                    var credentialClaim =
+                        principal.FindFirst(
+                            "player_device_id")?.Value;
+
                     if (!Guid.TryParse(
                             playerClaim,
-                            out var playerId))
+                            out var playerId) ||
+                        !Guid.TryParse(
+                            profileClaim,
+                            out var playerProfileId) ||
+                        !Guid.TryParse(
+                            credentialClaim,
+                            out var credentialId))
                     {
                         context.RejectPrincipal();
 
@@ -163,7 +173,10 @@ builder.Services
 
                     if (!players.IsActivePlayer(
                             playerId,
-                            sessionId))
+                            sessionId) ||
+                        !players.IsActivePlayerCredential(
+                            credentialId,
+                            playerProfileId))
                     {
                         context.RejectPrincipal();
 
@@ -172,38 +185,53 @@ builder.Services
 
                         return;
                     }
-                }
 
-                var deviceClaim =
-                    principal.FindFirst(
-                        "device_id")?.Value;
-
-                if (!Guid.TryParse(
-                        deviceClaim,
-                        out var deviceId))
-                {
-                    context.RejectPrincipal();
-
-                    await context.HttpContext
-                        .SignOutAsync();
+                    players.UpdateLastSeen(
+                        playerId);
 
                     return;
                 }
 
-                var registry =
-                    context.HttpContext
-                        .RequestServices
-                        .GetRequiredService<
-                            DeviceRegistryService>();
 
-                if (!registry.IsTrustedDisplay(
-                        deviceId))
+                if (principal.IsInRole("Display"))
                 {
-                    context.RejectPrincipal();
+                    var deviceClaim =
+                        principal.FindFirst(
+                            "device_id")?.Value;
 
-                    await context.HttpContext
-                        .SignOutAsync();
+                    if (!Guid.TryParse(
+                            deviceClaim,
+                            out var deviceId))
+                    {
+                        context.RejectPrincipal();
+
+                        await context.HttpContext
+                            .SignOutAsync();
+
+                        return;
+                    }
+
+                    var registry =
+                        context.HttpContext
+                            .RequestServices
+                            .GetRequiredService<
+                                DeviceRegistryService>();
+
+                    if (!registry.IsTrustedDisplay(
+                            deviceId))
+                    {
+                        context.RejectPrincipal();
+
+                        await context.HttpContext
+                            .SignOutAsync();
+                    }
+
+                    return;
                 }
+
+                /*
+                 * DM cookies only need the session validation above.
+                 */
             };
     });
 
@@ -240,5 +268,35 @@ app.MapRazorPages()
    .WithStaticAssets();
 
 app.MapHub<EncounterHub>("/hubs/encounter");
+
+
+app.MapPost(
+        "/player/presence",
+        (
+            HttpContext context,
+            PlayerRegistryService players) =>
+        {
+            var playerClaim =
+                context.User
+                    .FindFirst(
+                        "player_id")?
+                    .Value;
+
+            if (!Guid.TryParse(
+                    playerClaim,
+                    out var playerId))
+            {
+                return Results.Unauthorized();
+            }
+
+            players.UpdateLastSeen(
+                playerId);
+
+            return Results.NoContent();
+        })
+    .RequireAuthorization(
+        policy =>
+            policy.RequireRole(
+                "Player"));
 
 app.Run();

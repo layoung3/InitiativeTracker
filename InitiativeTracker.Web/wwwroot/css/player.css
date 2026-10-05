@@ -290,6 +290,36 @@ html[data-player-theme] {
 
 
 /* ==============================================================
+   PLAYER ACCOUNT
+   ============================================================== */
+
+.player-account-panel {
+    --bs-offcanvas-width: min(30rem, 96vw);
+}
+
+.player-recovery-key {
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+    font-family: var(--bs-font-monospace);
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-align: center;
+    user-select: all;
+    overflow-wrap: anywhere;
+}
+
+.player-device-card {
+    padding: 0.8rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-tertiary-bg);
+}
+
+
+/* ==============================================================
    PLAYER APPEARANCE
    ============================================================== */
 

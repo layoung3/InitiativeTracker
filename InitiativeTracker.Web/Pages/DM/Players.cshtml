@@ -1,0 +1,260 @@
+﻿@page "/dm/players"
+@model InitiativeTracker.Web.Pages.Dm.PlayersModel
+
+@{
+    ViewData["Title"] = "Stored Players";
+}
+
+@section Styles {
+    <link rel="stylesheet"
+          href="~/css/dm.css"
+          asp-append-version="true" />
+}
+
+<div class="container py-3 py-lg-4"
+     style="max-width: 900px;">
+
+    <div class="d-flex
+                flex-column
+                flex-sm-row
+                justify-content-between
+                align-items-sm-center
+                gap-3
+                mb-4">
+
+        <div>
+
+            <div class="small
+                        text-body-secondary
+                        text-uppercase
+                        fw-bold">
+                Hub Administration
+            </div>
+
+            <h1 class="h3 mb-0">
+                Stored Players
+            </h1>
+
+        </div>
+
+        <a asp-page="/Dm/Index"
+           class="btn btn-outline-secondary">
+            Back to DM Controls
+        </a>
+
+    </div>
+
+
+    @if (TempData["PlayerAdminError"] is string adminError)
+    {
+        <div class="alert alert-danger">
+            @adminError
+        </div>
+    }
+
+
+    @if (!string.IsNullOrWhiteSpace(
+             Model.RecoveryKeyToShow))
+    {
+        <div class="alert alert-warning">
+
+            <div class="fw-bold mb-1">
+                New recovery key for
+                @Model.RecoveryPlayerName
+            </div>
+
+            <p class="mb-2">
+                Give this key to the player. Their previous
+                recovery key no longer works.
+            </p>
+
+            <div class="form-control
+                        form-control-lg
+                        font-monospace
+                        fw-bold
+                        text-center
+                        user-select-all">
+                @Model.RecoveryKeyToShow
+            </div>
+
+        </div>
+    }
+
+
+    <div class="card">
+
+        <div class="card-header
+                    d-flex
+                    justify-content-between
+                    align-items-center">
+
+            <span>
+                Saved Profiles
+            </span>
+
+            <span class="badge text-bg-secondary">
+                @Model.Profiles.Count
+            </span>
+
+        </div>
+
+
+        <div class="list-group list-group-flush">
+
+            @if (Model.Profiles.Count == 0)
+            {
+                <div class="list-group-item
+                            text-body-secondary">
+                    No player profiles have been stored yet.
+                </div>
+            }
+            else
+            {
+                @foreach (var profile
+                          in Model.Profiles)
+                {
+                    <div class="list-group-item py-3">
+
+                        <div class="d-flex
+                                    flex-column
+                                    flex-lg-row
+                                    justify-content-between
+                                    gap-3">
+
+                            <div>
+
+                                <div class="fw-bold fs-5">
+                                    @profile.Name
+                                </div>
+
+                                <div class="small
+                                            text-body-secondary
+                                            mt-1">
+
+                                    @profile.CharacterCount
+                                    character@(profile.CharacterCount == 1 ? "" : "s")
+
+                                    <span class="mx-1">
+                                        ·
+                                    </span>
+
+                                    @profile.LinkedDeviceCount
+                                    linked device@(profile.LinkedDeviceCount == 1 ? "" : "s")
+
+                                </div>
+
+
+                                <div class="small
+                                            text-body-secondary
+                                            mt-1">
+
+                                    @if (profile.LastSeenAtUtc.HasValue)
+                                    {
+                                        <span>
+                                            Last seen
+                                            @profile.LastSeenAtUtc.Value.ToString("u")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span>
+                                            Never seen since identity upgrade
+                                        </span>
+                                    }
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="d-flex
+                                        flex-column
+                                        flex-sm-row
+                                        align-items-stretch
+                                        gap-2">
+
+                                <form method="post"
+                                      asp-page-handler="ResetRecoveryKey"
+                                      onsubmit="return confirm('Reset this player\\'s recovery key? Their previous key will stop working immediately.');">
+
+                                    <input type="hidden"
+                                           name="profileId"
+                                           value="@profile.Id" />
+
+                                    <input type="hidden"
+                                           name="playerName"
+                                           value="@profile.Name" />
+
+                                    <button type="submit"
+                                            class="btn
+                                                   btn-outline-warning
+                                                   w-100">
+                                        Reset Recovery
+                                    </button>
+
+                                </form>
+
+
+                                <form method="post"
+                                      asp-page-handler="RevokeAllDevices"
+                                      onsubmit="return confirm('Revoke all linked devices for this player?');">
+
+                                    <input type="hidden"
+                                           name="profileId"
+                                           value="@profile.Id" />
+
+                                    <button type="submit"
+                                            class="btn
+                                                   btn-outline-secondary
+                                                   w-100">
+                                        Revoke Devices
+                                    </button>
+
+                                </form>
+
+
+                                <form method="post"
+                                      asp-page-handler="DeleteProfile"
+                                      onsubmit="return confirm('Permanently delete this player profile and all of its characters? This cannot be undone.');">
+
+                                    <input type="hidden"
+                                           name="profileId"
+                                           value="@profile.Id" />
+
+                                    <button type="submit"
+                                            class="btn
+                                                   btn-outline-danger
+                                                   w-100">
+                                        Delete
+                                    </button>
+
+                                </form>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                }
+            }
+
+        </div>
+
+    </div>
+
+
+    <div class="alert alert-secondary mt-3 mb-0">
+
+        Old profiles do not appear in encounter setup unless the
+        player is currently connected. Keep them if players may
+        return; delete them here only when you intentionally want
+        to remove their stored characters from this hub.
+
+    </div>
+
+</div>
+
+@section Scripts {
+    <script src="~/js/dm-theme.js"
+            asp-append-version="true"></script>
+}

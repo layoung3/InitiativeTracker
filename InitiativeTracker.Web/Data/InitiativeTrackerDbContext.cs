@@ -31,6 +31,9 @@ public class InitiativeTrackerDbContext : DbContext
     public DbSet<PlayerProfile> PlayerProfiles =>
         Set<PlayerProfile>();
 
+    public DbSet<PlayerDeviceCredential> PlayerDeviceCredentials =>
+        Set<PlayerDeviceCredential>();
+
     public DbSet<PlayerCharacter> PlayerCharacters =>
         Set<PlayerCharacter>();
 
@@ -158,6 +161,24 @@ public class InitiativeTrackerDbContext : DbContext
 
                 entity.Property(x => x.Name)
                     .IsRequired();
+
+                entity.HasIndex(
+                    x => x.PlayerProfileId);
+
+                entity.HasIndex(
+                    x => new
+                    {
+                        x.SessionId,
+                        x.IsActive,
+                        x.LastSeenAtUtc
+                    });
+
+                entity.HasOne<PlayerDeviceCredential>()
+                    .WithMany()
+                    .HasForeignKey(
+                        x => x.PlayerDeviceCredentialId)
+                    .OnDelete(
+                        DeleteBehavior.SetNull);
             });
 
         modelBuilder.Entity<PlayerProfile>(
@@ -171,10 +192,54 @@ public class InitiativeTrackerDbContext : DbContext
                     .IsRequired();
 
                 entity.Property(x => x.AccessToken)
-                    .IsRequired();
+                    .IsRequired(false);
 
-                entity.HasIndex(x => x.AccessToken)
+                entity.Property(
+                        x => x.RecoveryKeyHash)
+                    .HasMaxLength(64);
+
+                entity.HasIndex(
+                        x => x.AccessToken)
                     .IsUnique();
+
+                entity.HasIndex(
+                        x => x.RecoveryKeyHash)
+                    .IsUnique();
+            });
+
+
+        modelBuilder.Entity<PlayerDeviceCredential>(
+            entity =>
+            {
+                entity.ToTable(
+                    "PlayerDeviceCredential");
+
+                entity.HasKey(
+                    x => x.Id);
+
+                entity.Property(
+                        x => x.TokenHash)
+                    .IsRequired()
+                    .HasMaxLength(64);
+
+                entity.Property(
+                        x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.HasIndex(
+                        x => x.TokenHash)
+                    .IsUnique();
+
+                entity.HasIndex(
+                    x => x.PlayerProfileId);
+
+                entity.HasOne<PlayerProfile>()
+                    .WithMany()
+                    .HasForeignKey(
+                        x => x.PlayerProfileId)
+                    .OnDelete(
+                        DeleteBehavior.Cascade);
             });
 
 

@@ -3,6 +3,8 @@ using InitiativeTracker.Web.Data;
 using InitiativeTracker.Web.Hubs;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.SignalR;
@@ -34,6 +36,12 @@ public class IndexModel : PageModel
     public IReadOnlyList<Combatant> TemporaryControlledCombatants { get; private set; } = [];
 
     public Guid PlayerProfileId { get; private set; }
+
+    public Guid CurrentDeviceCredentialId { get; private set; }
+
+    public IReadOnlyList<PlayerDeviceCredential> LinkedDevices { get; private set; } = [];
+
+    public string? NewRecoveryKey { get; private set; }
 
     public Encounter Encounter => _encounterState.CurrentEncounter;
 
@@ -82,6 +90,31 @@ public class IndexModel : PageModel
 
         PlayerProfileId =
             profileId;
+
+        var credentialClaim =
+            User.FindFirst(
+                "player_device_id")?.Value;
+
+        if (!Guid.TryParse(
+                credentialClaim,
+                out var credentialId))
+        {
+            return RedirectToPage(
+                "/Join/Index");
+        }
+
+        CurrentDeviceCredentialId =
+            credentialId;
+
+        LinkedDevices =
+            _playerRegistry
+                .GetPlayerDevices(
+                    profileId);
+
+        NewRecoveryKey =
+            TempData[
+                "NewRecoveryKey"]
+            as string;
 
         Characters =
             _characterService
@@ -321,6 +354,236 @@ public class IndexModel : PageModel
 
         return RedirectToPage();
     }
+
+    public IActionResult OnPostRegenerateRecoveryKey()
+    {
+        if (!TryGetPlayerProfileId(
+                out var profileId))
+        {
+            return Unauthorized();
+        }
+
+        var recoveryKey =
+            _playerRegistry
+                .RegenerateRecoveryKey(
+                    profileId);
+
+        TempData[
+            "NewRecoveryKey"] =
+            recoveryKey;
+
+        return RedirectToPage();
+    }
+
+
+    public IActionResult OnPostRenameDevice(
+        Guid credentialId,
+        string deviceName)
+    {
+        if (!TryGetPlayerProfileId(
+                out var profileId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            _playerRegistry
+                .RenameDevice(
+                    profileId,
+                    credentialId,
+                    deviceName);
+        }
+        catch (ArgumentException ex)
+        {
+            TempData[
+                "AccountError"] =
+                ex.Message;
+        }
+
+        return RedirectToPage();
+    }
+
+
+    public async Task<IActionResult>
+        OnPostRevokeDeviceAsync(
+            Guid credentialId)
+    {
+        if (!TryGetPlayerIdentity(
+                out var playerId,
+                out var profileId,
+                out var currentCredentialId))
+        {
+            return Unauthorized();
+        }
+
+        IReadOnlyList<Guid>
+            removedConnectionIds;
+
+        try
+        {
+            removedConnectionIds =
+                _playerRegistry
+                    .RevokeDevice(
+                        profileId,
+                        credentialId);
+        }
+        catch (ArgumentException ex)
+        {
+            TempData[
+                "AccountError"] =
+                ex.Message;
+
+            return RedirectToPage();
+        }
+
+        await NotifyRemovedPlayersAsync(
+            removedConnectionIds);
+
+        if (credentialId ==
+            currentCredentialId)
+        {
+            Response.Cookies.Delete(
+                "InitiativeTracker.PlayerDevice");
+
+            await HttpContext
+                .SignOutAsync(
+                    CookieAuthenticationDefaults
+                        .AuthenticationScheme);
+
+            return RedirectToPage(
+                "/Join/Index");
+        }
+
+        return RedirectToPage();
+    }
+
+
+    public async Task<IActionResult>
+        OnPostSignOutAsync()
+    {
+        var playerClaim =
+            User.FindFirst(
+                "player_id")?.Value;
+
+        if (Guid.TryParse(
+                playerClaim,
+                out var playerId))
+        {
+            _playerRegistry
+                .RemovePlayer(
+                    playerId);
+        }
+
+        /*
+         * Sign out of the current game but keep the remembered
+         * PlayerDevice cookie. The next visit to /join can offer
+         * "Continue as <name>" without using the recovery key.
+         */
+        await HttpContext
+            .SignOutAsync(
+                CookieAuthenticationDefaults
+                    .AuthenticationScheme);
+
+        return RedirectToPage(
+            "/Join/Index");
+    }
+
+
+    public async Task<IActionResult>
+        OnPostForgetThisDeviceAsync()
+    {
+        if (!TryGetPlayerIdentity(
+                out var playerId,
+                out var profileId,
+                out var credentialId))
+        {
+            return Unauthorized();
+        }
+
+        IReadOnlyList<Guid>
+            removedConnectionIds;
+
+        try
+        {
+            removedConnectionIds =
+                _playerRegistry
+                    .RevokeDevice(
+                        profileId,
+                        credentialId);
+        }
+        catch (ArgumentException)
+        {
+            removedConnectionIds =
+                [playerId];
+        }
+
+        await NotifyRemovedPlayersAsync(
+            removedConnectionIds);
+
+        Response.Cookies.Delete(
+            "InitiativeTracker.PlayerDevice");
+
+        await HttpContext
+            .SignOutAsync(
+                CookieAuthenticationDefaults
+                    .AuthenticationScheme);
+
+        return RedirectToPage(
+            "/Join/Index");
+    }
+
+
+    private bool TryGetPlayerIdentity(
+        out Guid playerId,
+        out Guid playerProfileId,
+        out Guid credentialId)
+    {
+        playerId =
+            Guid.Empty;
+
+        playerProfileId =
+            Guid.Empty;
+
+        credentialId =
+            Guid.Empty;
+
+        return
+            Guid.TryParse(
+                User.FindFirst(
+                    "player_id")?.Value,
+                out playerId) &&
+
+            Guid.TryParse(
+                User.FindFirst(
+                    "player_profile_id")?.Value,
+                out playerProfileId) &&
+
+            Guid.TryParse(
+                User.FindFirst(
+                    "player_device_id")?.Value,
+                out credentialId);
+    }
+
+
+    private async Task NotifyRemovedPlayersAsync(
+        IReadOnlyList<Guid>
+            playerConnectionIds)
+    {
+        foreach (var playerConnectionId
+                 in playerConnectionIds)
+        {
+            await _encounterHub
+                .Clients
+                .Group(
+                    EncounterHub
+                        .GetPlayerGroup(
+                            playerConnectionId))
+                .SendAsync(
+                    "PlayerRemoved");
+        }
+    }
+
 
     private async Task BroadcastEncounterAsync()
     {

@@ -682,6 +682,9 @@ namespace InitiativeTracker.Web.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("PlayerDeviceCredentialId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("PlayerProfileId")
                         .HasColumnType("TEXT");
 
@@ -690,7 +693,51 @@ namespace InitiativeTracker.Web.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PlayerDeviceCredentialId");
+
+                    b.HasIndex("PlayerProfileId");
+
+                    b.HasIndex("SessionId", "IsActive", "LastSeenAtUtc");
+
                     b.ToTable("PlayerConnection", (string)null);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerDeviceCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PlayerProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlayerProfileId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("PlayerDeviceCredential", (string)null);
                 });
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerProfile", b =>
@@ -700,14 +747,20 @@ namespace InitiativeTracker.Web.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AccessToken")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastSeenAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecoveryKeyHash")
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -716,6 +769,9 @@ namespace InitiativeTracker.Web.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AccessToken")
+                        .IsUnique();
+
+                    b.HasIndex("RecoveryKeyHash")
                         .IsUnique();
 
                     b.ToTable("PlayerProfile", (string)null);
@@ -868,6 +924,23 @@ namespace InitiativeTracker.Web.Migrations
                         .IsRequired();
 
                     b.Navigation("Weapon");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerConnection", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerDeviceCredential", null)
+                        .WithMany()
+                        .HasForeignKey("PlayerDeviceCredentialId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerDeviceCredential", b =>
+                {
+                    b.HasOne("InitiativeTracker.Web.Data.PlayerProfile", null)
+                        .WithMany()
+                        .HasForeignKey("PlayerProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("InitiativeTracker.Web.Data.PlayerCharacter", b =>

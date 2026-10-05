@@ -37,6 +37,14 @@
                     <button type="button"
                             class="btn btn-outline-secondary"
                             data-bs-toggle="offcanvas"
+                            data-bs-target="#playerAccountPanel"
+                            aria-controls="playerAccountPanel">
+                        Account
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-toggle="offcanvas"
                             data-bs-target="#playerAppearancePanel"
                             aria-controls="playerAppearancePanel">
                         Appearance
@@ -45,6 +53,36 @@
                 </div>
 
             </div>
+
+
+            @if (!string.IsNullOrWhiteSpace(
+                     Model.NewRecoveryKey))
+            {
+                <div class="alert alert-warning">
+
+                    <div class="fw-bold mb-1">
+                        New recovery key
+                    </div>
+
+                    <div class="mb-2">
+                        Save this somewhere safe. Your previous
+                        recovery key no longer works.
+                    </div>
+
+                    <div class="player-recovery-key">
+                        @Model.NewRecoveryKey
+                    </div>
+
+                </div>
+            }
+
+
+            @if (TempData["AccountError"] is string accountError)
+            {
+                <div class="alert alert-danger">
+                    @accountError
+                </div>
+            }
 
 
             @if (Model.Characters.Count == 0)
@@ -628,6 +666,236 @@
 
 </div>
 
+<div class="offcanvas offcanvas-end player-account-panel"
+     tabindex="-1"
+     id="playerAccountPanel"
+     aria-labelledby="playerAccountPanelLabel">
+
+    <div class="offcanvas-header">
+
+        <div>
+
+            <h2 class="offcanvas-title h5 mb-1"
+                id="playerAccountPanelLabel">
+                Player Account
+            </h2>
+
+            <div class="small text-body-secondary">
+                Recovery and linked devices for this hub.
+            </div>
+
+        </div>
+
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="offcanvas"
+                aria-label="Close">
+        </button>
+
+    </div>
+
+
+    <div class="offcanvas-body">
+
+        <section class="mb-4">
+
+            <h3 class="h6 mb-1">
+                Recovery Key
+            </h3>
+
+            <p class="small text-body-secondary">
+                If you lose your key but still have any linked
+                device, generate a new one here. The old key
+                stops working immediately.
+            </p>
+
+            <form method="post"
+                  asp-page-handler="RegenerateRecoveryKey"
+                  onsubmit="return confirm('Generate a new recovery key? Your previous key will stop working immediately.');">
+
+                <button type="submit"
+                        class="btn
+                               btn-outline-warning
+                               w-100">
+                    Generate New Recovery Key
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <hr />
+
+
+        <section class="mb-4">
+
+            <div class="d-flex
+                        justify-content-between
+                        align-items-center
+                        gap-2
+                        mb-2">
+
+                <h3 class="h6 mb-0">
+                    Linked Devices
+                </h3>
+
+                <span class="badge text-bg-secondary">
+                    @Model.LinkedDevices.Count
+                </span>
+
+            </div>
+
+            <div class="small text-body-secondary mb-3">
+                Each browser has its own revocable credential.
+            </div>
+
+
+            <div class="d-flex flex-column gap-2">
+
+                @foreach (var device
+                          in Model.LinkedDevices)
+                {
+                    var isCurrent =
+                        device.Id ==
+                        Model.CurrentDeviceCredentialId;
+
+                    <div class="player-device-card">
+
+                        <div class="d-flex
+                                    justify-content-between
+                                    align-items-start
+                                    gap-2
+                                    mb-2">
+
+                            <div>
+
+                                <div class="fw-semibold">
+                                    @device.Name
+                                </div>
+
+                                <div class="small
+                                            text-body-secondary">
+                                    Last seen
+                                    @device.LastSeenAtUtc.ToString("u")
+                                </div>
+
+                            </div>
+
+
+                            @if (isCurrent)
+                            {
+                                <span class="badge text-bg-primary">
+                                    This device
+                                </span>
+                            }
+
+                        </div>
+
+
+                        <form method="post"
+                              asp-page-handler="RenameDevice"
+                              class="d-flex gap-2 mb-2">
+
+                            <input type="hidden"
+                                   name="credentialId"
+                                   value="@device.Id" />
+
+                            <input type="text"
+                                   name="deviceName"
+                                   value="@device.Name"
+                                   maxlength="100"
+                                   class="form-control
+                                          form-control-sm"
+                                   aria-label="Device name" />
+
+                            <button type="submit"
+                                    class="btn
+                                           btn-sm
+                                           btn-outline-secondary">
+                                Rename
+                            </button>
+
+                        </form>
+
+
+                        @if (!isCurrent)
+                        {
+                            <form method="post"
+                                  asp-page-handler="RevokeDevice"
+                                  onsubmit="return confirm('Revoke this device? It will need the recovery key to link again.');">
+
+                                <input type="hidden"
+                                       name="credentialId"
+                                       value="@device.Id" />
+
+                                <button type="submit"
+                                        class="btn
+                                               btn-sm
+                                               btn-outline-danger
+                                               w-100">
+                                    Revoke Device
+                                </button>
+
+                            </form>
+                        }
+
+                    </div>
+                }
+
+            </div>
+
+        </section>
+
+
+        <hr />
+
+
+        <section>
+
+            <h3 class="h6">
+                This Device
+            </h3>
+
+            <form method="post"
+                  asp-page-handler="SignOut"
+                  class="mb-2">
+
+                <button type="submit"
+                        class="btn
+                               btn-outline-secondary
+                               w-100">
+                    Sign Out of This Game
+                </button>
+
+            </form>
+
+            <div class="small text-body-secondary mb-3">
+                Signing out keeps this browser linked, so you can
+                quickly continue as this player next time.
+            </div>
+
+
+            <form method="post"
+                  asp-page-handler="ForgetThisDevice"
+                  onsubmit="return confirm('Forget this device? You will need your recovery key to link it again.');">
+
+                <button type="submit"
+                        class="btn
+                               btn-outline-danger
+                               w-100">
+                    Forget This Device
+                </button>
+
+            </form>
+
+        </section>
+
+    </div>
+
+</div>
+
+
 <partial name="_PlayerAppearance" />
 
 @section Scripts {
@@ -635,6 +903,9 @@
     <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
 
     <script src="~/js/player-theme.js"
+            asp-append-version="true"></script>
+
+    <script src="~/js/player-presence.js"
             asp-append-version="true"></script>
 
     <script src="~/js/player.js"

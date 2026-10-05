@@ -1,3 +1,4 @@
+using InitiativeTracker.Web.Data;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +9,12 @@ namespace InitiativeTracker.Web.Pages.Join;
 [AllowAnonymous]
 public class IndexModel : PageModel
 {
+    private const string PlayerDeviceCookie =
+        "InitiativeTracker.PlayerDevice";
+
+    private const string LegacyProfileCookie =
+        "InitiativeTracker.PlayerProfile";
+
     private readonly GameSessionService
         _gameSession;
 
@@ -37,10 +44,29 @@ public class IndexModel : PageModel
     public string JoinToken { get; set; } =
         string.Empty;
 
+    [BindProperty]
+    public string RecoveryKey { get; set; } =
+        string.Empty;
+
+    [BindProperty]
+    public string JoinMode { get; set; } =
+        string.Empty;
+
     public bool TokenAccepted { get; private set; }
 
+    public bool HasRememberedProfile =>
+        RememberedProfile is not null;
+
+    public PlayerProfile? RememberedProfile { get; private set; }
+
+    public bool JoinCompleted { get; private set; }
+
+    public string? RecoveryKeyToShow { get; private set; }
+
+
     public void OnGet(
-        string? t)
+        string? t,
+        bool joined = false)
     {
         if (!string.IsNullOrWhiteSpace(t) &&
             _gameSession.ValidatePlayerToken(t))
@@ -57,20 +83,27 @@ public class IndexModel : PageModel
                 string.Empty,
                 "This game invitation is invalid or has expired.");
         }
+
+
+        LoadRememberedProfile();
+
+
+        if (joined &&
+            User.IsInRole("Player"))
+        {
+            JoinCompleted =
+                true;
+
+            RecoveryKeyToShow =
+                TempData[
+                    "NewRecoveryKey"]
+                as string;
+        }
     }
+
 
     public async Task<IActionResult> OnPostAsync()
     {
-        if (string.IsNullOrWhiteSpace(
-                PlayerName))
-        {
-            ModelState.AddModelError(
-                nameof(PlayerName),
-                "Your name is required.");
-
-            return Page();
-        }
-
         var joinedWithToken =
             !string.IsNullOrWhiteSpace(
                 JoinToken) &&
@@ -90,39 +123,95 @@ public class IndexModel : PageModel
                 nameof(JoinCode),
                 "Game code was not found.");
 
+            LoadRememberedProfile();
+
             return Page();
         }
 
-        var profileToken =
-            Request.Cookies[
-                "InitiativeTracker.PlayerProfile"];
 
-        var player =
-            _playerRegistry.JoinPlayer(
-                _gameSession
-                    .CurrentSession
-                    .SessionId,
-                PlayerName,
-                profileToken,
-                out var profile);
+        PlayerJoinResult result;
 
-        Response.Cookies.Append(
-            "InitiativeTracker.PlayerProfile",
-            profile.AccessToken,
-            new CookieOptions
-            {
-                HttpOnly = true,
+        try
+        {
+            result =
+                JoinMode switch
+                {
+                    "continue" =>
+                        _playerRegistry
+                            .JoinRememberedPlayer(
+                                _gameSession
+                                    .CurrentSession
+                                    .SessionId,
+                                Request.Cookies[
+                                    PlayerDeviceCookie],
+                                Request.Cookies[
+                                    LegacyProfileCookie]),
 
-                SameSite =
-                    SameSiteMode.Lax,
+                    "recover" =>
+                        _playerRegistry
+                            .RecoverPlayer(
+                                _gameSession
+                                    .CurrentSession
+                                    .SessionId,
+                                RecoveryKey),
 
-                Secure =
-                    Request.IsHttps,
+                    _ =>
+                        _playerRegistry
+                            .CreatePlayer(
+                                _gameSession
+                                    .CurrentSession
+                                    .SessionId,
+                                PlayerName)
+                };
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException
+                  or InvalidOperationException)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
 
-                Expires =
-                    DateTimeOffset.UtcNow
-                        .AddYears(1)
-            });
+            LoadRememberedProfile();
+
+            return Page();
+        }
+
+
+        if (!string.IsNullOrWhiteSpace(
+                result.DeviceTokenToStore))
+        {
+            Response.Cookies.Append(
+                PlayerDeviceCookie,
+                result.DeviceTokenToStore,
+                new CookieOptions
+                {
+                    HttpOnly =
+                        true,
+
+                    SameSite =
+                        SameSiteMode.Lax,
+
+                    Secure =
+                        Request.IsHttps,
+
+                    Expires =
+                        DateTimeOffset.UtcNow
+                            .AddYears(2),
+
+                    IsEssential =
+                        true
+                });
+        }
+
+
+        /*
+         * Once this browser has a per-device credential,
+         * the old profile-wide cookie is no longer needed.
+         */
+        Response.Cookies.Delete(
+            LegacyProfileCookie);
+
 
         await DeviceAuthenticationService
             .SignInAsync(
@@ -132,11 +221,41 @@ public class IndexModel : PageModel
                 lifetime:
                     TimeSpan.FromHours(12),
                 playerId:
-                    player.Id,
+                    result.Connection.Id,
                 playerProfileId:
-                    profile.Id);
+                    result.Profile.Id,
+                playerDeviceCredentialId:
+                    result.DeviceCredential.Id);
+
+
+        if (!string.IsNullOrWhiteSpace(
+                result.RecoveryKeyToShow))
+        {
+            TempData[
+                "NewRecoveryKey"] =
+                result.RecoveryKeyToShow;
+
+            return RedirectToPage(
+                new
+                {
+                    joined = true
+                });
+        }
+
 
         return RedirectToPage(
             "/Player/Index");
+    }
+
+
+    private void LoadRememberedProfile()
+    {
+        RememberedProfile =
+            _playerRegistry
+                .FindRememberedProfile(
+                    Request.Cookies[
+                        PlayerDeviceCookie],
+                    Request.Cookies[
+                        LegacyProfileCookie]);
     }
 }
