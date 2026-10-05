@@ -17,9 +17,9 @@
           asp-append-version="true" />
 }
 
-<div class="container py-4">
+<div class="container-fluid dm-page px-3 px-lg-4 py-3 py-lg-4">
 
-    <div class="d-flex
+    <header class="dm-header d-flex
         flex-column
         flex-lg-row
         justify-content-between
@@ -29,11 +29,11 @@
 
         <div>
 
-            <h1 class="mb-1">
+            <h1 class="dm-title mb-1">
                 DM Controls
             </h1>
 
-            <div class="text-muted">
+            <div class="dm-encounter-summary text-muted">
 
                 @if (Model.Encounter.IsStarted)
                 {
@@ -58,7 +58,7 @@
         </div>
 
 
-        <div class="d-flex
+        <div class="dm-header-actions d-flex
             flex-wrap
             gap-2">
 
@@ -78,9 +78,17 @@
                 Open Display
             </a>
 
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#dmAppearancePanel"
+                    aria-controls="dmAppearancePanel">
+                Appearance
+            </button>
+
         </div>
 
-    </div>
+    </header>
 
 
     <div asp-validation-summary="All"
@@ -95,7 +103,7 @@
     @if (!Model.Encounter.IsStarted)
     {
         @* Connected Player Characters *@
-        <div class="card mb-4">
+        <div class="card dm-card mb-4">
 
             <div class="card-header
                 d-flex
@@ -212,7 +220,7 @@
 
 
         @* Add Combatant *@
-        <div class="card mb-4">
+        <div class="card dm-card mb-4">
 
             <div class="card-header">
                 Add Combatant
@@ -325,11 +333,13 @@
        INITIATIVE / COMBATANTS
        ============================================================ *@
 
-    <div class="card mb-4">
+    <div class="card dm-card dm-initiative-card mb-4">
 
         <div class="card-header
             d-flex
-            justify-content-between">
+            justify-content-between
+            align-items-center
+            gap-2">
 
             <span>
                 Initiative
@@ -377,7 +387,7 @@
 
                     @if (!Model.Encounter.IsStarted)
                     {
-                        <div class="list-group-item">
+                        <div class="list-group-item dm-combatant-row dm-combatant-row--setup">
 
                             <div class="d-flex
                                 flex-column
@@ -547,7 +557,7 @@
                                     </div>
                                 }
                                 @* Controller Assignment *@
-                                <div class="border-top
+                                <div class="dm-combatant-management border-top
                                     pt-3
                                     d-flex
                                     flex-column
@@ -578,8 +588,8 @@
 
                                         <select name="playerProfileId"
                                                 class="form-select
-                                            form-select-sm"
-                                                style="max-width: 14rem;">
+                                            form-select-sm
+                                            dm-controller-select">
 
                                             @if (!combatant.AssignedPlayerProfileId.HasValue)
                                             {
@@ -712,8 +722,10 @@
 
                         <div class="list-group-item
                             initiative-dm-row
-                            @(isCurrent ? "list-group-item-primary" : "")
-                            @(!combatant.IsActive ? "opacity-50" : "")"
+                            dm-combatant-row
+                            dm-combatant-row--active
+                            @(isCurrent ? "is-current" : "")
+                            @(!combatant.IsActive ? "is-inactive" : "")"
                              data-combatant-id="@combatant.Id">
 
                             <div class="d-flex
@@ -724,7 +736,7 @@
 
 
                                 @* LEFT SIDE *@
-                                <div class="d-flex
+                                <div class="dm-combatant-main d-flex
                                     align-items-center
                                     gap-2">
 
@@ -787,7 +799,7 @@
                                     </div>
 
 
-                                    <div style="width: 1.5rem;">
+                                    <div class="dm-current-indicator">
 
                                         @if (isCurrent)
                                         {
@@ -881,7 +893,7 @@
 
 
                                 @* RIGHT SIDE *@
-                                <div class="d-flex
+                                <div class="dm-combatant-combat-controls d-flex
                                     flex-column
                                     flex-md-row
                                     flex-wrap
@@ -892,7 +904,7 @@
                                     @if (combatant.CurrentHp.HasValue)
                                     {
                                         @* Quick HP Controls *@
-                                        <div class="d-flex
+                                        <div class="dm-quick-hp d-flex
                                             align-items-center
                                             gap-1">
 
@@ -991,8 +1003,8 @@
                                                    name="currentHp"
                                                    value="@combatant.CurrentHp"
                                                    class="form-control
-                                            form-control-sm"
-                                                   style="width: 5rem;"
+                                            form-control-sm
+                                            dm-compact-number"
                                                    min="0"
                                                    required />
 
@@ -1020,8 +1032,8 @@
                                                    value="@combatant.TemporaryHp"
                                                    min="0"
                                                    class="form-control
-                                            form-control-sm"
-                                                   style="width: 5rem;" />
+                                            form-control-sm
+                                            dm-compact-number" />
 
                                             <button type="submit"
                                                     class="btn
@@ -1096,7 +1108,7 @@
                             </div>
 
                             @* MANAGEMENT FOOTER *@
-                            <div class="border-top
+                            <div class="dm-combatant-management border-top
                                 mt-3
                                 pt-3
                                 d-flex
@@ -1128,8 +1140,8 @@
 
                                     <select name="playerProfileId"
                                             class="form-select
-                                        form-select-sm"
-                                            style="max-width: 14rem;">
+                                        form-select-sm
+                                        dm-controller-select">
 
                                         @if (!combatant.AssignedPlayerProfileId.HasValue)
                                         {
@@ -1264,80 +1276,462 @@
        ENCOUNTER CONTROLS
        ============================================================ *@
 
-    <div class="d-flex flex-wrap gap-2">
+    <div class="dm-command-bar"
+         role="region"
+         aria-label="Encounter controls">
 
-        @if (!Model.Encounter.IsStarted)
-        {
-            <form method="post"
-                  asp-page-handler="StartCombat">
+        <div class="dm-command-bar-inner">
 
-                <button type="submit"
-                        class="btn btn-success"
-                        disabled="@(Model.Encounter.ActiveCombatantCount == 0)">
-                    Start Combat
-                </button>
-
-            </form>
-        }
-        else
-        {
-            <form method="post"
-                  asp-page-handler="PreviousTurn">
-
-                <button type="submit"
-                        class="btn btn-outline-primary">
-                    ← Previous
-                </button>
-
-            </form>
-
-
-            <form method="post"
-                  asp-page-handler="NextTurn">
-
-                <button type="submit"
-                        class="btn btn-primary">
-                    Next Turn →
-                </button>
-
-            </form>
-        }
-
-
-        <form method="post"
-              asp-page-handler="Undo">
-
-            @if (Model.CanUndo)
+            @if (!Model.Encounter.IsStarted)
             {
-                <button id="undoButton"
-                        type="submit"
-                        class="btn btn-outline-warning">
-                    Undo
-                </button>
+                <form method="post"
+                      asp-page-handler="StartCombat">
+
+                    <button type="submit"
+                            class="btn btn-success dm-command-primary"
+                            disabled="@(Model.Encounter.ActiveCombatantCount == 0)">
+                        Start Combat
+                    </button>
+
+                </form>
             }
             else
             {
-                <button id="undoButton"
-                        type="button"
-                        class="btn btn-outline-warning"
-                        disabled>
-                    Undo
-                </button>
+                <form method="post"
+                      asp-page-handler="PreviousTurn">
+
+                    <button type="submit"
+                            class="btn btn-outline-primary dm-command-secondary">
+                        ← Previous
+                    </button>
+
+                </form>
+
+
+                <form method="post"
+                      asp-page-handler="NextTurn">
+
+                    <button type="submit"
+                            class="btn btn-primary dm-command-primary">
+                        Next Turn →
+                    </button>
+
+                </form>
             }
 
-        </form>
+
+            <form method="post"
+                  asp-page-handler="Undo">
+
+                @if (Model.CanUndo)
+                {
+                    <button id="undoButton"
+                            type="submit"
+                            class="btn btn-outline-warning">
+                        Undo
+                    </button>
+                }
+                else
+                {
+                    <button id="undoButton"
+                            type="button"
+                            class="btn btn-outline-warning"
+                            disabled>
+                        Undo
+                    </button>
+                }
+
+            </form>
 
 
-        <form method="post"
-              asp-page-handler="Reset"
-              onsubmit="return confirm('Reset the entire encounter?');">
+            <form method="post"
+                  asp-page-handler="Reset"
+                  onsubmit="return confirm('Reset the entire encounter?');">
 
-            <button type="submit"
-                    class="btn btn-outline-danger">
-                Reset
+                <button type="submit"
+                        class="btn btn-outline-danger">
+                    Reset
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+
+    @* ============================================================
+       APPEARANCE
+       ============================================================ *@
+
+    <div class="offcanvas offcanvas-end dm-appearance-panel"
+         tabindex="-1"
+         id="dmAppearancePanel"
+         aria-labelledby="dmAppearancePanelLabel">
+
+        <div class="offcanvas-header">
+
+            <div>
+
+                <h2 class="offcanvas-title h5 mb-1"
+                    id="dmAppearancePanelLabel">
+                    Appearance
+                </h2>
+
+                <div class="small text-body-secondary">
+                    Personalize your DM controls and the public display separately.
+                </div>
+
+            </div>
+
+            <button type="button"
+                    class="btn-close"
+                    data-bs-dismiss="offcanvas"
+                    aria-label="Close">
             </button>
 
-        </form>
+        </div>
+
+
+        <div class="offcanvas-body">
+
+            @* ====================================================
+               DM THEME - LOCAL TO THIS BROWSER
+               ==================================================== *@
+
+            <section class="dm-theme-section"
+                     aria-labelledby="dmPersonalThemeHeading">
+
+                <div class="mb-3">
+
+                    <h3 class="h6 mb-1"
+                        id="dmPersonalThemeHeading">
+                        My Theme
+                    </h3>
+
+                    <div class="small text-body-secondary">
+                        Changes only this DM browser and saves on this device.
+                    </div>
+
+                </div>
+
+
+                <div class="dm-theme-grid"
+                     aria-label="DM interface theme">
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="dark"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--dark"
+                              aria-hidden="true"></span>
+
+                        <span>Dark</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="light"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--light"
+                              aria-hidden="true"></span>
+
+                        <span>Light</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="parchment"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--parchment"
+                              aria-hidden="true"></span>
+
+                        <span>Parchment</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="arcane"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--arcane"
+                              aria-hidden="true"></span>
+
+                        <span>Arcane</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="infernal"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--infernal"
+                              aria-hidden="true"></span>
+
+                        <span>Infernal</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="frost"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--frost"
+                              aria-hidden="true"></span>
+
+                        <span>Frost</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="forest"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--forest"
+                              aria-hidden="true"></span>
+
+                        <span>Forest</span>
+
+                    </button>
+
+
+                    <button type="button"
+                            class="dm-theme-choice"
+                            data-dm-theme-choice="blood-moon"
+                            aria-pressed="false">
+
+                        <span class="dm-theme-swatch dm-theme-swatch--blood-moon"
+                              aria-hidden="true"></span>
+
+                        <span>Blood Moon</span>
+
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <hr class="dm-theme-divider" />
+
+
+            @* ====================================================
+               DISPLAY THEME - BROADCAST TO PUBLIC DISPLAYS
+               ==================================================== *@
+
+            <section class="dm-theme-section"
+                     aria-labelledby="dmDisplayThemeHeading">
+
+                <div class="mb-3">
+
+                    <h3 class="h6 mb-1"
+                        id="dmDisplayThemeHeading">
+                        Display Theme
+                    </h3>
+
+                    <div class="small text-body-secondary">
+                        Changes connected public displays immediately.
+                    </div>
+
+                </div>
+
+
+                <div class="dm-theme-grid">
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="dark" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "dark" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "dark" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--dark"
+                                  aria-hidden="true"></span>
+
+                            <span>Dark</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="light" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "light" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "light" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--light"
+                                  aria-hidden="true"></span>
+
+                            <span>Light</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="parchment" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "parchment" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "parchment" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--parchment"
+                                  aria-hidden="true"></span>
+
+                            <span>Parchment</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="arcane" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "arcane" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "arcane" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--arcane"
+                                  aria-hidden="true"></span>
+
+                            <span>Arcane</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="infernal" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "infernal" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "infernal" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--infernal"
+                                  aria-hidden="true"></span>
+
+                            <span>Infernal</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="frost" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "frost" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "frost" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--frost"
+                                  aria-hidden="true"></span>
+
+                            <span>Frost</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="forest" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "forest" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "forest" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--forest"
+                                  aria-hidden="true"></span>
+
+                            <span>Forest</span>
+
+                        </button>
+
+                    </form>
+
+
+                    <form method="post"
+                          asp-page-handler="SetDisplayTheme">
+
+                        <input type="hidden"
+                               name="theme"
+                               value="blood-moon" />
+
+                        <button type="submit"
+                                class="dm-theme-choice @(Model.CurrentDisplayTheme == "blood-moon" ? "is-active" : "")"
+                                aria-pressed="@(Model.CurrentDisplayTheme == "blood-moon" ? "true" : "false")">
+
+                            <span class="dm-theme-swatch dm-theme-swatch--blood-moon"
+                                  aria-hidden="true"></span>
+
+                            <span>Blood Moon</span>
+
+                        </button>
+
+                    </form>
+
+                </div>
+
+
+                <div class="small text-body-secondary mt-3">
+                    The display can still choose a local theme. A DM selection
+                    overrides connected displays when it is sent.
+                </div>
+
+            </section>
+
+        </div>
 
     </div>
 
@@ -1572,6 +1966,10 @@
 @section Scripts {
 
     <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+
+    <script src="~/js/dm-theme.js"
+            asp-append-version="true">
+    </script>
 
     <script src="~/js/dm-live.js"
             asp-append-version="true">

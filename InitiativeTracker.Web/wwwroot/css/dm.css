@@ -1,4 +1,275 @@
-﻿.drag-handle {
+﻿/* ==============================================================
+   DM PERSONAL THEMES
+   These affect only the DM control surface. They intentionally keep
+   Bootstrap action colors recognizable for fast use during combat.
+   ============================================================== */
+
+html[data-dm-theme="light"] {
+    color-scheme: light;
+    --bs-body-bg: #f5f7fa;
+    --bs-body-color: #202938;
+    --bs-secondary-bg: #e9eef5;
+    --bs-tertiary-bg: #f0f3f7;
+    --bs-secondary-color: #667085;
+    --bs-border-color: #d0d7e2;
+    --bs-emphasis-color: #111827;
+    --dm-accent: #2563eb;
+    --dm-accent-soft: rgba(37, 99, 235, 0.10);
+}
+
+html[data-dm-theme="dark"] {
+    color-scheme: dark;
+    --bs-body-bg: #10151c;
+    --bs-body-color: #edf2f7;
+    --bs-secondary-bg: #202833;
+    --bs-tertiary-bg: #171e27;
+    --bs-secondary-color: #a8b3c2;
+    --bs-border-color: #364150;
+    --bs-emphasis-color: #ffffff;
+    --dm-accent: #60a5fa;
+    --dm-accent-soft: rgba(96, 165, 250, 0.13);
+}
+
+html[data-dm-theme="parchment"] {
+    color-scheme: light;
+    --bs-body-bg: #e8dcc0;
+    --bs-body-color: #31291e;
+    --bs-secondary-bg: #d8c7a3;
+    --bs-tertiary-bg: #f0e4c8;
+    --bs-secondary-color: #71624b;
+    --bs-border-color: #b49a6d;
+    --bs-emphasis-color: #241c12;
+    --dm-accent: #8b4513;
+    --dm-accent-soft: rgba(139, 69, 19, 0.11);
+}
+
+html[data-dm-theme="arcane"] {
+    color-scheme: dark;
+    --bs-body-bg: #0d0918;
+    --bs-body-color: #f3edff;
+    --bs-secondary-bg: #261b3b;
+    --bs-tertiary-bg: #181026;
+    --bs-secondary-color: #b8a8cf;
+    --bs-border-color: #4b3768;
+    --bs-emphasis-color: #ffffff;
+    --dm-accent: #c084fc;
+    --dm-accent-soft: rgba(192, 132, 252, 0.13);
+}
+
+html[data-dm-theme="infernal"] {
+    color-scheme: dark;
+    --bs-body-bg: #150907;
+    --bs-body-color: #fff0e9;
+    --bs-secondary-bg: #321712;
+    --bs-tertiary-bg: #22100d;
+    --bs-secondary-color: #c9a094;
+    --bs-border-color: #663226;
+    --bs-emphasis-color: #ffffff;
+    --dm-accent: #f97316;
+    --dm-accent-soft: rgba(249, 115, 22, 0.13);
+}
+
+html[data-dm-theme="frost"] {
+    color-scheme: dark;
+    --bs-body-bg: #08151e;
+    --bs-body-color: #effcff;
+    --bs-secondary-bg: #173342;
+    --bs-tertiary-bg: #102531;
+    --bs-secondary-color: #a3c5d1;
+    --bs-border-color: #356072;
+    --bs-emphasis-color: #ffffff;
+    --dm-accent: #67e8f9;
+    --dm-accent-soft: rgba(103, 232, 249, 0.12);
+}
+
+html[data-dm-theme="forest"] {
+    color-scheme: dark;
+    --bs-body-bg: #09130b;
+    --bs-body-color: #eef8ee;
+    --bs-secondary-bg: #1c3322;
+    --bs-tertiary-bg: #122519;
+    --bs-secondary-color: #a6bca8;
+    --bs-border-color: #3b5943;
+    --bs-emphasis-color: #ffffff;
+    --dm-accent: #86efac;
+    --dm-accent-soft: rgba(134, 239, 172, 0.11);
+}
+
+html[data-dm-theme="blood-moon"] {
+    color-scheme: dark;
+    --bs-body-bg: #10080b;
+    --bs-body-color: #fff1f2;
+    --bs-secondary-bg: #32171e;
+    --bs-tertiary-bg: #211015;
+    --bs-secondary-color: #c9a6ac;
+    --bs-border-color: #67343e;
+    --bs-emphasis-color: #ffffff;
+    --dm-accent: #fb7185;
+    --dm-accent-soft: rgba(251, 113, 133, 0.12);
+}
+
+html[data-dm-theme] {
+    --app-surface: var(--bs-body-bg);
+    --app-surface-subtle: var(--bs-tertiary-bg);
+    --app-surface-muted: var(--bs-secondary-bg);
+    --app-text: var(--bs-body-color);
+    --app-text-muted: var(--bs-secondary-color);
+    --app-border: var(--bs-border-color);
+    --app-accent: var(--dm-accent);
+}
+
+    html[data-dm-theme] body {
+        background: radial-gradient( circle at 90% 0%, color-mix(in srgb, var(--dm-accent) 7%, transparent), transparent 28rem), var(--bs-body-bg);
+        color: var(--bs-body-color);
+    }
+
+    html[data-dm-theme] .dm-page {
+        color: var(--bs-body-color);
+    }
+
+    html[data-dm-theme] .dm-card,
+    html[data-dm-theme] .list-group-item,
+    html[data-dm-theme] .offcanvas,
+    html[data-dm-theme] .modal-content {
+        border-color: var(--bs-border-color);
+        background-color: var(--bs-body-bg);
+        color: var(--bs-body-color);
+    }
+
+        html[data-dm-theme] .dm-card > .card-header {
+            border-color: var(--bs-border-color);
+            background: var(--bs-tertiary-bg);
+        }
+
+    html[data-dm-theme] .dm-combatant-row.is-current {
+        border-left-color: var(--dm-accent);
+        background: linear-gradient( 90deg, var(--dm-accent-soft), transparent 50%);
+    }
+
+    html[data-dm-theme] .dm-current-indicator {
+        color: var(--dm-accent);
+    }
+
+    html[data-dm-theme] .sortable-chosen {
+        outline-color: var(--dm-accent);
+    }
+
+    html[data-dm-theme] .dm-theme-choice.is-active {
+        border-color: var(--dm-accent);
+        box-shadow: inset 0 0 0 1px var(--dm-accent);
+    }
+
+    html[data-dm-theme] .dm-theme-choice:focus-visible {
+        border-color: var(--dm-accent);
+        outline: 0.18rem solid color-mix(in srgb, var(--dm-accent) 45%, transparent);
+        outline-offset: 0.12rem;
+    }
+
+
+/* ==============================================================
+   DM PAGE
+   ============================================================== */
+
+.dm-page {
+    --dm-gap: 1rem;
+    max-width: 1600px;
+    padding-bottom: 7rem !important;
+}
+
+.dm-header {
+    padding: 0.25rem 0;
+}
+
+.dm-title {
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.dm-encounter-summary {
+    font-size: 0.95rem;
+}
+
+.dm-header-actions .btn {
+    min-height: 2.5rem;
+}
+
+.dm-card {
+    overflow: hidden;
+}
+
+    .dm-card > .card-header {
+        font-weight: 700;
+    }
+
+.dm-initiative-card .card-header > :last-child {
+    color: var(--bs-secondary-color);
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+
+/* ==============================================================
+   COMBATANT ROWS
+   ============================================================== */
+
+.dm-combatant-row {
+    position: relative;
+    padding: 1rem;
+}
+
+    .dm-combatant-row.is-current {
+        border-left: 0.3rem solid var(--bs-primary);
+        background: var(--bs-primary-bg-subtle);
+    }
+
+    .dm-combatant-row.is-inactive {
+        opacity: 0.55;
+    }
+
+.dm-combatant-main {
+    min-width: 0;
+}
+
+.dm-current-indicator {
+    width: 1.5rem;
+    flex: 0 0 1.5rem;
+    color: var(--bs-primary);
+    text-align: center;
+}
+
+.dm-combatant-combat-controls {
+    min-width: 0;
+}
+
+.dm-quick-hp {
+    flex-wrap: wrap;
+}
+
+    .dm-quick-hp form {
+        margin: 0;
+    }
+
+.dm-compact-number {
+    width: 5rem;
+}
+
+.dm-controller-select {
+    width: min(14rem, 100%);
+}
+
+.dm-combatant-management {
+    min-width: 0;
+}
+
+    .dm-combatant-management > * {
+        min-width: 0;
+    }
+
+
+/* ==============================================================
+   DRAG / SORT
+   ============================================================== */
+
+.drag-handle {
     cursor: grab;
     touch-action: none;
 }
@@ -13,4 +284,367 @@
 
 .sortable-chosen {
     outline: 2px dashed var(--bs-primary);
+    outline-offset: -2px;
+}
+
+
+/* ==============================================================
+   APPEARANCE / THEME PICKER
+   ============================================================== */
+
+.dm-appearance-panel {
+    --bs-offcanvas-width: min(28rem, 94vw);
+}
+
+.dm-theme-section {
+    min-width: 0;
+}
+
+.dm-theme-divider {
+    margin: 1.5rem 0;
+    border-color: var(--bs-border-color);
+}
+
+.dm-theme-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+    .dm-theme-grid form {
+        margin: 0;
+    }
+
+.dm-theme-choice {
+    width: 100%;
+    min-height: 4rem;
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+    .dm-theme-choice:hover,
+    .dm-theme-choice:focus-visible {
+        border-color: var(--dm-accent, var(--bs-primary));
+    }
+
+    .dm-theme-choice.is-active {
+        border-color: var(--dm-accent, var(--bs-primary));
+        box-shadow: inset 0 0 0 1px var(--dm-accent, var(--bs-primary));
+    }
+
+.dm-theme-swatch {
+    width: 3rem;
+    height: 2.35rem;
+    display: block;
+    border: 1px solid rgba(127, 127, 127, 0.35);
+    border-radius: 0.45rem;
+}
+
+.dm-theme-swatch--dark {
+    background: linear-gradient(135deg, #0b0f14 50%, #60a5fa 50%);
+}
+
+.dm-theme-swatch--light {
+    background: linear-gradient(135deg, #eef2f7 50%, #2563eb 50%);
+}
+
+.dm-theme-swatch--parchment {
+    background: linear-gradient(135deg, #efe1bf 50%, #8b4513 50%);
+}
+
+.dm-theme-swatch--arcane {
+    background: linear-gradient(135deg, #18102b 50%, #c084fc 50%);
+}
+
+.dm-theme-swatch--infernal {
+    background: linear-gradient(135deg, #21100d 50%, #f97316 50%);
+}
+
+.dm-theme-swatch--frost {
+    background: linear-gradient(135deg, #102634 50%, #67e8f9 50%);
+}
+
+.dm-theme-swatch--forest {
+    background: linear-gradient(135deg, #132419 50%, #86efac 50%);
+}
+
+.dm-theme-swatch--blood-moon {
+    background: linear-gradient(135deg, #211014 50%, #fb7185 50%);
+}
+
+
+/* ==============================================================
+   ENCOUNTER COMMAND BAR
+   ============================================================== */
+
+.dm-command-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1025;
+    padding: 0.7rem max(0.75rem, env(safe-area-inset-right)) max(0.7rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+    border-top: 1px solid var(--bs-border-color);
+    background: color-mix( in srgb, var(--app-surface) 94%, transparent);
+    box-shadow: 0 -0.5rem 1.5rem rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(12px);
+}
+
+.dm-command-bar-inner {
+    max-width: 1600px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.dm-command-bar form {
+    margin: 0;
+}
+
+.dm-command-primary {
+    min-width: 8.5rem;
+}
+
+
+/* ==============================================================
+   RESPONSIVE
+   ============================================================== */
+
+@media (max-width: 991.98px) {
+
+    .dm-page {
+        padding-bottom: 7.5rem !important;
+    }
+
+    .dm-header-actions {
+        width: 100%;
+    }
+
+        .dm-header-actions .btn {
+            flex: 1 1 calc(50% - 0.5rem);
+        }
+
+    .dm-combatant-row {
+        padding: 0.85rem;
+    }
+
+    .dm-combatant-combat-controls {
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--bs-border-color);
+    }
+
+    .dm-combatant-management {
+        align-items: stretch !important;
+    }
+
+        .dm-combatant-management > form,
+        .dm-combatant-management > a {
+            width: 100%;
+        }
+
+        .dm-combatant-management > form {
+            justify-content: stretch;
+        }
+
+        .dm-combatant-management .dm-controller-select {
+            flex: 1 1 10rem;
+            width: auto;
+            max-width: none;
+        }
+
+        .dm-combatant-management .btn {
+            min-height: 2.4rem;
+        }
+}
+
+
+@media (max-width: 767.98px) {
+
+    .dm-page {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    .dm-card {
+        margin-bottom: 0.85rem !important;
+    }
+
+        .dm-card .card-header,
+        .dm-card .card-body,
+        .dm-combatant-row {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+
+    .dm-combatant-main {
+        align-items: flex-start !important;
+    }
+
+    .drag-handle {
+        display: none;
+    }
+
+    .dm-combatant-combat-controls {
+        width: 100%;
+        align-items: stretch !important;
+    }
+
+    .dm-quick-hp {
+        display: grid !important;
+        grid-template-columns: auto minmax(4rem, 1fr) auto;
+        align-items: center;
+        gap: 0.45rem;
+    }
+
+        .dm-quick-hp > form {
+            display: flex;
+        }
+
+            .dm-quick-hp > form:first-child {
+                justify-content: flex-start;
+            }
+
+            .dm-quick-hp > form:last-child {
+                justify-content: flex-end;
+            }
+
+        .dm-quick-hp > .fw-bold {
+            text-align: center;
+        }
+
+    .dm-combatant-combat-controls > form {
+        width: 100%;
+    }
+
+        .dm-combatant-combat-controls > form.d-flex {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+    .dm-combatant-combat-controls .dm-compact-number {
+        width: 100%;
+    }
+
+    .dm-combatant-combat-controls > form:not(.d-flex) .btn {
+        width: 100%;
+    }
+
+    .dm-combatant-management > form:has(.dm-controller-select) {
+        width: auto;
+        max-width: 100%;
+        display: inline-grid !important;
+        grid-template-columns: auto minmax(7.5rem, 12rem) auto;
+        align-items: center;
+        justify-content: start;
+        gap: 0.5rem;
+    }
+
+    .dm-controller-select {
+        width: 100%;
+        max-width: 12rem;
+    }
+
+    .dm-theme-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dm-command-bar-inner {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+        .dm-command-bar-inner form {
+            width: 100%;
+        }
+
+        .dm-command-bar-inner .btn {
+            width: 100%;
+            min-width: 0;
+            min-height: 2.75rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+            white-space: nowrap;
+        }
+
+    .dm-command-primary {
+        min-width: 0;
+    }
+}
+
+
+@media (max-width: 479.98px) {
+
+    .dm-header-actions .btn {
+        flex-basis: 100%;
+    }
+
+    .dm-command-bar-inner {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dm-quick-hp {
+        grid-template-columns: 1fr;
+    }
+
+        .dm-quick-hp > form {
+            justify-content: center !important;
+        }
+
+        .dm-quick-hp > .fw-bold {
+            order: -1;
+        }
+
+    .dm-combatant-management .d-flex {
+        align-items: stretch !important;
+    }
+
+    .dm-combatant-management .form-check {
+        min-height: 2rem;
+    }
+}
+
+
+
+@media (max-width: 575.98px) {
+
+    .dm-combatant-management > form:has(.dm-controller-select) {
+        width: 100%;
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+        .dm-combatant-management > form:has(.dm-controller-select) > label {
+            grid-column: 1 / -1;
+            margin-bottom: 0;
+        }
+
+    .dm-controller-select {
+        max-width: none;
+    }
+}
+
+@media (pointer: coarse) {
+
+    .dm-page .btn-sm,
+    .dm-page .form-control-sm,
+    .dm-page .form-select-sm {
+        min-height: 2.75rem;
+    }
+
+    .dm-page .form-check-input {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
 }

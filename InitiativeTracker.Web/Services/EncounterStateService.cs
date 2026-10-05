@@ -15,6 +15,21 @@ public class EncounterStateService
 
     private const int MaxUndoHistory = 50;
 
+    private static readonly HashSet<string> AllowedDisplayThemes =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "dark",
+            "light",
+            "parchment",
+            "arcane",
+            "infernal",
+            "frost",
+            "forest",
+            "blood-moon"
+        };
+
+    private string _currentDisplayTheme = "dark";
+
     private readonly List<EncounterSnapshot> _undoHistory = [];
 
     private readonly IDbContextFactory<InitiativeTrackerDbContext> _dbContextFactory;
@@ -41,6 +56,42 @@ public class EncounterStateService
     {
         Name = "Current Encounter"
     };
+
+    public string CurrentDisplayTheme
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _currentDisplayTheme;
+            }
+        }
+    }
+
+    public string SetDisplayTheme(
+        string theme)
+    {
+        var normalized =
+            theme?
+                .Trim()
+                .ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            !AllowedDisplayThemes.Contains(normalized))
+        {
+            throw new ArgumentException(
+                "Unknown display theme.",
+                nameof(theme));
+        }
+
+        lock (_lock)
+        {
+            _currentDisplayTheme =
+                normalized;
+
+            return _currentDisplayTheme;
+        }
+    }
 
     public bool CanUndo
     {
@@ -222,29 +273,29 @@ public class EncounterStateService
 
             CurrentEncounter.AddCombatant(
                 new Combatant
-            {
-                Name =
+                {
+                    Name =
                     character.Name,
 
-                Initiative =
+                    Initiative =
                     0,
 
-                CurrentHp =
+                    CurrentHp =
                     character.CurrentHp,
 
-                MaxHp =
+                    MaxHp =
                     character.MaxHp,
 
-                TemporaryHp =
+                    TemporaryHp =
                     character.TemporaryHp,
 
-                PlayerCharacterId =
+                    PlayerCharacterId =
                     character.Id,
 
-                AssignedPlayerProfileId =
+                    AssignedPlayerProfileId =
                     character.PlayerProfileId,
 
-                Conditions = characterConditions
+                    Conditions = characterConditions
                         .Select(
                             condition =>
                                 new CombatantCondition
@@ -452,7 +503,7 @@ public class EncounterStateService
                                 IsActive = c.IsActive,
                                 IsCurrent = CurrentEncounter.CurrentCombatantId == c.Id,
                                 Conditions = c.Conditions
-                                    .OrderBy( x => x.Name)
+                                    .OrderBy(x => x.Name)
                                     .Select(
                                         condition =>
                                             new ConditionDisplayState

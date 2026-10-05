@@ -9,6 +9,10 @@
 
 @section Styles {
     <link rel="stylesheet"
+          href="~/css/player.css"
+          asp-append-version="true" />
+
+    <link rel="stylesheet"
           href="~/css/condition-badges.css"
           asp-append-version="true" />
 
@@ -94,6 +98,14 @@
                         Layout
                     </button>
 
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-toggle="offcanvas"
+                            data-bs-target="#playerAppearancePanel"
+                            aria-controls="playerAppearancePanel">
+                        Appearance
+                    </button>
+
                     <a asp-page="/Player/EditCharacter"
                        asp-route-id="@Model.Character.Id"
                        class="btn btn-outline-primary">
@@ -165,8 +177,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#hpEditor"
                                     aria-expanded="@(Model.OpenEditor == "hp"
-                                                                                                                                                                                                                                                                                                                                            ? "true"
-                                                                                                                                                                                                                                                                                                                                            : "false")"
+                                                                                                                                                                                                                                                                                                                                                                            ? "true"
+                                                                                                                                                                                                                                                                                                                                                                            : "false")"
                                     aria-controls="hpEditor">
 
                                 <span class="combat-stat-value">
@@ -216,8 +228,8 @@
                                     data-bs-toggle="collapse"
                                     data-bs-target="#temporaryHpEditor"
                                     aria-expanded="@(Model.OpenEditor == "temp"
-                                                                                                                                                                                                                                                                                                                                    ? "true"
-                                                                                                                                                                                                                                                                                                                                    : "false")"
+                                                                                                                                                                                                                                                                                                                                                                    ? "true"
+                                                                                                                                                                                                                                                                                                                                                                    : "false")"
                                     aria-controls="temporaryHpEditor">
 
                                 <span class="combat-stat-value">
@@ -896,7 +908,7 @@
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#characterAttackModal"
                                                             data-attack-config="@Model.GetCharacterAttackConfigurationJson(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                        attack.SourceId)">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                attack.SourceId)">
                                                         Edit
                                                     </button>
                                                 }
@@ -1390,11 +1402,11 @@
                                                                         ? "is-prepared"
                                                                         : "")"
                                                                         title="@(spell.IsPrepared
-                                                                                                                                                                                                                                                                                                                                                            ? "Mark unprepared"
-                                                                                                                                                                                                                                                                                                                                                            : "Mark prepared")"
+                                                                                                                                                                                                                                                                                                                                                                                                                                ? "Mark unprepared"
+                                                                                                                                                                                                                                                                                                                                                                                                                                : "Mark prepared")"
                                                                         aria-label="@(spell.IsPrepared
-                                                                                                                                                                                                                                                                                                                                                            ? $"Mark {spell.Name} unprepared"
-                                                                                                                                                                                                                                                                                                                                                            : $"Mark {spell.Name} prepared")">
+                                                                                                                                                                                                                                                                                                                                                                                                                                ? $"Mark {spell.Name} unprepared"
+                                                                                                                                                                                                                                                                                                                                                                                                                                : $"Mark {spell.Name} prepared")">
 
                                                                     @(spell.IsPrepared
                                                                         ? "✓"
@@ -4238,8 +4250,8 @@
              aria-labelledby="conditionsModalLabel"
              aria-hidden="true"
              data-auto-open="@(Model.OpenModal == "conditions"
-                                                                                                 ? "true"
-                                                                                                 : "false")">
+                                                                                                             ? "true"
+                                                                                                             : "false")">
 
             <div class="modal-dialog
                 modal-dialog-centered
@@ -4520,9 +4532,15 @@
         </div>
     }
 
+    <partial name="_PlayerAppearance" />
+
     @section Scripts {
 
         <script src="~/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+
+        <script src="~/js/player-theme.js"
+                asp-append-version="true">
+        </script>
 
         <script src="~/js/player.js"
                 asp-append-version="true">

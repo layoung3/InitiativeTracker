@@ -20,7 +20,7 @@ public class IndexModel : PageModel
     private readonly CharacterService _characterService;
     private readonly GameSessionService _gameSession;
 
-    public IndexModel(EncounterStateService encounterState, IHubContext<EncounterHub> encounterHub, 
+    public IndexModel(EncounterStateService encounterState, IHubContext<EncounterHub> encounterHub,
         PlayerRegistryService playerRegistry, CharacterService characterService, GameSessionService gameSession)
     {
         _encounterState = encounterState;
@@ -35,6 +35,8 @@ public class IndexModel : PageModel
     public IReadOnlyList<ConnectedPlayerOption> ConnectedPlayers { get; private set; } = [];
 
     public Encounter Encounter => _encounterState.CurrentEncounter;
+
+    public string CurrentDisplayTheme => _encounterState.CurrentDisplayTheme;
 
     [BindProperty]
     public string CombatantName { get; set; } = string.Empty;
@@ -66,7 +68,7 @@ public class IndexModel : PageModel
 
         if (conditions.HasValue)
         {
-            ConditionCombatant =Encounter
+            ConditionCombatant = Encounter
                     .Combatants.SingleOrDefault(
                         x => x.Id == conditions.Value);
         }
@@ -242,7 +244,7 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostAdjustHp( Guid id, int amount)
+    public async Task<IActionResult> OnPostAdjustHp(Guid id, int amount)
     {
         try
         {
@@ -336,7 +338,7 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostDefeat( Guid id)
+    public async Task<IActionResult> OnPostDefeat(Guid id)
     {
         _encounterState.SetCombatantStatus(
             id,
@@ -347,7 +349,7 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostRemove( Guid id)
+    public async Task<IActionResult> OnPostRemove(Guid id)
     {
         _encounterState.SetCombatantStatus(
             id,
@@ -358,7 +360,7 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostRestore( Guid id)
+    public async Task<IActionResult> OnPostRestore(Guid id)
     {
         _encounterState.SetCombatantStatus(
             id,
@@ -368,6 +370,36 @@ public class IndexModel : PageModel
 
         return RedirectToPage();
     }
+
+
+    public async Task<IActionResult> OnPostSetDisplayThemeAsync(
+        string theme)
+    {
+        try
+        {
+            var normalizedTheme =
+                _encounterState.SetDisplayTheme(
+                    theme);
+
+            await _encounterHub.Clients.All.SendAsync(
+                "DisplayThemeUpdated",
+                normalizedTheme);
+
+            return RedirectToPage();
+        }
+        catch (ArgumentException ex)
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                ex.Message);
+
+            LoadConnectedPlayers();
+            LoadConnectedPlayerCharacters();
+
+            return Page();
+        }
+    }
+
 
     private async Task BroadcastEncounterAsync()
     {
