@@ -85,6 +85,10 @@ public class InitiativeTrackerDbContext : DbContext
                 entity.Property(x => x.DisplayTheme)
                     .IsRequired()
                     .HasMaxLength(50);
+
+                entity.Property(
+                        x => x.HubHostName)
+                    .HasMaxLength(63);
             });
 
         modelBuilder.Entity<PersistedEncounterState>(

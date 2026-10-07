@@ -13,11 +13,26 @@ builder.Services.AddRazorPages();
 
 builder.Services.AddSignalR();
 
-var dataDirectory = Path.Combine(
-    builder.Environment.ContentRootPath,
-    "App_Data");
+var configuredDataDirectory =
+    builder.Configuration[
+        "Tracker:DataDirectory"];
 
-Directory.CreateDirectory(dataDirectory);
+var dataDirectory =
+    string.IsNullOrWhiteSpace(
+        configuredDataDirectory)
+        ? Path.Combine(
+            builder.Environment.ContentRootPath,
+            "App_Data")
+        : Path.IsPathRooted(
+            configuredDataDirectory)
+            ? configuredDataDirectory
+            : Path.GetFullPath(
+                Path.Combine(
+                    builder.Environment.ContentRootPath,
+                    configuredDataDirectory));
+
+Directory.CreateDirectory(
+    dataDirectory);
 
 var dataProtectionDirectory =
     Path.Combine(
@@ -48,8 +63,28 @@ builder.Services.AddSingleton<EncounterStateService>();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.AddSingleton<DeviceRegistryService>();
 builder.Services.AddSingleton<PlayerRegistryService>();
+builder.Services.AddSingleton<HubIdentityService>();
 builder.Services.AddSingleton<TrackerUrlService>();
 builder.Services.AddSingleton<CharacterService>();
+builder.Services.AddSingleton<AppVersionService>();
+
+builder.Services.AddSingleton(
+    serviceProvider =>
+        new SystemHealthService(
+            serviceProvider
+                .GetRequiredService<
+                    IDbContextFactory<
+                        InitiativeTrackerDbContext>>(),
+
+            serviceProvider
+                .GetRequiredService<
+                    AppVersionService>(),
+
+            serviceProvider
+                .GetRequiredService<
+                    HubIdentityService>(),
+
+            dataDirectory));
 
 builder.Services
     .AddAuthentication(
@@ -290,6 +325,221 @@ app.MapRazorPages()
    .WithStaticAssets();
 
 app.MapHub<EncounterHub>("/hubs/encounter");
+
+
+app.MapGet(
+    "/system/hub-info",
+    (
+        HubIdentityService hubIdentity,
+        IConfiguration configuration) =>
+    {
+        var port =
+            configuration
+                .GetValue<int?>(
+                    "Tracker:LanPort") ??
+            5000;
+
+        return Results.Json(
+            new
+            {
+                protocolVersion =
+                    1,
+
+                hubId =
+                    hubIdentity.HubId,
+
+                hostName =
+                    hubIdentity.HostName,
+
+                mdnsHostName =
+                    hubIdentity.MdnsHostName,
+
+                port,
+
+                displayPairPath =
+                    "/display/pair",
+
+                playerJoinPath =
+                    "/join"
+            });
+    })
+    .AllowAnonymous();
+
+
+app.MapGet(
+    "/system/health",
+    async (
+        SystemHealthService healthService,
+        CancellationToken cancellationToken) =>
+    {
+        var health =
+            await healthService
+                .CheckAsync(
+                    cancellationToken);
+
+        var response =
+            new
+            {
+                status =
+                    health.Healthy
+                        ? "healthy"
+                        : "unhealthy",
+
+                checkedAtUtc =
+                    health.CheckedAtUtc,
+
+                product =
+                    health.Product,
+
+                version =
+                    health.Version,
+
+                hubId =
+                    health.HubId,
+
+                hubProtocolVersion =
+                    health.HubProtocolVersion,
+
+                database =
+                    new
+                    {
+                        connected =
+                            health.DatabaseConnected,
+
+                        migrationsCurrent =
+                            health.PendingMigrations.Count ==
+                            0
+                    },
+
+                storage =
+                    new
+                    {
+                        ready =
+                            health.DataDirectoryReady
+                    }
+            };
+
+        return health.Healthy
+            ? Results.Ok(
+                response)
+            : Results.Json(
+                response,
+                statusCode:
+                    StatusCodes
+                        .Status503ServiceUnavailable);
+    })
+    .AllowAnonymous();
+
+
+app.MapGet(
+    "/system/status",
+    async (
+        SystemHealthService healthService,
+        CancellationToken cancellationToken) =>
+    {
+        var health =
+            await healthService
+                .CheckAsync(
+                    cancellationToken);
+
+        return Results.Ok(
+            new
+            {
+                product =
+                    health.Product,
+
+                version =
+                    health.Version,
+
+                informationalVersion =
+                    health.InformationalVersion,
+
+                assemblyVersion =
+                    health.AssemblyVersion,
+
+                status =
+                    health.Healthy
+                        ? "healthy"
+                        : "unhealthy",
+
+                checkedAtUtc =
+                    health.CheckedAtUtc,
+
+                startedAtUtc =
+                    health.StartedAtUtc,
+
+                uptimeSeconds =
+                    Math.Max(
+                        0,
+                        (long)health
+                            .Uptime
+                            .TotalSeconds),
+
+                hub =
+                    new
+                    {
+                        id =
+                            health.HubId,
+
+                        hostName =
+                            health.HubHostName,
+
+                        protocolVersion =
+                            health.HubProtocolVersion
+                    },
+
+                updater =
+                    new
+                    {
+                        releaseManifestFormatVersion =
+                            health
+                                .ReleaseManifestFormatVersion
+                    },
+
+                database =
+                    new
+                    {
+                        connected =
+                            health.DatabaseConnected,
+
+                        latestAppliedMigration =
+                            health.LatestAppliedMigration,
+
+                        pendingMigrationCount =
+                            health.PendingMigrations.Count,
+
+                        pendingMigrations =
+                            health.PendingMigrations,
+
+                        error =
+                            health.DatabaseError
+                    },
+
+                storage =
+                    new
+                    {
+                        ready =
+                            health.DataDirectoryReady,
+
+                        availableBytes =
+                            health.AvailableStorageBytes
+                    },
+
+                runtime =
+                    new
+                    {
+                        framework =
+                            health.Runtime,
+
+                        architecture =
+                            health.Architecture,
+
+                        operatingSystem =
+                            health.OperatingSystem
+                    }
+            });
+    })
+    .AllowAnonymous();
 
 
 app.MapPost(

@@ -14,15 +14,22 @@ public class JoinModel : PageModel
     private readonly TrackerUrlService
         _trackerUrl;
 
+    private readonly HubIdentityService
+        _hubIdentity;
+
     public JoinModel(
         GameSessionService gameSession,
-        TrackerUrlService trackerUrl)
+        TrackerUrlService trackerUrl,
+        HubIdentityService hubIdentity)
     {
         _gameSession =
             gameSession;
 
         _trackerUrl =
             trackerUrl;
+
+        _hubIdentity =
+            hubIdentity;
     }
 
     public GameSessionRecord Session =>
@@ -33,6 +40,15 @@ public class JoinModel : PageModel
 
     public string PlayerJoinUrl { get; private set; } =
         string.Empty;
+
+    public string HubHostName =>
+        _hubIdentity.HostName;
+
+    public string HubMdnsName =>
+        _hubIdentity.MdnsHostName;
+
+    public Guid HubId =>
+        _hubIdentity.HubId;
 
     public void OnGet()
     {

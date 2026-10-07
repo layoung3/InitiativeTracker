@@ -9,11 +9,18 @@ public class TrackerUrlService
     private readonly IConfiguration
         _configuration;
 
+    private readonly HubIdentityService
+        _hubIdentity;
+
     public TrackerUrlService(
-        IConfiguration configuration)
+        IConfiguration configuration,
+        HubIdentityService hubIdentity)
     {
         _configuration =
             configuration;
+
+        _hubIdentity =
+            hubIdentity;
     }
 
 
@@ -30,6 +37,20 @@ public class TrackerUrlService
             return configured
                 .Trim()
                 .TrimEnd('/');
+        }
+
+
+        /*
+         * On the appliance, the OS will advertise the hub's
+         * persistent hostname through mDNS/Avahi. Until that
+         * layer is enabled, development continues to use the
+         * detected LAN IPv4 address.
+         */
+        if (_configuration
+                .GetValue<bool>(
+                    "Tracker:UseFriendlyHostname"))
+        {
+            return BuildFriendlyBaseUrl();
         }
 
 
@@ -123,6 +144,54 @@ public class TrackerUrlService
     {
         return
             $"{GetBaseUrl(request)}/join";
+    }
+
+
+    public string GetFriendlyBaseUrl()
+    {
+        return BuildFriendlyBaseUrl();
+    }
+
+
+    private string BuildFriendlyBaseUrl()
+    {
+        var scheme =
+            _configuration[
+                "Tracker:LanScheme"];
+
+        if (string.IsNullOrWhiteSpace(
+                scheme))
+        {
+            scheme =
+                "http";
+        }
+
+
+        var port =
+            _configuration
+                .GetValue<int?>(
+                    "Tracker:LanPort");
+
+
+        var builder =
+            new UriBuilder(
+                scheme,
+                _hubIdentity.MdnsHostName);
+
+        if (port.HasValue &&
+            !IsDefaultPort(
+                scheme,
+                port.Value))
+        {
+            builder.Port =
+                port.Value;
+        }
+
+        return builder
+            .Uri
+            .GetLeftPart(
+                UriPartial.Authority)
+            .TrimEnd('/');
     }
 
 
