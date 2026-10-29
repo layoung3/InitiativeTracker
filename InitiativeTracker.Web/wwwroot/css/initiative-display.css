@@ -176,7 +176,8 @@ body {
 .initiative-display {
     position: relative;
     isolation: isolate;
-    min-height: 100dvh;
+    height: 100dvh;
+    min-height: 0;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
@@ -736,15 +737,6 @@ body {
 
 @media (max-width: 767.98px) {
 
-    body {
-        overflow: auto;
-    }
-
-    .initiative-display {
-        min-height: 100dvh;
-        overflow: visible;
-    }
-
     .initiative-header {
         position: sticky;
         top: 0;
@@ -775,7 +767,6 @@ body {
     }
 
     .initiative-list {
-        overflow: visible;
         padding: 0.8rem;
     }
 
@@ -856,5 +847,3 @@ body {
         transition: none;
     }
 }
-
-.initiative-header { position: sticky; top: 0; z-index: 100; }

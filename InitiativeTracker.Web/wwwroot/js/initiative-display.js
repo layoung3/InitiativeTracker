@@ -843,13 +843,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 .matches;
 
 
-        current.scrollIntoView({
+        // Scroll only the bounded list. scrollIntoView can also move the page
+        // and its ancestors, taking the round/turn header out of the viewport.
+        const list = document.getElementById("initiativeList");
+        if (!list) return;
+        const rowBounds = current.getBoundingClientRect();
+        const listBounds = list.getBoundingClientRect();
+        const centeringSpace = Math.max(0, (list.clientHeight - rowBounds.height) / 2);
+
+        list.scrollTo({
+            top: list.scrollTop + rowBounds.top - listBounds.top - centeringSpace,
             behavior:
                 reduceMotion
                     ? "auto"
-                    : "smooth",
-            block:
-                "center"
+                    : "smooth"
         });
     }
 

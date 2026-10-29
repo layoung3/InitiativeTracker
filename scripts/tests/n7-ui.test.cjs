@@ -108,3 +108,67 @@ for (const width of [1280, 390]) {
         } finally { await page.close(); }
     });
 }
+
+for (const [width, height, reducedMotion] of [[1280, 800, 'no-preference'], [390, 844, 'reduce'], [844, 390, 'no-preference']]) {
+    test(`long encounter keeps public header visible through turns and manual scroll at ${width}x${height}`, async () => {
+        const page = await fixture(`<div class="app-shell"><main class="app-main">
+            <div class="initiative-display"><header class="initiative-header">
+                <div id="roundDisplay" class="initiative-header-status"></div>
+                <div class="initiative-title">Initiative</div>
+                <div class="initiative-header-actions"><div id="turnDisplay" class="initiative-header-status"></div></div>
+            </header><main id="initiativeList" class="initiative-list" tabindex="0" aria-label="Initiative order"></main>
+            </div></main></div>`, width);
+        try {
+            await page.setViewportSize({ width, height });
+            await page.emulateMedia({ reducedMotion });
+            await page.addStyleTag({ content: source('lib/bootstrap/dist/css/bootstrap.min.css') });
+            await page.addStyleTag({ content: source('css/site.css') });
+            await page.addStyleTag({ content: source('css/condition-badges.css') });
+            await page.addStyleTag({ content: source('css/initiative-display.css') });
+            await page.addScriptTag({ content: source('js/initiative-display.js') });
+            await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
+            const renderTurn = async active => page.evaluate(active => {
+                window.hubEvents.EncounterUpdated({ isStarted: true, round: 3, currentTurnNumber: active + 1,
+                    activeCombatantCount: 40, combatants: Array.from({ length: 40 }, (_, index) => ({
+                        id: String(index), name: `Combatant ${index + 1}`, isActive: true, isCurrent: index === active,
+                        initiative: 40 - index, currentHp: 10, maxHp: 20, temporaryHp: 0, exhaustionLevel: 2,
+                        conditions: [{ name: 'Prone', styleKey: 'prone' }, { name: 'Poisoned', styleKey: 'poisoned' }]
+                    })) });
+            }, active);
+            const assertHeader = async () => {
+                const metrics = await page.evaluate(() => ({
+                    headerTop: document.querySelector('.initiative-header').getBoundingClientRect().top,
+                    headerBottom: document.querySelector('.initiative-header').getBoundingClientRect().bottom,
+                    scrollY: window.scrollY, pageHeight: document.documentElement.scrollHeight, height: innerHeight
+                }));
+                assert(Math.abs(metrics.headerTop) <= 1, 'round/initiative/turn header stays at viewport top');
+                assert(metrics.headerBottom < metrics.height, 'list has usable viewport space');
+                assert.equal(metrics.scrollY, 0, 'automatic scrolling never moves the document');
+                assert.equal(metrics.pageHeight, metrics.height, 'only the list scrolls');
+            };
+            for (const active of [0, 1, 2, 8, 16, 25, 39, 0, 20, 38]) {
+                await renderTurn(active);
+                await page.waitForFunction(() => {
+                    const row = document.querySelector('.initiative-row.is-current').getBoundingClientRect();
+                    const list = document.querySelector('#initiativeList').getBoundingClientRect();
+                    return row.top >= list.top - 1 && row.bottom <= list.bottom + 1;
+                });
+                await assertHeader();
+                assert.match(await page.locator('#roundDisplay').innerText(), /3/);
+                assert.match(await page.locator('#turnDisplay').innerText(), new RegExp(String(active + 1)));
+            }
+            const list = page.locator('#initiativeList');
+            await list.evaluate(element => element.scrollTo({ top: 0, behavior: 'instant' }));
+            await list.hover();
+            await page.mouse.wheel(0, 1000);
+            await page.waitForFunction(() => document.querySelector('#initiativeList').scrollTop > 0);
+            await assertHeader();
+            await list.focus();
+            await page.keyboard.press('End');
+            await assertHeader();
+            await renderTurn(0);
+            await page.waitForFunction(() => document.querySelector('.initiative-row.is-current').getBoundingClientRect().top >= document.querySelector('#initiativeList').getBoundingClientRect().top - 1);
+            await assertHeader();
+        } finally { await page.close(); }
+    });
+}
