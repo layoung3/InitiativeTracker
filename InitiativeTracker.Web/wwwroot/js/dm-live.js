@@ -12,6 +12,10 @@ dmConnection.on(
     "EncounterUpdated",
     () => {
 
+        if (window.visibilitySaving || window.visibilityError) {
+            window.visibilityRefreshPending = true;
+            return;
+        }
         if (dmReloadPending) {
             return;
         }
@@ -49,3 +53,42 @@ dmConnection.onclose(
     });
 
 startDmConnection();
+// Serialize changes across forms; retain dirty controls on errors and allow retry.
+let visibilityQueue = Promise.resolve();
+let visibilityOutstanding = 0;
+document.querySelectorAll("form[data-visibility-autosave]").forEach(form => {
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    form.appendChild(status);
+    const save = () => {
+        const body = new FormData(form);
+        visibilityOutstanding++;
+        window.visibilitySaving = true;
+        status.textContent = "Saving…";
+        visibilityQueue = visibilityQueue.then(async () => {
+            try {
+                const response = await fetch(form.action, {
+                    method: "POST", body, headers: { "X-Visibility-Autosave": "1" }
+                });
+                if (!response.ok || !(await response.json()).saved) throw new Error("Save failed");
+                form.dataset.saveError = "";
+                status.textContent = "Saved";
+            } catch {
+                form.dataset.saveError = "true";
+                status.textContent = "Not saved. Use Save Visibility to retry.";
+            } finally {
+                visibilityOutstanding--;
+                window.visibilitySaving = visibilityOutstanding > 0;
+                window.visibilityError = !!document.querySelector('[data-save-error="true"]');
+                if (!window.visibilitySaving && !window.visibilityError && window.visibilityRefreshPending) {
+                    setTimeout(() => {
+                        if (!window.visibilitySaving && !window.visibilityError) window.location.reload();
+                    }, 1500);
+                }
+            }
+        });
+    };
+    form.addEventListener("change", save);
+    form.addEventListener("submit", event => { event.preventDefault(); save(); });
+});

@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep the staged recovery hotspot out of startup autoconnect
+Before=NetworkManager.service
+After=local-fs.target
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/libexec/initiativetracker/initiativetracker-prepare-startup
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/NetworkManager/system-connections
+[Install]
+WantedBy=NetworkManager.service

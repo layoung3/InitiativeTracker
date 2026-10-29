@@ -718,7 +718,7 @@ public class CharacterModel : PageModel
             });
     }
 
-    public IActionResult OnPostSetExhaustion(Guid id, int exhaustionLevel)
+    public async Task<IActionResult> OnPostSetExhaustionAsync(Guid id, int exhaustionLevel)
     {
         var ownershipResult =
             ValidateOwnedCharacter(
@@ -731,10 +731,12 @@ public class CharacterModel : PageModel
             return ownershipResult;
         }
 
-        _characterService
+        _encounterState
             .SetCharacterExhaustion(
                 character!.Id,
                 exhaustionLevel);
+
+        await BroadcastEncounterAsync();
 
         return RedirectToPage(
             new

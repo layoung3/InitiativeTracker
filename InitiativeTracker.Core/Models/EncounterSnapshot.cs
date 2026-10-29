@@ -25,6 +25,9 @@ public class CombatantSnapshot
 
     public int Initiative { get; set; }
 
+    // Null distinguishes pre-N7 snapshots from a recorded level of zero.
+    public int? ExhaustionLevel { get; set; }
+
     public int SortOrder { get; set; }
 
     public int? CurrentHp { get; set; }

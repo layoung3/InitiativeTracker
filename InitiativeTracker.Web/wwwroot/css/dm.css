@@ -648,3 +648,6 @@ html[data-dm-theme] {
         height: 1.25rem;
     }
 }
+
+/* Compact sticky turn context preserves access to the action toolbar. */
+.dm-turn-context { position: sticky; top: 0; z-index: 100; background: var(--bs-body-bg); padding: .75rem; border-bottom: 1px solid var(--bs-border-color); }

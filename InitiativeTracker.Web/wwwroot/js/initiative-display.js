@@ -661,6 +661,13 @@ document.addEventListener("DOMContentLoaded", () => {
             [];
 
 
+        if (combatant.exhaustionLevel > 0) {
+            const exhaustion = document.createElement("span");
+            exhaustion.className = "condition-badge";
+            exhaustion.textContent = `Exhaustion ${combatant.exhaustionLevel}`;
+            name.appendChild(exhaustion);
+        }
+
         if (conditions.length > 0) {
 
             const conditionList =

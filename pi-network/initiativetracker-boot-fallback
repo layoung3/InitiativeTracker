@@ -3,16 +3,17 @@
 Never switches AWAY from an active connection; does not touch recovery transition journal.
 Runs every 30s under systemd; live changes require dedicated root-owned gate.
 """
-import argparse, fcntl, json, os, subprocess, sys, tempfile
+import argparse, fcntl, json, os, subprocess, sys, tempfile, uuid
+from contextlib import ExitStack
 from pathlib import Path
 
 ROOT=Path('/var/lib/initiativetracker-network')
 GATE=Path('/etc/initiativetracker/network/boot-fallback.enabled')
 RECOVERY='InitiativeTracker-Recovery'
 DEVICE='wlan0'
-MIN_UPTIME=120
-MIN_OFFLINE=60
-MIN_SCAN_GAP=60
+MIN_UPTIME=60
+MIN_OFFLINE=0
+MIN_SCAN_GAP=10
 
 
 def nm(*args, timeout=25):
@@ -36,14 +37,17 @@ def uptime(): return float(Path('/proc/uptime').read_text().split()[0])
 def boot_id(): return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
 def pending():
-    p=ROOT/'transition.json'
-    if p.is_symlink(): return True
-    if not p.exists(): return False
-    try:
-        if p.stat().st_size>16384: return True
-        d=json.loads(p.read_text())
-        return not isinstance(d,dict) or d.get('state') not in ('completed','recovered')
-    except Exception: return True
+    for name, terminal in (('transition.json', ('completed', 'recovered')),
+                           ('return-transition.json', ('confirmed', 'rolled_back', 'failed'))):
+        p=ROOT/name
+        if p.is_symlink(): return True
+        if not p.exists(): continue
+        try:
+            if not p.is_file() or p.stat().st_size>16384: return True
+            d=json.loads(p.read_text())
+            if not isinstance(d,dict) or d.get('state') not in terminal: return True
+        except Exception: return True
+    return False
 
 def save(s):
     fd,name=tempfile.mkstemp(prefix='.boot-fallback-',dir=ROOT)
@@ -70,35 +74,65 @@ def decision(active_profile,device,transition,up,offline_since,scans):
     if active_profile and active_profile not in ('--','unknown'):
         return 'HOLD','active_connection'
     if not device.startswith('30 '): return 'HOLD','device_not_disconnected'
-    if up<MIN_UPTIME:return 'WAIT','startup_grace'
     if offline_since is None or up-offline_since<MIN_OFFLINE:return 'WAIT','offline_grace'
     if len(scans)<2:return 'SCAN','need_independent_scans'
     if scans[-1]-scans[-2]<MIN_SCAN_GAP:return 'WAIT','scan_spacing'
+    if up<MIN_UPTIME:return 'WAIT','startup_grace'
     return 'HOTSPOT','offline_confirmed'
 
 def saved_visible():
-    """Conservatively ask the installed N6.6B discovery module for saved SSID matches.
-    Errors MUST fail closed rather than activate the hotspot.
-    """
+    """Eligible external profiles keyed by UUID, never by ambiguous display name."""
     import importlib.machinery, importlib.util
-    path='/usr/local/libexec/initiativetracker/initiativetracker-network-discovery'
-    loader=importlib.machinery.SourceFileLoader('it_boot_discovery', path)
+    path=Path(__file__).with_name('initiativetracker-network-discovery')
+    loader=importlib.machinery.SourceFileLoader('it_boot_discovery', str(path))
     spec=importlib.util.spec_from_loader('it_boot_discovery',loader)
-    mod=importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    _,_,_,matching,pending_transition,_,_=mod.discover()
-    if pending_transition: raise RuntimeError('transition became pending')
-    return matching
+    mod=importlib.util.module_from_spec(spec);loader.exec_module(mod)
+    visible=mod.scan_cached(nm('-t','-f','SSID,SIGNAL','device','wifi','list',
+                              'ifname',DEVICE,'--rescan','no'))
+    matches=[]
+    for line in nm('-t','-f','UUID,TYPE','connection','show').splitlines():
+        fields=mod.split_nmcli(line)
+        if len(fields)!=2 or fields[1] not in ('wifi','802-11-wireless'): continue
+        ident=str(uuid.UUID(fields[0]))
+        def field(key): return nm('-g',key,'connection','show','uuid',ident).strip()
+        if field('802-11-wireless.mode') not in ('infrastructure',''): continue
+        if field('connection.interface-name') not in ('', '--', DEVICE): continue
+        if field('connection.autoconnect') != 'yes': continue
+        if field('802-11-wireless.ssid') not in visible: continue
+        matches.append((int(field('connection.autoconnect-priority')),ident))
+    return [ident for _,ident in sorted(matches, reverse=True)]
+
+
+def attempt_saved(st):
+    # One bounded attempt per eligible UUID per boot. An unusable visible SSID
+    # must not postpone private access forever. Never interrupt an active link.
+    attempted=st.setdefault('attempted',[])
+    for ident in saved_visible():
+        if ident in attempted: continue
+        if pending() or active() not in ('','--','unknown'): return True
+        if not device_state().startswith('30 '): return True
+        attempted.append(ident);save(st)
+        try:
+            nm('--wait','15','connection','up','uuid',ident,'ifname',DEVICE,timeout=20)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            pass
+        if active() not in ('','--','unknown'): return True
+        # Let the timer recheck device readiness between bounded attempts.
+        return True
+    return False
 
 
 def go(action):
     if os.geteuid()!=0:raise PermissionError('requires sudo')
     if ROOT.is_symlink() or not ROOT.is_dir():raise ValueError('state directory missing')
-    with (ROOT/'boot-fallback.lock').open('a+b') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX)
+    with ExitStack() as stack:
+        # Match the independent controllers' locks, in a fixed order.
+        for name in ('boot-fallback.lock', 'control.lock', 'return-transition.lock'):
+            lock=stack.enter_context((ROOT/name).open('a+b'))
+            fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         up=uptime(); st=load(boot_id()); a=active(); dev=device_state(); pend=pending()
         if a and a not in ('--','unknown'):
-            st['offline_since']=None;st['scans']=[]
+            st['offline_since']=None;st['scans']=[];st['settled']=True
         elif st['offline_since'] is None:st['offline_since']=up
         outcome,reason=decision(a,dev,pend,up,st['offline_since'],st['scans'])
         live=gate()
@@ -109,6 +143,7 @@ def go(action):
         print('REASON='+reason)
         print('EXECUTED_NETWORK_ACTION=NONE',flush=True) if action=='status' or not live else None
         if action=='status':return
+        if st.get('settled'):save(st);return
         if not live:
             save(st)
             return
@@ -117,29 +152,25 @@ def go(action):
             if st['scans'] and up-st['scans'][-1]<MIN_SCAN_GAP:return
             # Only proceed on disconnected wlan0 with no recovery transition.
             nm('-w','20','device','wifi','rescan','ifname',DEVICE,timeout=25)
-            # A saved SSID in the fresh cache means wait for NetworkManager;
-            # never count such a scan toward fallback eligibility.
-            if saved_visible():
-                st['scans']=[]
-                save(st)
-                print('EXECUTED_NETWORK_ACTION=SCAN_FOUND_SAVED_WIFI')
-                return
             st['scans'].append(uptime());st['scans']=st['scans'][-2:]
             save(st)
+            attempt_saved(st)
             print('EXECUTED_NETWORK_ACTION=REQUEST_SCAN')
             return
         if outcome=='HOTSPOT':
             # Recheck immediately; no active profile may be interrupted.
             if active() not in ('','--','unknown') or pending() or not device_state().startswith('30 '):
                 print('EXECUTED_NETWORK_ACTION=ABORT_RECHECK');return
-            if saved_visible():
-                st['scans']=[];save(st)
-                print('EXECUTED_NETWORK_ACTION=ABORT_SAVED_WIFI_VISIBLE');return
+            # Refresh once at the deadline; early boot scans may miss late radios.
+            nm('-w','10','device','wifi','rescan','ifname',DEVICE,timeout=15)
+            if attempt_saved(st):
+                print('EXECUTED_NETWORK_ACTION=SAVED_WIFI_ATTEMPT');return
+            if active() not in ('','--','unknown') or pending() or not device_state().startswith('30 '):return
             if RECOVERY not in nm('-g','NAME','connection','show').splitlines():
                 raise RuntimeError('recovery profile absent')
             nm('--wait','25','connection','up','id',RECOVERY,'ifname',DEVICE,timeout=35)
             print('EXECUTED_NETWORK_ACTION=ACTIVATE_PRIVATE_HOTSPOT')
-            st['last_action']=uptime();save(st)
+            st['last_action']=uptime();st['settled']=True;save(st)
         else:save(st)
 
 def main():

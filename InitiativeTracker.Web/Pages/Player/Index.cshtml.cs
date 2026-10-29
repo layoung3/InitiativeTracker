@@ -161,6 +161,27 @@ public class IndexModel : PageModel
             out playerProfileId);
     }
 
+    public async Task<IActionResult> OnPostAddCharacterAsync(Guid characterId)
+    {
+        if (!TryGetPlayerIdentity(out var playerId, out var profileId, out var credentialId))
+            return Unauthorized();
+        var player = _playerRegistry.GetPlayer(playerId);
+        if (player is null || !player.IsActive || player.PlayerProfileId != profileId ||
+            player.PlayerDeviceCredentialId != credentialId ||
+            !_playerRegistry.IsActivePlayerCredential(credentialId, profileId))
+            return Forbid();
+        try
+        {
+            _encounterState.AddPlayerCharacter(characterId, submittingPlayerProfileId: profileId);
+            await BroadcastEncounterAsync();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            TempData["AccountError"] = ex.Message;
+        }
+        return RedirectToPage();
+    }
+
     public IActionResult OnPostCreateCharacter(
         string name)
     {
