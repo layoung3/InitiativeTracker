@@ -398,7 +398,19 @@ body {
     min-width: 0;
 }
 
+.combatant-name-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.combatant-name-heading > .condition-badge {
+    flex-shrink: 0;
+}
+
 .combatant-name-text {
+    min-width: 0;
     overflow: hidden;
     color: var(--display-text);
     font-size: clamp(1.35rem, 2.6vw, 2.25rem);

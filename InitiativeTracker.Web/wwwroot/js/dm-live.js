@@ -57,6 +57,10 @@ startDmConnection();
 let visibilityQueue = Promise.resolve();
 let visibilityOutstanding = 0;
 document.querySelectorAll("form[data-visibility-autosave]").forEach(form => {
+    // Keep the server-rendered submit button as the no-JavaScript fallback.
+    const retry = form.querySelector('button[type="submit"]');
+    retry.hidden = true;
+    retry.textContent = "Retry save";
     const status = document.createElement("span");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
@@ -65,6 +69,7 @@ document.querySelectorAll("form[data-visibility-autosave]").forEach(form => {
         const body = new FormData(form);
         visibilityOutstanding++;
         window.visibilitySaving = true;
+        retry.hidden = true;
         status.textContent = "Saving…";
         visibilityQueue = visibilityQueue.then(async () => {
             try {
@@ -73,10 +78,12 @@ document.querySelectorAll("form[data-visibility-autosave]").forEach(form => {
                 });
                 if (!response.ok || !(await response.json()).saved) throw new Error("Save failed");
                 form.dataset.saveError = "";
+                retry.hidden = true;
                 status.textContent = "Saved";
             } catch {
                 form.dataset.saveError = "true";
-                status.textContent = "Not saved. Use Save Visibility to retry.";
+                retry.hidden = false;
+                status.textContent = "Not saved. Retry the save.";
             } finally {
                 visibilityOutstanding--;
                 window.visibilitySaving = visibilityOutstanding > 0;

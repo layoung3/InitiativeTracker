@@ -652,8 +652,10 @@ document.addEventListener("DOMContentLoaded", () => {
             combatant.name;
 
 
-        name.appendChild(
-            nameText);
+        const nameHeading = document.createElement("div");
+        nameHeading.className = "combatant-name-heading";
+        nameHeading.appendChild(nameText);
+        name.appendChild(nameHeading);
 
 
         const conditions =
@@ -665,7 +667,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const exhaustion = document.createElement("span");
             exhaustion.className = "condition-badge";
             exhaustion.textContent = `Exhaustion ${combatant.exhaustionLevel}`;
-            name.appendChild(exhaustion);
+            nameHeading.appendChild(exhaustion);
         }
 
         if (conditions.length > 0) {
