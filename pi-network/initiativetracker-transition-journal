@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""N6.4A: durable transition journal and simulated recovery. NO network writes.
+
+The operator-only commands deliberately require --state-dir for tests and staging.
+No real network switch executor is included.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+RECOVERY = 'InitiativeTracker-Recovery'
+PROFILE_RE = re.compile(r'[A-Za-z0-9_.:-]{1,80}\Z')
+VALID_STATES = ('pending', 'target_validated', 'restore_previous', 'activate_recovery', 'recovered', 'completed')
+
+def utcnow():
+    return datetime.now(timezone.utc)
+
+def stamp(dt):
+    return dt.isoformat(timespec='seconds').replace('+00:00', 'Z')
+
+def parse_date(value):
+    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    if parsed.tzinfo is None:
+        raise ValueError('Timestamp needs timezone')
+    return parsed.astimezone(timezone.utc)
+
+def valid_profile(value):
+    if not PROFILE_RE.fullmatch(value):
+        raise ValueError('Invalid profile name')
+    return value
+
+def load(path):
+    # Refuse symlink and non-regular files, if present
+    if path.is_symlink():
+        raise ValueError('Journal symlink prohibited')
+    data = json.loads(path.read_text(encoding='utf-8'))
+    if set(data) != {'format', 'id', 'previous', 'target', 'created_utc', 'deadline_utc', 'state', 'events'} or data['format'] != 1:
+        raise ValueError('Invalid journal schema')
+    valid_profile(data['previous']); valid_profile(data['target'])
+    if data['state'] not in VALID_STATES or not isinstance(data['events'], list):
+        raise ValueError('Invalid journal state')
+    parse_date(data['deadline_utc']); parse_date(data['created_utc'])
+    return data
+
+def durable_write(path, obj):
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError('Journal symlink prohibited')
+    fd, tmp = tempfile.mkstemp(prefix='.journal-', dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(obj, f, indent=2, sort_keys=True)
+            f.write('\n'); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, path)
+        dir_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(dir_fd)
+        finally: os.close(dir_fd)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+
+def create(path, previous, target, seconds, now=None):
+    valid_profile(previous); valid_profile(target)
+    if previous == target: raise ValueError('Profiles must differ')
+    if not 30 <= seconds <= 600: raise ValueError('Deadline must be 30–600 seconds')
+    if path.exists() or path.is_symlink(): raise ValueError('Existing journal must not be overwritten')
+    now = now or utcnow()
+    import uuid
+    result = dict(format=1, id=str(uuid.uuid4()), previous=previous, target=target,
+                  created_utc=stamp(now), deadline_utc=stamp(now + timedelta(seconds=seconds)),
+                  state='pending', events=[{'at': stamp(now), 'event': 'created'}])
+    durable_write(path, result)
+    return result
+
+def decide(journal, active, target_healthy=False, previous_available=True, now=None):
+    """Pure simulation. Never invokes nmcli. Healthy is an explicit test input."""
+    now = now or utcnow()
+    state = journal['state']
+    if state in ('completed', 'recovered'):
+        return 'NONE'
+    if state == 'target_validated':
+        return 'COMPLETE'
+    if state == 'restore_previous':
+        return 'MARK_RECOVERED' if active == journal['previous'] else ('TRY_PREVIOUS' if previous_available else 'TRY_RECOVERY')
+    if state == 'activate_recovery':
+        return 'MARK_RECOVERED' if active == RECOVERY else 'TRY_RECOVERY'
+    if target_healthy and active == journal['target'] and now <= parse_date(journal['deadline_utc']):
+        return 'VALIDATE_TARGET'
+    if now <= parse_date(journal['deadline_utc']):
+        return 'WAIT'
+    if active == journal['previous'] or active == RECOVERY:
+        return 'MARK_RECOVERED'
+    return 'TRY_PREVIOUS' if previous_available else 'TRY_RECOVERY'
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('command', choices=['create', 'inspect', 'simulate'])
+    p.add_argument('--state-dir', required=True, help='Local test/staging directory; no privileged defaults')
+    p.add_argument('--previous'); p.add_argument('--target'); p.add_argument('--seconds',type=int,default=120)
+    p.add_argument('--active',default='--'); p.add_argument('--target-healthy',action='store_true')
+    p.add_argument('--previous-unavailable',action='store_true')
+    args=p.parse_args()
+    path=Path(args.state_dir).resolve()/'transition.json'
+    try:
+        if args.command == 'create':
+            if not args.previous or not args.target: raise ValueError('Previous and target required')
+            data=create(path,args.previous,args.target,args.seconds)
+        else: data=load(path)
+        print('N64A_MODE=SIMULATION_ONLY')
+        print('NETWORK_MANAGER_WRITES=DISABLED')
+        print('JOURNAL_ID='+data['id']); print('JOURNAL_STATE='+data['state'])
+        print('DEADLINE_UTC='+data['deadline_utc'])
+        if args.command == 'simulate':
+            print('SIMULATED_RECOMMENDATION='+decide(data,args.active,args.target_healthy,not args.previous_unavailable))
+            print('EXECUTED_ACTION=NONE')
+        return 0
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        print('N64A_ERROR='+str(exc),file=sys.stderr); return 1
+if __name__=='__main__': sys.exit(main())

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# N6: read-only supervisor preview. No network-changing operations.
+set -euo pipefail
+export LC_ALL=C
+NMCLI="${IT_NMCLI:-/usr/bin/nmcli}"
+MODE="${1:-}"
+INTERFACE="${IT_WIFI_INTERFACE:-wlan0}"
+HOTSPOT_PROFILE="${IT_HOTSPOT_PROFILE:-InitiativeTracker-Recovery}"
+case "$MODE" in status|plan|check) ;; *) echo 'Usage: initiativetracker-network-supervisor {status|plan|check}' >&2; exit 64;; esac
+if [[ ! "$INTERFACE" =~ ^[a-zA-Z0-9_.:-]{1,32}$ ]] || [[ ! "$HOTSPOT_PROFILE" =~ ^[a-zA-Z0-9_.-]{1,80}$ ]]; then
+  echo 'Invalid non-secret configuration' >&2; exit 78
+fi
+if [[ ! -x "$NMCLI" ]]; then echo 'NetworkManager CLI unavailable' >&2; exit 69; fi
+# Do not use --show-secrets, and never query password fields.
+get_field() { "$NMCLI" --terse --get-values "$1" "${@:2}" 2>/dev/null || true; }
+if [[ "$MODE" == check ]]; then
+  echo 'N6_MODE=READ_ONLY'
+  echo "NM_RUNNING=$(get_field RUNNING general)"
+  echo "WIFI_DEVICE=$INTERFACE"
+  echo "DEVICE_STATE=$(get_field GENERAL.STATE device show "$INTERFACE" | head -n 1)"
+  echo 'WRITE_OPERATIONS=DISABLED'
+  exit 0
+fi
+active_lines="$(get_field GENERAL.CONNECTION device show "$INTERFACE")"
+active_name="${active_lines%%$'\n'*}"
+active_name="${active_name:-unknown}"
+profiles="$(get_field NAME connection show)"
+recovery_present=false
+while IFS= read -r name; do
+  if [[ "$name" == "$HOTSPOT_PROFILE" ]]; then recovery_present=true; break; fi
+done <<< "$profiles"
+if [[ "$MODE" == status ]]; then
+  echo 'N6_MODE=READ_ONLY'
+  echo "WIFI_DEVICE=$INTERFACE"
+  echo "ACTIVE_PROFILE=$active_name"
+  echo "RECOVERY_PROFILE_PRESENT=$recovery_present"
+  echo 'AUTOMATIC_SWITCHING=DISABLED'
+  exit 0
+fi
+# Decisions deliberately advisory. A missing recovery profile is never automatically created.
+if [[ "$recovery_present" != true ]]; then
+  recommendation='BLOCKED_RECOVERY_PROFILE_MISSING'
+elif [[ "$active_name" == "$HOTSPOT_PROFILE" ]]; then
+  recommendation='KEEP_RECOVERY_HOTSPOT_CHECK_SAVED_NETWORKS_LATER'
+elif [[ -z "$active_name" || "$active_name" == '--' || "$active_name" == 'unknown' ]]; then
+  recommendation='CANDIDATE_RECOVERY_HOTSPOT'
+else
+  recommendation='KEEP_ACTIVE_KNOWN_NETWORK'
+fi
+echo 'N6_MODE=DRY_RUN'
+echo "WIFI_DEVICE=$INTERFACE"
+echo "RECOVERY_PROFILE_PRESENT=$recovery_present"
+echo "RECOMMENDATION=$recommendation"
+echo 'ACTION=NONE'
+echo 'SATELLITE_COORDINATION=NOT_CONNECTED'
+echo 'NETWORK_WATCHDOG=NOT_INSTALLED'

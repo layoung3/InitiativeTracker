@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""N6.9D: hand off an active hotspot to supervised saved-Wi-Fi return.
+
+Root only, launched independently by systemd-run through restricted socket broker.
+Never accepts arbitrary commands or network profile names.
+"""
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+HOTSPOT = 'InitiativeTracker-Recovery'
+RECOVERY = '/usr/local/libexec/initiativetracker/initiativetracker-network-control'
+RETURN = '/usr/local/libexec/initiativetracker/initiativetracker-network-return'
+TIMER = 'initiativetracker-network-return.timer'
+UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
+
+
+def run_command(args, timeout=15):
+    result = subprocess.run(args, text=True, capture_output=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError('failed '+args[0].rsplit('/', 1)[-1]+': '+result.stderr.strip()[:350])
+    return result.stdout.strip()
+
+
+def fields(output):
+    return dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+
+
+def execute(target_uuid, seconds):
+    if os.geteuid() != 0:
+        raise RuntimeError('root required')
+    if not UUID.fullmatch(target_uuid):
+        raise ValueError('invalid saved Wi-Fi UUID')
+    if not 90 <= seconds <= 600:
+        raise ValueError('invalid rollback interval')
+    r = fields(run_command([RECOVERY, 'status']))
+    s = fields(run_command([RETURN, 'status']))
+    if r.get('ACTIVE_PROFILE') != HOTSPOT or s.get('ACTIVE_PROFILE') != HOTSPOT:
+        raise RuntimeError('private hotspot is not active')
+    if s.get('RETURN_SWITCH_ENABLED') != 'true':
+        raise RuntimeError('return switching is not enabled')
+    if s.get('RETURN_JOURNAL_STATE') == 'pending':
+        raise RuntimeError('return transition already pending')
+    if run_command(['/usr/bin/systemctl', 'is-active', TIMER]) != 'active':
+        raise RuntimeError('return rollback timer inactive')
+    # Ensure requested UUID is eligible BEFORE releasing the original controller.
+    saved_output = run_command([RETURN, 'list-saved'])
+    import json
+    saved_lines = fields(saved_output)
+    profiles = json.loads(saved_lines.get('SAVED_WIFI', '[]'))
+    if not any(x.get('uuid', '').lower() == target_uuid.lower() for x in profiles):
+        raise RuntimeError('requested saved Wi-Fi is not eligible')
+
+    state = r.get('JOURNAL_STATE')
+    if state == 'pending':
+        if r.get('N64C_LIVE_ENABLED') != 'true':
+            raise RuntimeError('hotspot controller cannot confirm pending transition')
+        print('HANDOFF_ACTION=CONFIRM_HOTSPOT', flush=True)
+        run_command([RECOVERY, 'confirm'])
+    elif state not in ('none', 'completed', 'recovered'):
+        raise RuntimeError('hotspot transition not in a transferable state: ' + str(state))
+
+    # The independent N6.8 timer owns rollback once begin writes its journal.
+    print('HANDOFF_ACTION=BEGIN_SAVED_WIFI_RETURN', flush=True)
+    run_command([RETURN, 'begin', '--uuid', target_uuid, '--seconds', str(seconds)], timeout=55)
+    print('HANDOFF_ACTION=RETURN_STARTED', flush=True)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--uuid', required=True)
+    p.add_argument('--seconds', type=int, default=180)
+    args = p.parse_args()
+    try:
+        execute(args.uuid, args.seconds)
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        print('N69D_HANDOFF_ERROR=' + str(exc), file=sys.stderr, flush=True)
+        return 1
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())

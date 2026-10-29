@@ -1,0 +1,13 @@
+[Unit]
+Description=Synchronize InitiativeTracker hub hostname
+Requires=initiativetracker.service
+After=initiativetracker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/initiativetracker-sync-hostname
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

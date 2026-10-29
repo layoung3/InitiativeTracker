@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""N6.6G: verify N6.6F scan metadata and provide safe, read-only recommendations.
+
+No scans, network changes or state writes. A completed RF scan request means the
+NetworkManager cache was refreshed, NOT that every visible SSID is reachable or
+that lack of a match proves no saved network is nearby.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+import sys
+
+STATE_DIR = Path('/var/lib/initiativetracker-network')
+MAX_SCAN_AGE = 180
+
+
+def load(name):
+    path = Path(__file__).with_name(name)
+    loader = importlib.machinery.SourceFileLoader(name.replace('-', '_'), str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    loader.exec_module(module)
+    return module
+
+
+def evaluate(*, base, scan, boot_id, uptime, matching, active, pending):
+    if not isinstance(base, dict) or not isinstance(matching, (list, tuple)):
+        raise ValueError('invalid input')
+    if not isinstance(active, str) or not isinstance(pending, bool):
+        raise ValueError('invalid network state')
+    if not isinstance(uptime, (float, int)) or isinstance(uptime, bool) or not math.isfinite(uptime) or uptime < 0:
+        raise ValueError('invalid uptime')
+    verification, age = 'missing_scan_record', None
+    if scan is not None:
+        if scan.get('boot_id') != boot_id:
+            verification = 'different_boot'
+        elif scan.get('result') == 'failed':
+            verification = 'scan_failed'
+        elif scan.get('result') == 'attempting':
+            verification = 'scan_in_progress_or_interrupted'
+        elif scan.get('result') != 'success':
+            verification = 'unknown_scan_result'
+        else:
+            completed = scan.get('last_success_uptime')
+            if (not isinstance(completed, (float, int)) or isinstance(completed, bool)
+                    or not math.isfinite(completed) or completed < 0 or completed > uptime):
+                verification = 'invalid_scan_timestamp'
+            else:
+                age = round(uptime - completed)
+                verification = 'fresh_scan_request' if age < MAX_SCAN_AGE else 'stale_scan_request'
+    decision, reason = base['decision'], base['reason']
+    # Pending/recovery and working connections always supersede scan advice.
+    if pending or (active and active not in ('--', 'unknown')):
+        pass
+    elif (decision in ('UNKNOWN', 'WAIT') and verification == 'fresh_scan_request'
+          and reason == 'fresh_discovery_required'):
+        # Do not claim radio scan alone proves connectivity or exhaustion of choices.
+        if matching:
+            decision, reason = 'CANDIDATE_SAVED_WIFI', 'fresh_cache_candidate_requires_connection_validation'
+        else:
+            decision, reason = 'UNKNOWN', 'fresh_scan_no_match_not_proof_of_unavailability'
+    return {'active': active, 'pending': pending, 'matching': sorted(set(matching)),
+            'scan_verification': verification, 'scan_age': age,
+            'decision': decision, 'reason': reason, 'base_decision': base['decision'],
+            'base_reason': base['reason']}
+
+
+def live(state_dir):
+    discovery = load('initiativetracker-network-discovery')
+    observer = load('initiativetracker-network-observer')
+    base_module = load('initiativetracker-network-decision')
+    scanner = load('initiativetracker-network-scan')
+    base = base_module.live(state_dir)
+    active, profiles, cached, matching, pending, _, _ = discovery.discover()
+    boot, up = observer.boot_id(), observer.uptime()
+    # Scan metadata is read by the N6.6F schema validator, including boot-id.
+    scan = scanner.read_state(state_dir / 'scan.json', boot)
+    return evaluate(base=base, scan=scan, boot_id=boot, uptime=up,
+                    matching=matching, active=active, pending=pending)
+
+
+def emit(result):
+    print('N66G_MODE=READ_ONLY')
+    print('NETWORK_WRITES=DISABLED')
+    print('WIFI_RESCAN=DISABLED')
+    print('LOCAL_STATE_WRITES=DISABLED')
+    print('ACTIVE_PROFILE=' + result['active'])
+    print('TRANSITION_PENDING=' + str(result['pending']).lower())
+    print('MATCHING_SAVED_PROFILES=' + ','.join(result['matching']))
+    print('SCAN_VERIFICATION=' + result['scan_verification'])
+    print('SCAN_AGE_SECONDS=' + ('unknown' if result['scan_age'] is None else str(result['scan_age'])))
+    print('BASE_POLICY_DECISION=' + result['base_decision'])
+    print('POLICY_DECISION=' + result['decision'])
+    print('POLICY_REASON=' + result['reason'])
+    print('EXECUTED_NETWORK_ACTION=NONE')
+    print('LIMITATION=Scan cache candidates are not reachability proof; no automatic hotspot decision from missing matches')
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('action', choices=('check', 'scenario'))
+    p.add_argument('--state-dir', type=Path, default=STATE_DIR)
+    p.add_argument('--json', type=Path)
+    args = p.parse_args()
+    try:
+        if args.action == 'check':
+            if os.geteuid() != 0 and args.state_dir == STATE_DIR:
+                raise PermissionError('protected network state requires sudo')
+            result = live(args.state_dir)
+        else:
+            if not args.json:
+                raise ValueError('--json required for scenario')
+            obj = json.loads(args.json.read_text(encoding='utf-8'))
+            if not isinstance(obj, dict) or set(obj) != {'base', 'scan', 'boot_id', 'uptime', 'matching', 'active', 'pending'}:
+                raise ValueError('invalid scenario fields')
+            result = evaluate(**obj)
+        emit(result)
+        return 0
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError, PermissionError) as exc:
+        print('N66G_ERROR=' + type(exc).__name__ + ': ' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

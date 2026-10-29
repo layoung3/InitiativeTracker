@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""N6.4C: root-only, explicitly gated NetworkManager transition controller.
+
+Default is read-only. No Wi-Fi changes unless /etc/initiativetracker/network/live-switch.enabled
+exists, is root-owned, mode 0600, and contains ENABLE_N64C_LIVE=yes.
+"""
+import argparse
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+STATE = Path('/var/lib/initiativetracker-network')
+GATE = Path('/etc/initiativetracker/network/live-switch.enabled')
+RECOVERY = 'InitiativeTracker-Recovery'
+DEVICE = 'wlan0'
+NAME = re.compile(r'[A-Za-z0-9_.:-]{1,80}\Z')
+FINAL = ('completed', 'recovered')
+STATES = ('pending', 'target_validated', 'restore_previous', 'activate_recovery', 'recovered', 'completed')
+
+
+def stamp(t):
+    return t.astimezone(timezone.utc).isoformat(timespec='seconds').replace('+00:00','Z')
+
+
+def parse(t):
+    result = datetime.fromisoformat(t.replace('Z', '+00:00'))
+    if result.tzinfo is None: raise ValueError('timezone required')
+    return result.astimezone(timezone.utc)
+
+
+def valid_name(n):
+    if not isinstance(n, str) or not NAME.fullmatch(n): raise ValueError('invalid profile')
+    return n
+
+
+def command(*args, timeout=20):
+    p = subprocess.run(['/usr/bin/nmcli', *args], text=True, capture_output=True, timeout=timeout, check=False)
+    if p.returncode: raise RuntimeError('NetworkManager operation failed (exit '+str(p.returncode)+')')
+    return p.stdout.strip()
+
+
+def current():
+    return command('-g', 'GENERAL.CONNECTION', 'device', 'show', DEVICE).splitlines()[0]
+
+
+def profiles():
+    return set(command('-g', 'NAME', 'connection', 'show').splitlines())
+
+
+def enabled():
+    if not GATE.exists() or GATE.is_symlink(): return False
+    st = GATE.stat()
+    return st.st_uid == 0 and (st.st_mode & 0o777) == 0o600 and GATE.read_text().strip() == 'ENABLE_N64C_LIVE=yes'
+
+
+def save(path, doc):
+    if path.is_symlink(): raise ValueError('journal symlink')
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix='.transition-')
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            json.dump(doc, f, sort_keys=True, indent=2)
+            f.write('\n'); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, path)
+        d = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(d)
+        finally: os.close(d)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+
+
+def load(path):
+    if path.is_symlink(): raise ValueError('journal symlink')
+    if not path.exists(): return None
+    if not path.is_file() or path.stat().st_size > 16384: raise ValueError('invalid journal file')
+    d = json.loads(path.read_text())
+    if set(d) != {'format','id','previous','target','created_utc','deadline_utc','state','events'} or d['format'] != 1:
+        raise ValueError('invalid journal schema')
+    valid_name(d['previous']); valid_name(d['target'])
+    if d['state'] not in STATES or not isinstance(d['events'], list): raise ValueError('invalid state')
+    parse(d['deadline_utc']); parse(d['created_utc'])
+    return d
+
+
+def update(path, d, state, event):
+    d['state'] = state
+    d['events'].append({'at': stamp(datetime.now(timezone.utc)), 'event': event})
+    save(path, d)
+
+
+def determine(d, active, now):
+    if not d or d['state'] in FINAL: return 'NONE'
+    if d['state'] == 'target_validated': return 'COMPLETE'
+    if d['state'] in ('restore_previous','activate_recovery'): return 'RECOVER'
+    if now < parse(d['deadline_utc']): return 'WAIT'
+    if active == d['previous']: return 'RECOVERED_ALREADY'
+    return 'RECOVER'
+
+
+def begin(path, target, seconds):
+    valid_name(target)
+    if target != RECOVERY: raise ValueError('N6.4C only permits recovery hotspot as target')
+    if not 90 <= seconds <= 600: raise ValueError('timeout must be 90..600 seconds')
+    ps = profiles()
+    active = valid_name(current())
+    if target not in ps or active not in ps or active == target: raise ValueError('required profile absent or already active')
+    existing = load(path)
+    if existing and existing['state'] not in FINAL: raise ValueError('another transition pending')
+    if not enabled(): raise PermissionError('live switching disabled; see README')
+    now = datetime.now(timezone.utc)
+    d = {'format':1, 'id':str(uuid.uuid4()), 'previous':active, 'target':target,
+         'created_utc':stamp(now),'deadline_utc':stamp(now+timedelta(seconds=seconds)),
+         'state':'pending','events':[{'at':stamp(now),'event':'armed_before_switch'}]}
+    save(path,d)
+    print('JOURNAL_ID='+d['id'],flush=True)
+    # nmcli may disconnect the invoking SSH session; this worker continues under systemd.
+    command('--wait', '25', 'connection', 'up', 'id', target, 'ifname', DEVICE, timeout=35)
+    print('SWITCH_REQUESTED='+target)
+
+
+def recover(path,d):
+    ps = profiles()
+    active = current()
+    if active == d['previous']:
+        update(path,d,'recovered','already_on_previous_profile')
+        return 'ALREADY_RECOVERED'
+    for name, state in ((d['previous'],'restore_previous'),(RECOVERY,'activate_recovery')):
+        if name not in ps: continue
+        update(path,d,state,'attempt_'+state)
+        try:
+            command('--wait','20','connection','up','id',name,'ifname',DEVICE,timeout=30)
+            if current()==name:
+                update(path,d,'recovered','recovery_success')
+                return 'RECOVERED_'+name
+        except (RuntimeError, subprocess.TimeoutExpired):
+            continue
+    return 'RECOVERY_FAILED_RETRY_NEXT_TIMER'
+
+
+def run(args):
+    if os.geteuid() != 0: raise PermissionError('requires root')
+    STATE.mkdir(mode=0o700, parents=True,exist_ok=True)
+    fd=os.open(STATE/'control.lock', os.O_CREAT|os.O_RDWR,0o600)
+    with os.fdopen(fd,'r+') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        path=STATE/'transition.json'
+        d=load(path)
+        active=current()
+        decision=determine(d,active,datetime.now(timezone.utc))
+        print('N64C_LIVE_ENABLED='+str(enabled()).lower())
+        print('ACTIVE_PROFILE='+active)
+        print('JOURNAL_STATE='+(d['state'] if d else 'none'))
+        print('RECOMMENDATION='+decision)
+        if args.action == 'status': print('EXECUTED_ACTION=NONE'); return
+        if args.action == 'begin':
+            if args.execute != 'CONFIRM_DISCONNECT': raise ValueError('explicit confirmation required')
+            begin(path,args.target,args.seconds); return
+        if args.action == 'confirm':
+            if not d or d['state']!='pending' or datetime.now(timezone.utc)>=parse(d['deadline_utc']) or active!=d['target']:
+                raise ValueError('target not active or confirmation window expired')
+            if not enabled(): raise PermissionError('live switching disabled')
+            update(path,d,'completed','operator_confirmed_local_access')
+            print('EXECUTED_ACTION=CONFIRMED'); return
+        if args.action == 'tick':
+            if decision in ('NONE','WAIT'): print('EXECUTED_ACTION=NONE'); return
+            if decision == 'RECOVERED_ALREADY':
+                update(path,d,'recovered','already_on_recovery_path'); print('EXECUTED_ACTION=MARK_RECOVERED'); return
+            if decision == 'COMPLETE':
+                update(path,d,'completed','already_validated'); print('EXECUTED_ACTION=MARK_COMPLETE'); return
+            if not enabled(): print('EXECUTED_ACTION=BLOCKED_LIVE_DISABLED'); return
+            print('EXECUTED_ACTION='+recover(path,d)); return
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('action',choices=('status','tick','begin','confirm'))
+    p.add_argument('--target',default=RECOVERY)
+    p.add_argument('--seconds',type=int,default=180)
+    p.add_argument('--execute',default='')
+    args=p.parse_args()
+    try: run(args); return 0
+    except (OSError, ValueError, PermissionError, RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+        print('N64C_ERROR='+type(e).__name__+': '+str(e),file=sys.stderr); return 1
+if __name__ == '__main__': sys.exit(main())

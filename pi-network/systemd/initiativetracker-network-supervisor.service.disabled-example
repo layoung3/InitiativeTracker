@@ -1,0 +1,16 @@
+# REFERENCE ONLY. Do not install or enable in N6.
+# Even if enabled, this would only print a dry-run recommendation.
+[Unit]
+Description=InitiativeTracker Network Supervisor (dry-run example)
+After=NetworkManager.service
+Wants=NetworkManager.service
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/initiativetracker-network-supervisor plan
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target

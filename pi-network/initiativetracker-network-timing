@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""N6.6C read-only network timing evaluator. Never scans, switches or writes state.
+
+Cached BSS entries are observations, not proof of reachability. This evaluator
+emits recommendations only; nothing consumes them automatically.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+import sys
+
+GRACE_SECONDS = 90
+RETRY_BACKOFF_SECONDS = 120
+SCAN_COOLDOWN_SECONDS = 180
+MAX_RETRIES = 3
+
+
+def load_sibling(name):
+    path = Path(__file__).with_name(name)
+    loader = importlib.machinery.SourceFileLoader(name.replace('-', '_'), str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    loader.exec_module(module)
+    return module
+
+
+def seconds(x, label):
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not 0 <= x <= 86400 * 365:
+        raise ValueError('invalid ' + label)
+    return float(x)
+
+
+def evaluate(*, active, recovery_present, transition_pending, matching,
+             uptime_seconds, last_scan_age_seconds=None, retries=0,
+             last_attempt_age_seconds=None, session_locked=False, manual_override=False,
+             link_down_age_seconds=None):
+    uptime = seconds(uptime_seconds, 'uptime_seconds')
+    if last_scan_age_seconds is not None:
+        scan_age = seconds(last_scan_age_seconds, 'last_scan_age_seconds')
+    else:
+        scan_age = None
+    if last_attempt_age_seconds is not None:
+        attempt_age = seconds(last_attempt_age_seconds, 'last_attempt_age_seconds')
+    else:
+        attempt_age = None
+    if link_down_age_seconds is not None:
+        down_age = seconds(link_down_age_seconds, 'link_down_age_seconds')
+    else:
+        down_age = None
+    if isinstance(retries, bool) or not isinstance(retries, int) or not 0 <= retries <= 10000:
+        raise ValueError('invalid retries')
+    if not isinstance(active, str) or not isinstance(recovery_present, bool) or not isinstance(transition_pending, bool):
+        raise ValueError('invalid active/recovery/transition')
+    if not isinstance(session_locked, bool) or not isinstance(manual_override, bool):
+        raise ValueError('invalid session_locked/manual_override')
+    if not isinstance(matching, list) or not all(isinstance(x, str) for x in matching):
+        raise ValueError('invalid matching')
+
+    if transition_pending:
+        return 'DEFER_TO_RECOVERY_CONTROLLER', 'transition_pending', 'NO_SCAN'
+    if manual_override:
+        return 'HOLD', 'operator_override', 'NO_SCAN'
+    if active == 'InitiativeTracker-Recovery':
+        return 'HOLD', 'hotspot_active_no_automatic_disruption', 'NO_SCAN'
+    if active and active not in ('--', 'unknown'):
+        return 'HOLD', 'working_connection_active', 'NO_SCAN'
+    if session_locked:
+        return 'HOLD', 'active_session_no_automatic_switch', 'NO_SCAN'
+    if uptime < GRACE_SECONDS:
+        return 'WAIT', 'startup_grace_period', 'NO_SCAN'
+    if down_age is not None and down_age < 30:
+        return 'WAIT', 'brief_link_interruption', 'NO_SCAN'
+    if retries >= MAX_RETRIES:
+        return 'HOLD', 'retry_limit_reached_requires_operator_or_future_cycle', 'NO_SCAN'
+    if attempt_age is not None and attempt_age < RETRY_BACKOFF_SECONDS:
+        return 'WAIT', 'retry_backoff', 'NO_SCAN'
+    # With no known freshness timestamp, never treat cached visibility as current.
+    if scan_age is None or scan_age >= SCAN_COOLDOWN_SECONDS:
+        return 'WAIT', 'fresh_discovery_required', 'RECOMMEND_REFRESH_WHEN_SAFE'
+    candidates = sorted(set(matching) - {'InitiativeTracker-Recovery'})
+    if candidates:
+        return 'PREFER_SAVED_WIFI', 'candidate=' + candidates[0], 'NO_SCAN'
+    if recovery_present:
+        return 'PREFER_PRIVATE_HOTSPOT', 'no_matching_saved_wifi', 'NO_SCAN'
+    return 'BLOCKED', 'missing_recovery_profile', 'NO_SCAN'
+
+
+def live():
+    discovery = load_sibling('initiativetracker-network-discovery')
+    active, profiles, cached, matching, pending, _, _ = discovery.discover()
+    with open('/proc/uptime', encoding='ascii') as f:
+        uptime = float(f.read().split()[0])
+    # No trustworthy scan timestamp or past-attempt counter yet. This keeps
+    # offline behavior conservative; future versions need persistence and a
+    # controlled scan executor before any action can be attempted.
+    decision, reason, scan = evaluate(active=active,
+        recovery_present=discovery.RECOVERY in
+            discovery.nmcli('-g', 'NAME', 'connection', 'show').splitlines(),
+        transition_pending=pending, matching=list(matching),
+        uptime_seconds=uptime, last_scan_age_seconds=None)
+    return dict(active=active, matching=list(matching), transition_pending=pending,
+                uptime_seconds=round(uptime), scan_cache_age_known=False,
+                retry_history_known=False, decision=decision, reason=reason, scan=scan)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('check', 'scenario'))
+    parser.add_argument('--json', help='JSON scenario path')
+    args = parser.parse_args()
+    try:
+        if args.action == 'check':
+            result = live()
+        else:
+            if not args.json:
+                raise ValueError('--json required')
+            data = json.loads(Path(args.json).read_text(encoding='utf-8'))
+            if not isinstance(data, dict):
+                raise ValueError('scenario must be an object')
+            required = {'active', 'recovery_present', 'transition_pending', 'matching', 'uptime_seconds'}
+            optional = {'last_scan_age_seconds', 'retries', 'last_attempt_age_seconds',
+                        'session_locked', 'manual_override', 'link_down_age_seconds'}
+            if required - data.keys() or data.keys() - required - optional:
+                raise ValueError('missing or unknown scenario fields')
+            decision, reason, scan = evaluate(**data)
+            result = dict(active=data['active'], matching=data['matching'],
+                          transition_pending=data['transition_pending'],
+                          uptime_seconds=data['uptime_seconds'],
+                          scan_cache_age_known=data.get('last_scan_age_seconds') is not None,
+                          retry_history_known='retries' in data,
+                          decision=decision, reason=reason, scan=scan)
+        print('N66C_MODE=READ_ONLY')
+        print('NETWORK_WRITES=DISABLED')
+        print('WIFI_RESCAN=DISABLED')
+        print('ACTIVE_PROFILE=' + result['active'])
+        print('TRANSITION_PENDING=' + str(result['transition_pending']).lower())
+        print('MATCHING_SAVED_PROFILES=' + ','.join(result['matching']))
+        print('UPTIME_SECONDS=' + str(result['uptime_seconds']))
+        print('SCAN_CACHE_AGE_KNOWN=' + str(result['scan_cache_age_known']).lower())
+        print('RETRY_HISTORY_KNOWN=' + str(result['retry_history_known']).lower())
+        print('POLICY_DECISION=' + result['decision'])
+        print('POLICY_REASON=' + result['reason'])
+        print('SCAN_RECOMMENDATION=' + result['scan'])
+        print('LIMITATION=No scan timestamp/retry persistence or live session detection; no actions executed')
+        return 0
+    except (OSError, ValueError, RuntimeError, KeyError, TimeoutError) as exc:
+        print('N66C_ERROR=' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

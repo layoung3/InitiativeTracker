@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""N6.6D persistent read-only NetworkManager observer (network read-only, local state writes).
+
+This component never performs a Wi-Fi scan, changes NetworkManager, or runs recovery.
+A cached SSID observation is NOT a timestamped RF scan or proof of reachability.
+"""
+import argparse
+from datetime import datetime, timezone
+import fcntl
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+STATE_DIR = Path('/var/lib/initiativetracker-network')
+MAX_STATE_BYTES = 32768
+MAX_ATTEMPTS = 3
+RETRY_COOLDOWN_SECONDS = 120
+
+
+def load_sibling(filename):
+    loader = importlib.machinery.SourceFileLoader(filename.replace('-', '_'), str(Path(__file__).with_name(filename)))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    loader.exec_module(mod)
+    return mod
+
+
+def boot_id():
+    return Path('/proc/sys/kernel/random/boot_id').read_text(encoding='ascii').strip()
+
+
+def uptime():
+    return float(Path('/proc/uptime').read_text(encoding='ascii').split()[0])
+
+
+def current_time():
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def validate(state, current_boot):
+    if not isinstance(state, dict) or state.get('schema') != 1 or not isinstance(state.get('boot_id'), str):
+        raise ValueError('invalid observer state')
+    if state['boot_id'] != current_boot:
+        return None
+    if not isinstance(state.get('last_active'), str):
+        raise ValueError('invalid active profile')
+    for key in ('last_observed_uptime', 'disconnected_since_uptime'):
+        val = state.get(key)
+        if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float)) or not 0 <= val <= 1e9):
+            raise ValueError('invalid ' + key)
+    for key in ('failures', 'last_failure_uptime'):
+        val = state.get(key)
+        if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float)) or not 0 <= val <= 1e9):
+            raise ValueError('invalid ' + key)
+    if state.get('failures', 0) != int(state.get('failures', 0)) or state.get('failures', 0) > 1000:
+        raise ValueError('invalid failures')
+    if state.get('last_observed_uptime') is not None and state['last_observed_uptime'] < 0:
+        raise ValueError('invalid uptime')
+    return state
+
+
+def update(old, *, boot, up, active, matching, pending, timestamp):
+    if not isinstance(active, str) or not isinstance(matching, (tuple, list)) or not isinstance(pending, bool):
+        raise ValueError('invalid observation')
+    if not isinstance(up, (int, float)) or up < 0:
+        raise ValueError('invalid uptime')
+    if old is not None and old.get('last_observed_uptime', 0) > up:
+        old = None
+    prior_down = old.get('disconnected_since_uptime') if old else None
+    connected = bool(active and active not in ('--', 'unknown'))
+    down_since = None if connected else (prior_down if prior_down is not None else up)
+    return {
+        'schema': 1, 'boot_id': boot, 'last_observed_utc': timestamp,
+        'last_observed_uptime': up, 'last_active': active,
+        'disconnected_since_uptime': down_since,
+        'last_cache_observed_utc': timestamp,
+        'last_cache_observed_uptime': up,
+        'last_cached_matching': list(sorted(set(matching))),
+        'last_transition_pending': pending,
+        'failures': old.get('failures', 0) if old else 0,
+        'last_failure_uptime': old.get('last_failure_uptime') if old else None,
+    }
+
+
+def atomic_save(path, state):
+    data = (json.dumps(state, indent=2, sort_keys=True) + '\n').encode('utf-8')
+    if len(data) > MAX_STATE_BYTES:
+        raise ValueError('state too large')
+    fd, temporary = tempfile.mkstemp(prefix='.observer-', dir=str(path.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def read_state(path, boot):
+    if path.is_symlink():
+        raise ValueError('state path is symlink')
+    if not path.exists():
+        return None
+    if not path.is_file() or path.stat().st_size > MAX_STATE_BYTES:
+        raise ValueError('invalid state file')
+    return validate(json.loads(path.read_text(encoding='utf-8')), boot)
+
+
+def output(state, up, action, pending_unknown=False):
+    down = state['disconnected_since_uptime']
+    fail_age = (up - state['last_failure_uptime']) if state['last_failure_uptime'] is not None else None
+    print('N66D_MODE=NETWORK_READ_ONLY')
+    print('NETWORK_WRITES=DISABLED')
+    print('WIFI_RESCAN=DISABLED')
+    print('LOCAL_STATE_WRITES=' + ('ENABLED' if action == 'observe' else 'DISABLED'))
+    print('ACTIVE_PROFILE=' + state['last_active'])
+    print('TRANSITION_PENDING=' + str(state['last_transition_pending']).lower())
+    print('DISCONNECTED_SECONDS=' + ('none' if down is None else str(max(0, int(up - down)))))
+    print('CACHED_MATCHES=' + ','.join(state['last_cached_matching']))
+    print('CACHE_OBSERVED_SECONDS_AGO=' + str(max(0, int(up - state['last_cache_observed_uptime']))))
+    print('CACHE_IS_FRESH_SCAN=false')
+    print('RECORDED_FAILURES=' + str(state['failures']))
+    print('RETRY_BACKOFF_SECONDS_REMAINING=' + str(max(0, int(RETRY_COOLDOWN_SECONDS - fail_age))) if fail_age is not None else 'RETRY_BACKOFF_SECONDS_REMAINING=unknown')
+    print('RETRY_HISTORY_SOURCE=explicit_events_only')
+    print('EXECUTED_NETWORK_ACTION=NONE')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['observe', 'status'])
+    parser.add_argument('--state-dir', type=Path, default=STATE_DIR)
+    args = parser.parse_args()
+    try:
+        if os.geteuid() != 0 and args.state_dir == STATE_DIR:
+            raise PermissionError('default protected state requires sudo; permissions must not be weakened')
+        folder = args.state_dir
+        if args.action == 'observe':
+            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if folder.is_symlink():
+                raise ValueError('state directory is a symlink')
+            os.chmod(folder, 0o700) if os.geteuid() == 0 else None
+        boot = boot_id()
+        up = uptime()
+        state_path = folder / 'observer.json'
+        if args.action == 'observe':
+            discovery = load_sibling('initiativetracker-network-discovery')
+            active, _, _, matching, pending, _, _ = discovery.discover()
+            with (folder / 'observer.lock').open('a+b') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                old = read_state(state_path, boot)
+                state = update(old, boot=boot, up=up, active=active,
+                               matching=matching, pending=pending, timestamp=current_time())
+                atomic_save(state_path, state)
+        else:
+            state = read_state(state_path, boot)
+            if state is None:
+                print('N66D_STATUS=no_observation_for_current_boot')
+                return 0
+        output(state, up, args.action)
+        return 0
+    except (OSError, ValueError, KeyError, RuntimeError, json.JSONDecodeError) as exc:
+        print('N66D_ERROR=' + type(exc).__name__ + ': ' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

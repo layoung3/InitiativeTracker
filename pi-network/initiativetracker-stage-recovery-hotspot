@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""N6.2: stage ONLY a persistent, inactive NetworkManager recovery AP.
+No device activation, autoconnect changes on other profiles, or service installs.
+"""
+import argparse
+import os
+from pathlib import Path
+import re
+import secrets
+import subprocess
+import sys
+import tempfile
+import uuid
+
+PROFILE = "InitiativeTracker-Recovery"
+PROFILE_DIR = Path('/etc/NetworkManager/system-connections')
+PROFILE_PATH = PROFILE_DIR / f'{PROFILE}.nmconnection'
+SECRET_DIR = Path('/etc/initiativetracker/network')
+SECRET_PATH = SECRET_DIR / 'recovery-wifi.password'
+
+
+def make_profile(device: str, ssid: str, password: str, unique_id: str) -> str:
+    """Use strict, conservative fields so no keyfile escaping is necessary."""
+    if not re.fullmatch(r'[A-Za-z0-9_.-]{1,32}', ssid):
+        raise ValueError('SSID must be 1-32 ASCII letters/numbers/_/./-')
+    if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,32}', device):
+        raise ValueError('Invalid interface name')
+    if not re.fullmatch(r'[0-9a-f]{24}', password):
+        raise ValueError('Expected generated 24-character hexadecimal passphrase')
+    unique_id = str(uuid.UUID(unique_id))
+    return (f'[connection]\nid={PROFILE}\nuuid={unique_id}\ntype=wifi\n'
+            f'interface-name={device}\nautoconnect=false\n\n'
+            f'[wifi]\nmode=ap\nssid={ssid}\nband=bg\n\n'
+            f'[wifi-security]\nkey-mgmt=wpa-psk\npsk={password}\n\n'
+            f'[ipv4]\nmethod=shared\naddress1=10.84.0.1/24\n\n'
+            f'[ipv6]\nmethod=disabled\n\n')
+
+
+def run(*command):
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f'{command[0]} returned {result.returncode}: {result.stderr.strip()}')
+    return result.stdout
+
+
+def check(device):
+    print('N62_OPERATION=READ_ONLY')
+    print(f'RECOVERY_PROFILE_FILE_PRESENT={str(PROFILE_PATH.exists()).lower()}')
+    print(f'RECOVERY_SECRET_FILE_PRESENT={str(SECRET_PATH.exists()).lower()}')
+    try:
+        info = run('/usr/bin/nmcli', '-g', 'GENERAL.TYPE,GENERAL.STATE,GENERAL.CONNECTION', 'device', 'show', device)
+        fields = info.splitlines()
+        print(f'WIFI_DEVICE={device}')
+        print(f'NM_DEVICE_TYPE={fields[0] if fields else "unknown"}')
+        print(f'NM_DEVICE_STATE={fields[1] if len(fields)>1 else "unknown"}')
+        print(f'ACTIVE_CONNECTION={fields[2] if len(fields)>2 else "unknown"}')
+        profiles = run('/usr/bin/nmcli', '-g', 'NAME', 'connection', 'show').splitlines()
+        print(f'NM_RECOVERY_PROFILE_PRESENT={str(PROFILE in profiles).lower()}')
+    except RuntimeError as exc:
+        print(f'NETWORKMANAGER_CHECK_ERROR={exc}', file=sys.stderr)
+        return 1
+    print('ACTIVATION=DISABLED')
+    return 0
+
+
+def stage(device, ssid):
+    if os.geteuid() != 0:
+        raise RuntimeError('stage must run as root (sudo)')
+    # Avoid overwriting administrator-managed existing credentials.
+    if PROFILE_PATH.exists() or SECRET_PATH.exists():
+        raise RuntimeError('Recovery profile or secret already exists; refusing overwrite')
+    if PROFILE in run('/usr/bin/nmcli', '-g', 'NAME', 'connection', 'show').splitlines():
+        raise RuntimeError('NetworkManager recovery profile name already exists')
+    d = run('/usr/bin/nmcli', '-g', 'GENERAL.TYPE', 'device', 'show', device).strip()
+    if d != 'wifi':
+        raise RuntimeError(f'{device} is not reported as a Wi-Fi device')
+    # Presence of a Wi-Fi interface does not prove AP support. Verify if iw is installed.
+    iw = Path('/usr/sbin/iw')
+    if not iw.exists():
+        iw = Path('/usr/bin/iw')
+    if iw.exists():
+        phy = run(str(iw), 'dev', device, 'info')
+        phy_match = re.search(r'wiphy\s+(\d+)', phy)
+        if phy_match:
+            supported = run(str(iw), 'phy', f'phy{phy_match.group(1)}', 'info')
+            if not re.search(r'^\s*\* AP\s*$', supported, flags=re.M):
+                raise RuntimeError('Wireless PHY does not report AP support')
+    password = secrets.token_hex(12)
+    data = make_profile(device, ssid, password, str(uuid.uuid4()))
+    SECRET_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(SECRET_DIR, 0o700)
+    # Both creations use O_EXCL to avoid clobbering or following an existing file.
+    created = []
+    try:
+        for path, content in ((SECRET_PATH, password + '\n'), (PROFILE_PATH, data)):
+            fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            created.append(path)
+            with os.fdopen(fd, 'w', encoding='utf-8') as output:
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(path, 0o600)
+        run('/usr/bin/nmcli', 'connection', 'load', str(PROFILE_PATH))
+    except Exception:
+        for path in created:
+            path.unlink(missing_ok=True)
+        raise
+    print('N62_STAGE=SUCCESS')
+    print(f'PROFILE={PROFILE}')
+    print(f'SSID={ssid}')
+    print('AUTOCONNECT=false')
+    print('ACTIVATED=false')
+    print('PASSWORD=stored root-only (not printed)')
+    print('NEXT=validate profile and prepare independent watchdog before any activation')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('check', 'stage'))
+    parser.add_argument('--device', default='wlan0')
+    parser.add_argument('--ssid', default='InitiativeTracker-84eaee7c')
+    args = parser.parse_args()
+    try:
+        # Always validate caller-controlled strings, including read-only mode.
+        make_profile(args.device, args.ssid, '0'*24, str(uuid.uuid4()))
+        if args.action == 'check':
+            return check(args.device)
+        stage(args.device, args.ssid)
+        return 0
+    except (RuntimeError, OSError, ValueError) as exc:
+        print(f'ERROR: {exc}', file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

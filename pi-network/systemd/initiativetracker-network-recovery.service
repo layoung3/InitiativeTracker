@@ -1,0 +1,15 @@
+[Unit]
+Description=InitiativeTracker independent network recovery controller
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/libexec/initiativetracker/initiativetracker-network-control tick
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/initiativetracker-network

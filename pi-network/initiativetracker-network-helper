@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# N2 diagnostic-only helper. No privileged operations, no arguments carrying passwords.
+set -euo pipefail
+export LC_ALL=C
+if [[ $# -ne 1 ]]; then echo 'usage: initiativetracker-network-helper {status|interfaces}' >&2; exit 64; fi
+case "$1" in
+  status)
+    /usr/bin/nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status
+    ;;
+  interfaces)
+    /usr/bin/nmcli -t -f DEVICE,TYPE device status
+    ;;
+  *) echo 'unsupported command (N2 does not modify networking)' >&2; exit 64 ;;
+esac

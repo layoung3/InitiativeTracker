@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""N6.6A: read-only portable network policy and scenario evaluator.
+
+Does not modify network profiles, transition journals, or systemd units.
+Default policy locks onto an active working connection during play; recovery
+hotspot is the fallback when no usable saved Wi-Fi is available.
+"""
+import argparse
+import json
+import subprocess
+import sys
+from dataclasses import dataclass
+
+RECOVERY = 'InitiativeTracker-Recovery'
+DEVICE = 'wlan0'
+
+@dataclass(frozen=True)
+class Snapshot:
+    active: str
+    saved: tuple[str, ...]
+    available: tuple[str, ...]
+    recovery_present: bool
+    transition_pending: bool = False
+    session_locked: bool = False
+    manual_override: bool = False
+    startup_grace_elapsed: bool = True
+
+
+def decide(s: Snapshot) -> tuple[str, str]:
+    if s.transition_pending:
+        return ('DEFER_TO_RECOVERY_CONTROLLER', 'transition_pending')
+    if s.manual_override:
+        return ('HOLD', 'operator_override')
+    if s.active == RECOVERY:
+        return ('HOLD', 'hotspot_active_no_automatic_disruption')
+    if s.active and s.active not in ('--', 'unknown'):
+        return ('HOLD', 'working_connection_active')
+    if s.session_locked:
+        return ('HOLD', 'active_session_no_automatic_switch')
+    if not s.startup_grace_elapsed:
+        return ('WAIT', 'startup_grace_period')
+    eligible = sorted(set(s.saved).intersection(s.available) - {RECOVERY})
+    if eligible:
+        return ('PREFER_SAVED_WIFI', 'candidate=' + eligible[0])
+    if s.recovery_present:
+        return ('PREFER_PRIVATE_HOTSPOT', 'no_available_saved_wifi')
+    return ('BLOCKED', 'missing_recovery_profile')
+
+
+def nmcli(*args):
+    result = subprocess.run(['/usr/bin/nmcli', *args], text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            timeout=15, check=False)
+    if result.returncode:
+        raise RuntimeError(f'nmcli read failed (exit {result.returncode}): {result.stderr.strip()}')
+    return result.stdout
+
+
+def live_snapshot():
+    active = nmcli('-g', 'GENERAL.CONNECTION', 'device', 'show', DEVICE).strip().splitlines()[0]
+    saved = tuple(x for x in nmcli('-g', 'NAME', 'connection', 'show').splitlines() if x)
+    # Wi-Fi scan is deliberately NOT forced in this read-only checkpoint: it can
+    # disrupt AP operation or trigger device behavior. Available profiles unknown.
+    return Snapshot(active=active, saved=saved, available=(), recovery_present=RECOVERY in saved)
+
+
+def scenario(data):
+    allowed = {'active','saved','available','recovery_present','transition_pending',
+               'session_locked','manual_override','startup_grace_elapsed'}
+    if not isinstance(data, dict) or set(data) - allowed:
+        raise ValueError('invalid scenario fields')
+    for k in ('saved', 'available'):
+        if k in data and (not isinstance(data[k], list) or not all(isinstance(x, str) for x in data[k])):
+            raise ValueError('invalid '+k)
+    for k in ('recovery_present','transition_pending','session_locked','manual_override','startup_grace_elapsed'):
+        if k in data and not isinstance(data[k], bool):
+            raise ValueError('invalid '+k)
+    if 'active' in data and not isinstance(data['active'], str):
+        raise ValueError('invalid active')
+    return Snapshot(**{**{'active':'','saved':(),'available':(),'recovery_present':False}, **data})
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('check','scenario'))
+    parser.add_argument('--json', help='Scenario JSON file (scenario action only)')
+    args = parser.parse_args()
+    try:
+        if args.action == 'scenario':
+            if not args.json: raise ValueError('--json required for scenario')
+            with open(args.json, encoding='utf-8') as f: snap = scenario(json.load(f))
+            available_known = True
+        else:
+            snap = live_snapshot()
+            available_known = False
+        choice, why = decide(snap)
+        print('N66A_MODE=READ_ONLY')
+        print('NETWORK_WRITES=DISABLED')
+        print('ACTIVE_PROFILE='+snap.active)
+        print('RECOVERY_PROFILE_PRESENT='+str(snap.recovery_present).lower())
+        print('AVAILABLE_NETWORKS_KNOWN='+str(available_known).lower())
+        print('POLICY_DECISION='+choice)
+        print('POLICY_REASON='+why)
+        if not available_known:
+            print('LIMITATION=No Wi-Fi scan, reachability test, or session detection in live check')
+        return 0
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        print('N66A_ERROR='+str(exc), file=sys.stderr)
+        return 1
+
+if __name__ == '__main__': sys.exit(main())

@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""N6.6B: read-only cached Wi-Fi discovery and policy recommendation.
+
+Never requests a radio rescan, activates profiles, changes settings, or writes state.
+Cached scan results may be stale and cannot establish network reachability.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+RECOVERY = 'InitiativeTracker-Recovery'
+DEVICE = 'wlan0'
+JOURNAL = Path('/var/lib/initiativetracker-network/transition.json')
+
+
+def load_policy():
+    file = Path(__file__).with_name('initiativetracker-network-policy')
+    loader = importlib.machinery.SourceFileLoader('n66a_policy', str(file))
+    spec = importlib.util.spec_from_loader('n66a_policy', loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    loader.exec_module(module)
+    return module
+
+
+def nmcli(*arguments):
+    result = subprocess.run(['/usr/bin/nmcli', *arguments], text=True, capture_output=True,
+                            timeout=20, check=False)
+    if result.returncode:
+        raise RuntimeError(f'nmcli read exit {result.returncode}: {result.stderr.strip()}')
+    return result.stdout
+
+
+def split_nmcli(line):
+    """Parse colon-separated nmcli -t output honoring backslash escapes."""
+    result, part, escaped = [], [], False
+    for char in line:
+        if escaped:
+            part.append(char)
+            escaped = False
+        elif char == '\\':
+            escaped = True
+        elif char == ':':
+            result.append(''.join(part))
+            part = []
+        else:
+            part.append(char)
+    if escaped:
+        part.append('\\')
+    result.append(''.join(part))
+    return result
+
+
+def scan_cached(text):
+    result = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        fields = split_nmcli(line)
+        if len(fields) != 2:
+            raise ValueError('unexpected cached scan columns')
+        ssid, signal = fields
+        if not ssid or ssid == '--':
+            continue
+        strength = int(signal)
+        if strength < 0 or strength > 100:
+            raise ValueError('invalid signal strength')
+        result[ssid] = max(strength, result.get(ssid, 0))
+    return result
+
+
+def wifi_profiles(profile_rows, ssid_by_uuid):
+    profiles = {}
+    for line in profile_rows.splitlines():
+        if not line.strip():
+            continue
+        fields = split_nmcli(line)
+        if len(fields) != 3:
+            raise ValueError('unexpected saved profile columns')
+        name, uuid, kind = fields
+        if kind not in ('wifi', '802-11-wireless') or name == RECOVERY:
+            continue
+        ssid = ssid_by_uuid(uuid)
+        if ssid:
+            profiles[name] = ssid.strip()
+    return profiles
+
+
+def journal_pending(path=JOURNAL):
+    # Conservatively defer to recovery on unreadable or invalid journals.
+    try:
+        if path.is_symlink():
+            return True
+        if not path.exists():
+            return False
+        if not path.is_file() or path.stat().st_size > 16384:
+            return True
+        document = json.loads(path.read_text(encoding='utf-8'))
+        return document.get('state') not in ('completed', 'recovered')
+    except (OSError, ValueError, TypeError):
+        return True
+
+
+def discover():
+    policy = load_policy()
+    active_text = nmcli('-g', 'GENERAL.CONNECTION', 'device', 'show', DEVICE)
+    active = active_text.splitlines()[0].strip() if active_text.splitlines() else ''
+    profiles_text = nmcli('-t', '-f', 'NAME,UUID,TYPE', 'connection', 'show')
+    profiles = wifi_profiles(
+        profiles_text,
+        lambda uuid: nmcli('-g', '802-11-wireless.ssid', 'connection', 'show', 'uuid', uuid).strip())
+    all_names = [split_nmcli(line)[0] for line in profiles_text.splitlines() if line.strip()]
+    cached = scan_cached(nmcli('-t', '-f', 'SSID,SIGNAL', 'device', 'wifi', 'list',
+                              'ifname', DEVICE, '--rescan', 'no'))
+    # Cached BSS availability is tentative: do not infer reachability or trigger switching.
+    matching = tuple(sorted(name for name, ssid in profiles.items() if ssid in cached))
+    pending = journal_pending()
+    snap = policy.Snapshot(active=active, saved=tuple(all_names), available=matching,
+                           recovery_present=RECOVERY in all_names,
+                           transition_pending=pending,
+                           startup_grace_elapsed=False)
+    choice, reason = policy.decide(snap)
+    return active, profiles, cached, matching, pending, choice, reason
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('check',))
+    args = parser.parse_args()
+    try:
+        active, profiles, cached, matching, pending, choice, reason = discover()
+        print('N66B_MODE=READ_ONLY')
+        print('NETWORK_WRITES=DISABLED')
+        print('WIFI_RESCAN=DISABLED')
+        print('ACTIVE_PROFILE=' + active)
+        print('RECOVERY_JOURNAL_PENDING=' + str(pending).lower())
+        print('SAVED_WIFI_PROFILE_COUNT=' + str(len(profiles)))
+        print('CACHED_VISIBLE_SSID_COUNT=' + str(len(cached)))
+        print('MATCHING_SAVED_PROFILES=' + ','.join(matching))
+        print('POLICY_DECISION=' + choice)
+        print('POLICY_REASON=' + reason)
+        print('LIMITATION=Cached scan can be stale; no reachability, grace clock, or session detection')
+        return 0
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        print('N66B_ERROR=' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

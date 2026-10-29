@@ -1,0 +1,168 @@
+@page "/dm/network"
+@model InitiativeTracker.Web.Pages.Dm.NetworkModel
+@{
+    ViewData["Title"] = "Hub Network";
+}
+<div class="container py-4" style="max-width:760px">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div><h1 class="h3 mb-1">Hub Network</h1><div class="text-body-secondary">Network status and saved connections</div></div>
+        <a href="/dm" class="btn btn-outline-secondary">Back to DM</a>
+    </div>
+    <div class="alert alert-warning" role="status">
+        <strong>Network switching:</strong> With Pi administrator approval, the DM can switch between the private hotspot and an already-saved network. Save a new WPA-Personal Wi-Fi profile below. Fresh radio scans while hosting the hotspot are not yet available.
+    </div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Current connection</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Interface</dt><dd class="col-sm-8">@Model.Status.InterfaceName</dd>
+            <dt class="col-sm-4">Connection</dt><dd class="col-sm-8">@Model.Status.Connection</dd>
+            <dt class="col-sm-4">IPv4</dt><dd class="col-sm-8">@(Model.Status.Ipv4 ?? "None detected")</dd>
+            <dt class="col-sm-4">IPv4 active</dt><dd class="col-sm-8">@(Model.Status.IsConnected ? "Yes" : "No")</dd>
+        </dl>
+    </div></div>
+    @if (Model.Status.Message is not null)
+    {
+        <div class="alert alert-info">@Model.Status.Message</div>
+    }
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Saved Wi-Fi connections</h2>
+        @if (Model.Status.SavedNetworks.Count == 0)
+        {
+            <p class="text-body-secondary mb-0">No saved client Wi-Fi profiles were found.</p>
+        }
+        else
+        {
+            <ul class="mb-0">
+                @foreach (var saved in Model.Status.SavedNetworks)
+                {
+                    <li>@saved.Name @if (saved.Name == Model.Status.Connection) { <strong>(connected)</strong> }</li>
+                }
+            </ul>
+        }
+    </div></div>
+    <div class="alert alert-info">
+        <strong>Nearby networks are cached.</strong> Refreshing this page does not force a radio scan.
+        When the Pi hosts its private hotspot using wlan0, another Wi-Fi network may not appear
+        until a controlled scan or client-mode transition is performed.
+    </div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Select a Wi-Fi network (validation only)</h2>
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+        }
+        @if (Model.CommandResult is not null) { <div class="alert alert-success">@Model.CommandResult</div> }
+        @if (Model.ValidationSummary is not null)
+        {
+            <div class="alert alert-success" role="status">@Model.ValidationSummary</div>
+        }
+        <form method="post" asp-page-handler="Validate" autocomplete="off">
+            <div class="form-check mb-3">
+                <input asp-for="UseHiddenSsid" class="form-check-input" />
+                <label asp-for="UseHiddenSsid" class="form-check-label">Enter a hidden or unlisted network manually</label>
+            </div>
+            <div class="mb-3">
+                <label asp-for="SelectedSsid" class="form-label">Scanned network</label>
+                <select asp-for="SelectedSsid" class="form-select">
+                    <option value="">Select a network</option>
+                    @foreach (var network in Model.Status.Networks)
+                    {
+                        <option value="@network.Ssid">@network.Ssid (@(network.Signal?.ToString() ?? "?")% · @network.Security)</option>
+                    }
+                </select>
+            </div>
+            <div class="mb-3">
+                <label asp-for="HiddenSsid" class="form-label">Manual network name (SSID)</label>
+                <input asp-for="HiddenSsid" class="form-control" maxlength="32" autocomplete="off" />
+            </div>
+            <div class="form-check mb-3">
+                <input asp-for="RequiresPassword" class="form-check-input" />
+                <label asp-for="RequiresPassword" class="form-check-label">Password-protected network (WPA-Personal)</label>
+            </div>
+            <div class="mb-3">
+                <label asp-for="WifiPassword" class="form-label">Wi-Fi password (validation only)</label>
+                <input asp-for="WifiPassword" type="password" class="form-control" autocomplete="new-password" maxlength="63" />
+                <div class="form-text">Not retained or applied. Do not enter a real network password until secure provisioning is enabled.</div>
+            </div>
+            <button class="btn btn-primary" type="submit">Validate selection (no changes)</button>
+        </form>
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Save a new Wi-Fi connection</h2>
+        <p>Save credentials securely on this Pi without disconnecting anyone. After saving, switch using the supervised saved-network return below. WPA-Personal networks only.</p>
+        @if (Model.CommandsEnabled)
+        {
+            <form method="post" asp-page-handler="Provision" autocomplete="off">
+                <div class="mb-2"><label asp-for="HiddenSsid" class="form-label">Wi-Fi name (SSID)</label>
+                <input asp-for="HiddenSsid" class="form-control" maxlength="32" required autocomplete="off" /></div>
+                <div class="mb-2"><label asp-for="WifiPassword" class="form-label">Wi-Fi password</label>
+                <input asp-for="WifiPassword" type="password" class="form-control" minlength="8" maxlength="63" required autocomplete="new-password" /></div>
+                <button type="submit" class="btn btn-primary">Save Wi-Fi (do not switch)</button>
+            </form>
+        }
+        else { <p>Network commands are disabled by the Pi administrator.</p> }
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Private hotspot password</h2>
+        <p>Change the password for the hub's private network. Only available while connected to external Wi-Fi and no switch is pending. The physical Setup Wi-Fi QR will use the new password.</p>
+        @if (Model.CommandsEnabled && Model.Status.IsConnected && Model.Status.Connection != "InitiativeTracker-Recovery")
+        {
+            <form method="post" asp-page-handler="RotateHotspotPassword" autocomplete="off">
+                <label asp-for="NewHotspotPassword" class="form-label">New hotspot password</label>
+                <input asp-for="NewHotspotPassword" type="password" class="form-control mb-2" minlength="8" maxlength="63" required autocomplete="new-password" />
+                <label asp-for="ConfirmHotspotPassword" class="form-label">Confirm new password</label>
+                <input asp-for="ConfirmHotspotPassword" type="password" class="form-control mb-2" minlength="8" maxlength="63" required autocomplete="new-password" />
+                <button type="submit" class="btn btn-outline-primary">Update hotspot password</button>
+            </form>
+        }
+        else
+        {
+            <p class="text-body-secondary mb-0">Requires external Wi-Fi and administrator-enabled network commands.</p>
+        }
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Return to a saved Wi-Fi network</h2>
+        <p>Only available while the private hotspot is active. Switching disconnects devices from the hotspot. Rejoin the destination Wi-Fi and confirm within three minutes, or recovery will attempt to restore the hotspot.</p>
+        @if (Model.CommandResult is not null) { <div class="alert alert-success">@Model.CommandResult</div> }
+        @if (Model.CommandsEnabled && Model.Status.Connection == "InitiativeTracker-Recovery")
+        {
+            <form method="post" asp-page-handler="BeginReturn" class="mb-3">
+                <label asp-for="SavedUuid" class="form-label">Saved Wi-Fi</label>
+                <select asp-for="SavedUuid" class="form-select mb-2" required>
+                    <option value="">Choose a saved Wi-Fi</option>
+                    @foreach (var saved in Model.Status.SavedNetworks)
+                    { <option value="@saved.Uuid">@saved.Name</option> }
+                </select>
+                <button type="submit" class="btn btn-warning">Switch to saved Wi-Fi (3-minute rollback)</button>
+            </form>
+        }
+        else { <p class="text-body-secondary">@(Model.CommandsEnabled ? "Connect the hub to its private hotspot to request a return." : "Network switching is not enabled by this Pi's administrator.")</p> }
+        @if (Model.CommandsEnabled)
+        {
+            <form method="post" asp-page-handler="ConfirmReturn">
+                <button type="submit" class="btn btn-outline-primary">Confirm successful switch</button>
+            </form>
+        }
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h5">Switch to private InitiativeTracker Wi-Fi</h2>
+        <p>Disconnect from this network and activate the hub's private hotspot. The hub will attempt to restore its previous Wi-Fi after three minutes unless you confirm the hotspot connection.</p>
+        <p><strong>Private network:</strong> The SSID shown on the hub Setup screen<br />
+           <strong>Hub address on private network:</strong> <code>http://10.84.0.1:5000/dm/network</code></p>
+        @if (Model.CommandsEnabled && Model.Status.Connection != "InitiativeTracker-Recovery" && Model.Status.IsConnected)
+        {
+            <form method="post" asp-page-handler="BeginHotspot" class="mb-2">
+                <button type="submit" class="btn btn-warning">Switch to private Wi-Fi (3-minute rollback)</button>
+            </form>
+        }
+        @if (Model.CommandsEnabled && Model.Status.Connection == "InitiativeTracker-Recovery")
+        {
+            <form method="post" asp-page-handler="ConfirmHotspot" class="mb-2">
+                <button type="submit" class="btn btn-outline-primary">Confirm private Wi-Fi connection</button>
+            </form>
+        }
+        @if (!Model.CommandsEnabled) { <p class="text-body-secondary">Network commands are disabled by the Pi administrator.</p> }
+        <p class="small text-body-secondary mb-0">The network change requires the Pi administrator's separate live-switch gate. A failed request won't change the network. A single-radio Pi can't provide the external Wi-Fi and private hotspot simultaneously.</p>
+    </div></div>
+    <a href="/dm/network" class="btn btn-outline-primary">Refresh network status</a>
+</div>

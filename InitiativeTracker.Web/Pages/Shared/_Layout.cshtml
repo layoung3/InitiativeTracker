@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -24,6 +24,16 @@
 </head>
 
 <body>
+    @* Kiosk-only escape hatch. Setup itself stays loopback restricted. *@
+    @if (Context.Connection.RemoteIpAddress is System.Net.IPAddress remote &&
+         System.Net.IPAddress.IsLoopback(remote) &&
+         !Context.Request.Path.StartsWithSegments("/setup"))
+    {
+        <div class="position-fixed bottom-0 end-0 m-2" style="z-index: 1050;">
+            <a href="/setup" class="btn btn-sm btn-dark border border-light opacity-75"
+               title="Return to hub setup">Hub Setup</a>
+        </div>
+    }
     <div class="app-shell">
 
         <main class="app-main"

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""N6.4B observer: journal-aware independent watchdog, NO network writes."""
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROFILE = 'InitiativeTracker-Recovery'
+DEVICE = 'wlan0'
+STATE_DIR = Path('/var/lib/initiativetracker-network')
+
+
+def read_nm(field, category, *args):
+    proc = subprocess.run(['/usr/bin/nmcli', '-g', field, category, *args],
+                          text=True, capture_output=True, timeout=8, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError('nmcli read failed')
+    return proc.stdout.strip().splitlines()
+
+
+def read_snapshot():
+    current = read_nm('GENERAL.CONNECTION', 'device', 'show', DEVICE)
+    profiles = read_nm('NAME', 'connection', 'show')
+    return (current[0] if current else '', PROFILE in profiles)
+
+
+def read_journal(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('journal missing or symbolic link')
+    if path.stat().st_size > 16384:
+        raise ValueError('journal too large')
+    j = json.loads(path.read_text(encoding='utf8'))
+    required = {'format','id','previous','target','created_utc','deadline_utc','state','events'}
+    if set(j) != required or j['format'] != 1 or not isinstance(j['events'],list):
+        raise ValueError('invalid journal schema')
+    if j['state'] not in ('pending','target_validated','restore_previous','activate_recovery','recovered','completed'):
+        raise ValueError('invalid journal state')
+    for key in ('previous','target'):
+        if not isinstance(j[key],str) or not j[key] or len(j[key])>80:
+            raise ValueError('invalid profile field')
+    return j
+
+
+def recovery_plan(j, active, has_recovery, now):
+    if not has_recovery:
+        return 'BLOCKED_MISSING_RECOVERY_PROFILE'
+    if j is None:
+        return 'NO_PENDING_TRANSITION'
+    if j['state'] in ('completed','recovered'):
+        return 'ALREADY_FINALIZED'
+    if j['state']=='target_validated':
+        return 'AWAIT_FINALIZATION'
+    deadline=datetime.fromisoformat(j['deadline_utc'].replace('Z','+00:00'))
+    if deadline.tzinfo is None:
+        raise ValueError('invalid deadline')
+    if now < deadline:
+        return 'WAIT'
+    if active in (j['previous'], PROFILE):
+        return 'RECOVERY_NETWORK_ALREADY_ACTIVE'
+    return 'WOULD_TRY_PREVIOUS_THEN_RECOVERY'
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('command',choices=['once','status'])
+    p.add_argument('--state-dir',default=str(STATE_DIR))
+    args=p.parse_args()
+    try:
+        active,recovery=read_snapshot()
+        path=Path(args.state_dir)/'transition.json'
+        j=read_journal(path) if path.exists() or path.is_symlink() else None
+        result=recovery_plan(j,active,recovery,datetime.now(timezone.utc))
+        print('N64B_MODE=OBSERVE_ONLY')
+        print('NETWORK_WRITES=DISABLED')
+        print('ACTIVE_PROFILE='+active)
+        print('RECOVERY_PROFILE_PRESENT='+str(recovery).lower())
+        print('JOURNAL_STATE='+(j['state'] if j else 'none'))
+        print('RECOMMENDATION='+result)
+        print('EXECUTED_ACTION=NONE')
+        return 0
+    except (OSError,ValueError,RuntimeError,json.JSONDecodeError,subprocess.TimeoutExpired) as e:
+        print(f'N64B_ERROR={type(e).__name__}: {e}',file=sys.stderr)
+        return 1
+
+if __name__=='__main__':sys.exit(main())

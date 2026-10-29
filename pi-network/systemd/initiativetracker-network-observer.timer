@@ -1,0 +1,12 @@
+[Unit]
+Description=InitiativeTracker periodic network observation
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=30s
+AccuracySec=5s
+Unit=initiativetracker-network-observer.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

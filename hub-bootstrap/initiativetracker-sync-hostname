@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HUB_INFO_URL="${HUB_INFO_URL:-http://127.0.0.1:5000/system/hub-info}"
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-2}"
+
+log() {
+    printf '%s\n' "InitiativeTracker hostname sync: $*"
+}
+
+for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
+    if hub_info="$(curl --fail --silent --show-error \
+        --connect-timeout 2 \
+        --max-time 4 \
+        "$HUB_INFO_URL" 2>/dev/null)"; then
+
+        host_name="$(
+            printf '%s' "$hub_info" |
+                python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+print(data.get("hostName", ""))
+'
+        )"
+
+        hub_id="$(
+            printf '%s' "$hub_info" |
+                python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+print(data.get("hubId", ""))
+'
+        )"
+
+        if [[ ! "$host_name" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+            log "hub returned invalid hostname: '$host_name'"
+            exit 1
+        fi
+
+        current_host="$(hostnamectl --static status 2>/dev/null || hostname)"
+
+        if [[ "$current_host" == "$host_name" ]]; then
+            log "hostname already correct: $host_name (hub $hub_id)"
+            exit 0
+        fi
+
+        log "changing hostname from '$current_host' to '$host_name' (hub $hub_id)"
+        hostnamectl set-hostname "$host_name"
+
+        if systemctl is-active --quiet avahi-daemon.service; then
+            systemctl try-restart avahi-daemon.service
+        fi
+
+        log "hub is now advertised as ${host_name}.local"
+        exit 0
+    fi
+
+    log "hub API not ready (attempt $attempt/$MAX_ATTEMPTS)"
+    sleep "$SLEEP_SECONDS"
+done
+
+log "unable to read $HUB_INFO_URL"
+exit 1

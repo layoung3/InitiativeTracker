@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""N6.3 network recovery watchdog -- observation and planning ONLY.
+
+No NetworkManager modifications, activation, or rollback are possible in this version.
+No process executes root-level commands; systemd example is intentionally disabled.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+RECOVERY = 'InitiativeTracker-Recovery'
+DEVICE = 'wlan0'
+
+
+def query(args):
+    result = subprocess.run(['/usr/bin/nmcli', '--terse', '--get-values', *args],
+                            capture_output=True, text=True, timeout=8, check=False)
+    if result.returncode:
+        raise RuntimeError('NetworkManager query failed')
+    return result.stdout.strip().splitlines()
+
+
+def snapshot():
+    active_lines = query(['GENERAL.CONNECTION', 'device', 'show', DEVICE])
+    state_lines = query(['GENERAL.STATE', 'device', 'show', DEVICE])
+    profiles = query(['NAME', 'connection', 'show'])
+    return {
+        'active': active_lines[0] if active_lines else '',
+        'device_state': state_lines[0] if state_lines else '',
+        'recovery_present': RECOVERY in profiles,
+    }
+
+
+def decision(observed, transition=None, now=None):
+    """Pure planning logic; never commands NetworkManager."""
+    now = now or datetime.now(timezone.utc)
+    active = observed.get('active', '')
+    ready = bool(observed.get('recovery_present', False))
+    if not ready:
+        return 'BLOCKED_RECOVERY_PROFILE_MISSING'
+    if not transition:
+        return 'KEEP_RECOVERY' if active == RECOVERY else ('NO_ACTIVE_WIFI_REVIEW' if active in ('', '--', 'unknown') else 'KEEP_EXISTING')
+    if transition['expires_at'] <= now:
+        if active == transition['previous_profile']:
+            return 'RECOVERED_PREVIOUS'
+        return 'WOULD_RESTORE_PREVIOUS_THEN_HOTSPOT'
+    if active == transition['target_profile']:
+        return 'TARGET_SEEN_AWAIT_EXPLICIT_VALIDATION'
+    return 'TRANSITION_PENDING'
+
+
+def parse_transition(path):
+    """Operator-created dry-run scenario, not a credential or operational instruction."""
+    if not path:
+        return None
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
+    if set(data) != {'previous_profile', 'target_profile', 'expires_at_utc'}:
+        raise ValueError('Transition must have exactly previous_profile, target_profile, expires_at_utc')
+    for field in ('previous_profile', 'target_profile'):
+        if not isinstance(data[field], str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', data[field]):
+            raise ValueError(f'Invalid {field}')
+    stamp = data['expires_at_utc']
+    if not isinstance(stamp, str) or not stamp.endswith('Z'):
+        raise ValueError('expires_at_utc must be UTC ISO-8601 ending Z')
+    expiry = datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+    return {'previous_profile': data['previous_profile'], 'target_profile': data['target_profile'], 'expires_at': expiry}
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('command', choices=['check', 'plan'])
+    p.add_argument('--scenario', help='Optional JSON scenario file for dry-run testing only')
+    args = p.parse_args()
+    if args.command == 'check' and args.scenario:
+        p.error('--scenario only applies to plan')
+    try:
+        observed = snapshot()
+        transition = parse_transition(args.scenario)
+        print('N63_MODE=READ_ONLY')
+        print('NM_WRITES=DISABLED')
+        print(f'WIFI_DEVICE={DEVICE}')
+        print(f'ACTIVE_PROFILE={observed["active"] or "unknown"}')
+        print(f'RECOVERY_PROFILE_PRESENT={str(observed["recovery_present"]).lower()}')
+        print('WATCHDOG_SERVICE=NOT_ENABLED_BY_THIS_PACKAGE')
+        if args.command == 'plan':
+            print(f'RECOMMENDATION={decision(observed, transition)}')
+            print('ACTION=NONE')
+        return 0
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+        print(f'N63_ERROR={type(exc).__name__}: {exc}', file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

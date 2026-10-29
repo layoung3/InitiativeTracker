@@ -65,6 +65,8 @@ builder.Services.AddSingleton<DeviceRegistryService>();
 builder.Services.AddSingleton<PlayerRegistryService>();
 builder.Services.AddSingleton<HubIdentityService>();
 builder.Services.AddSingleton<TrackerUrlService>();
+builder.Services.AddSingleton<NetworkStatusService>();
+builder.Services.AddSingleton<NetworkCommandBridge>();
 builder.Services.AddSingleton<CharacterService>();
 builder.Services.AddSingleton<AppVersionService>();
 

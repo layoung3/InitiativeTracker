@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""N6.9B: limited privileged bridge for saved-Wi-Fi return; never accepts a command line."""
+import argparse, os, re, subprocess, sys
+
+RECOVERY='/usr/local/libexec/initiativetracker/initiativetracker-network-control'
+RETURN='/usr/local/libexec/initiativetracker/initiativetracker-network-return'
+HANDOFF='/usr/local/libexec/initiativetracker/initiativetracker-return-handoff'
+UNIT='initiativetracker-web-return'
+UUID=re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
+
+def execute(action, uuid=''):
+    if os.geteuid()!=0:
+        raise RuntimeError('root required')
+    if action=='status':
+        cmd=[RETURN,'status']
+    elif action=='begin-return':
+        if not UUID.fullmatch(uuid):raise ValueError('Invalid UUID')
+        # The return controller independently verifies hotspot mode, saved UUID,
+        # root-owned live gate, independent recovery journal and rollback deadline.
+        # Detached from the browser: losing hotspot connectivity cannot kill it.
+        cmd=['/usr/bin/systemd-run','--unit='+UNIT,'--collect','--property=Type=oneshot',
+             HANDOFF,'--uuid',uuid,'--seconds','180']
+    elif action=='confirm-return':
+        cmd=[RETURN,'confirm']
+    elif action=='begin-hotspot':
+        if uuid:raise ValueError('Unexpected identifier')
+        cmd=['/usr/bin/systemd-run','--unit=initiativetracker-web-hotspot','--collect','--property=Type=oneshot',
+             RECOVERY,'begin','--target','InitiativeTracker-Recovery','--seconds','180','--execute','CONFIRM_DISCONNECT']
+    elif action=='confirm-hotspot':
+        if uuid:raise ValueError('Unexpected identifier')
+        cmd=[RECOVERY,'confirm']
+    else:
+        raise ValueError('Unsupported action')
+    p=subprocess.run(cmd,text=True,capture_output=True,timeout=15 if action!='confirm-return' else 35)
+    if p.returncode:
+        raise RuntimeError('Privileged operation rejected: '+(p.stderr or p.stdout).strip()[:400])
+    print(p.stdout.strip() or 'REQUEST_ACCEPTED')
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser()
+    parser.add_argument('action',choices=['status','begin-return','confirm-return','begin-hotspot','confirm-hotspot'])
+    parser.add_argument('uuid',nargs='?',default='')
+    args=parser.parse_args()
+    try:execute(args.action,args.uuid)
+    except (OSError,ValueError,RuntimeError,subprocess.TimeoutExpired) as e:
+        print('BRIDGE_ERROR='+str(e),file=sys.stderr);sys.exit(1)

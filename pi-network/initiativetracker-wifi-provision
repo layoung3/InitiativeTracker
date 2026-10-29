@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""N6.10B: stage a root-owned NM Wi-Fi profile from stdin JSON; never connects."""
+import configparser
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+import uuid
+
+DIR = pathlib.Path('/etc/NetworkManager/system-connections')
+SSID_MAX = 32
+
+
+def validate(data):
+    if not isinstance(data, dict) or set(data) != {'ssid', 'password'}:
+        raise ValueError('Invalid credential request')
+    ssid, password = data['ssid'], data['password']
+    if not isinstance(ssid, str) or not (1 <= len(ssid.encode('utf-8')) <= SSID_MAX) or any(ord(x) < 32 for x in ssid):
+        raise ValueError('Invalid SSID')
+    if not isinstance(password, str) or not (8 <= len(password.encode('utf-8')) <= 63) or any(ord(x) < 32 for x in password):
+        raise ValueError('Invalid WPA password')
+    return ssid, password
+
+
+def create_keyfile(ssid, password, profile_uuid):
+    c = configparser.ConfigParser(interpolation=None)
+    c.optionxform = str
+    c['connection'] = {'id': ssid, 'uuid': profile_uuid,
+                       'type': 'wifi', 'autoconnect': 'false'}
+    c['wifi'] = {'mode': 'infrastructure', 'ssid': ssid}
+    c['wifi-security'] = {'key-mgmt': 'wpa-psk', 'psk': password}
+    c['ipv4'] = {'method': 'auto'}
+    c['ipv6'] = {'method': 'auto'}
+    return c
+
+
+def run():
+    if os.geteuid() != 0:
+        raise PermissionError('root required')
+    raw = sys.stdin.buffer.read(1025)
+    if len(raw) > 1024:
+        raise ValueError('Oversized request')
+    ssid, password = validate(json.loads(raw))
+    if DIR.is_symlink() or not DIR.is_dir():
+        raise RuntimeError('NetworkManager profile directory unavailable')
+    profile_uuid = str(uuid.uuid4())
+    target = DIR / ('IT-WiFi-' + profile_uuid + '.nmconnection')
+    fd, temp_name = tempfile.mkstemp(prefix='.it-wifi-', suffix='.nmconnection', dir=DIR)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            create_keyfile(ssid, password, profile_uuid).write(stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_name, target)
+        p = subprocess.run(['/usr/bin/nmcli', 'connection', 'load', str(target)],
+                           capture_output=True, timeout=15)
+        if p.returncode:
+            target.unlink(missing_ok=True)
+            raise RuntimeError('NetworkManager refused the new Wi-Fi profile')
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+    print(json.dumps({'uuid': profile_uuid, 'saved': True}))
+
+
+if __name__ == '__main__':
+    try:
+        run()
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError, subprocess.TimeoutExpired):
+        # Deliberately never echo password or untrusted nmcli output.
+        print('PROVISION_FAILED', file=sys.stderr)
+        sys.exit(1)

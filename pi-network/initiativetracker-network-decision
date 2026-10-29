@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""N6.6E: read-only integrated networking recommendation. Never rescans or switches Wi-Fi.
+
+Uses current NetworkManager discovery + N6.6D protected observations and N6.6C policy.
+A timestamp for reading cached SSIDs is NOT a fresh RF scan timestamp.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+import sys
+
+DEFAULT_STATE = Path('/var/lib/initiativetracker-network')
+MAX_OBSERVATION_AGE = 120
+
+
+def load_sibling(name):
+    path = Path(__file__).with_name(name)
+    loader = importlib.machinery.SourceFileLoader(name.replace('-', '_'), str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    loader.exec_module(module)
+    return module
+
+
+def number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def compose(*, active, matching, pending, recovery_present, uptime_seconds, state,
+            state_boot_matches=True, session_locked=False, manual_override=False,
+            timing=None):
+    """Pure integration function for simulated and actual observations."""
+    timing = timing or load_sibling('initiativetracker-network-timing')
+    if not number(uptime_seconds) or uptime_seconds < 0:
+        raise ValueError('invalid uptime')
+    if not isinstance(active, str) or not isinstance(matching, (list, tuple)) or not isinstance(pending, bool):
+        raise ValueError('invalid discovery')
+    if not isinstance(recovery_present, bool):
+        raise ValueError('invalid recovery_present')
+    if not isinstance(session_locked, bool) or not isinstance(manual_override, bool):
+        raise ValueError('invalid session/override flags')
+    observation_age = None
+    reason = 'missing_observation'
+    usable = False
+    if state is not None and state_boot_matches:
+        observed = state.get('last_observed_uptime')
+        if not number(observed) or observed < 0 or observed > uptime_seconds:
+            reason = 'invalid_observation_time'
+        else:
+            observation_age = round(uptime_seconds - observed)
+            if observation_age > MAX_OBSERVATION_AGE:
+                reason = 'stale_observation'
+            elif not isinstance(state.get('last_active'), str) or state['last_active'] != active:
+                reason = 'network_changed_since_observation'
+            elif state.get('last_transition_pending') is not pending:
+                reason = 'transition_changed_since_observation'
+            else:
+                usable = True
+                reason = 'current_observation'
+    elif state is not None:
+        reason = 'observation_from_prior_boot'
+
+    down_age = None
+    retries = 0
+    attempt_age = None
+    retry_known = False
+    if usable:
+        down_since = state.get('disconnected_since_uptime')
+        if down_since is not None:
+            if number(down_since) and 0 <= down_since <= uptime_seconds:
+                down_age = uptime_seconds - down_since
+            else:
+                usable = False
+                reason = 'invalid_disconnection_time'
+        count = state.get('failures')
+        if isinstance(count, int) and not isinstance(count, bool) and 0 <= count <= 1000:
+            retries = count
+            retry_known = True
+            attempt = state.get('last_failure_uptime')
+            if attempt is not None:
+                if number(attempt) and 0 <= attempt <= uptime_seconds:
+                    attempt_age = uptime_seconds - attempt
+                else:
+                    retry_known = False
+                    reason = 'invalid_retry_time'
+        else:
+            retry_known = False
+
+    # The only 'last_cache_observed_uptime' is when we READ nmcli's cache.
+    # It can NEVER be supplied as timing.evaluate(last_scan_age_seconds=...).
+    if pending:
+        decision, policy_reason, scan = timing.evaluate(
+            active=active, recovery_present=recovery_present, transition_pending=True,
+            matching=list(matching), uptime_seconds=uptime_seconds)
+    elif active and active not in ('--', 'unknown'):
+        decision, policy_reason, scan = timing.evaluate(
+            active=active, recovery_present=recovery_present, transition_pending=False,
+            matching=list(matching), uptime_seconds=uptime_seconds,
+            session_locked=session_locked, manual_override=manual_override)
+    elif not usable:
+        decision, policy_reason, scan = 'UNKNOWN', reason, 'NO_SCAN'
+    elif not retry_known:
+        decision, policy_reason, scan = 'UNKNOWN', 'retry_history_unreliable', 'NO_SCAN'
+    else:
+        decision, policy_reason, scan = timing.evaluate(
+            active=active, recovery_present=recovery_present, transition_pending=False,
+            matching=list(matching), uptime_seconds=uptime_seconds,
+            last_scan_age_seconds=None, retries=retries,
+            last_attempt_age_seconds=attempt_age, session_locked=session_locked,
+            manual_override=manual_override, link_down_age_seconds=down_age)
+    return {
+        'active': active, 'matching': list(matching), 'pending': pending,
+        'observation_valid': usable, 'observation_reason': reason,
+        'observation_age': observation_age, 'downtime': round(down_age) if down_age is not None else None,
+        'retry_history_known': retry_known, 'failures': retries if retry_known else None,
+        'cache_fresh_scan': False, 'decision': decision, 'reason': policy_reason, 'scan': scan,
+    }
+
+
+def live(state_dir):
+    discovery = load_sibling('initiativetracker-network-discovery')
+    observer = load_sibling('initiativetracker-network-observer')
+    timing = load_sibling('initiativetracker-network-timing')
+    active, profiles, cached, matching, pending, _, _ = discovery.discover()
+    available = discovery.RECOVERY in discovery.nmcli('-g', 'NAME', 'connection', 'show').splitlines()
+    current_boot = observer.boot_id()
+    up = observer.uptime()
+    path = state_dir / 'observer.json'
+    state = observer.read_state(path, current_boot)
+    return compose(active=active, matching=matching, pending=pending,
+                   recovery_present=available, uptime_seconds=up, state=state,
+                   timing=timing)
+
+
+def emit(result):
+    print('N66E_MODE=READ_ONLY')
+    print('NETWORK_WRITES=DISABLED')
+    print('WIFI_RESCAN=DISABLED')
+    print('LOCAL_STATE_WRITES=DISABLED')
+    print('ACTIVE_PROFILE=' + result['active'])
+    print('TRANSITION_PENDING=' + str(result['pending']).lower())
+    print('MATCHING_SAVED_PROFILES=' + ','.join(result['matching']))
+    print('OBSERVATION_VALID=' + str(result['observation_valid']).lower())
+    print('OBSERVATION_REASON=' + result['observation_reason'])
+    print('OBSERVATION_AGE_SECONDS=' + ('unknown' if result['observation_age'] is None else str(result['observation_age'])))
+    print('DISCONNECTED_SECONDS=' + ('unknown' if result['downtime'] is None else str(result['downtime'])))
+    print('RETRY_HISTORY_KNOWN=' + str(result['retry_history_known']).lower())
+    print('SCAN_IS_FRESH=false')
+    print('POLICY_DECISION=' + result['decision'])
+    print('POLICY_REASON=' + result['reason'])
+    print('SCAN_RECOMMENDATION=' + result['scan'])
+    print('EXECUTED_NETWORK_ACTION=NONE')
+    print('LIMITATION=No verified fresh RF scan, active-session detector, or automatic retry execution')
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('action', choices=('check', 'scenario'))
+    p.add_argument('--state-dir', type=Path, default=DEFAULT_STATE)
+    p.add_argument('--json', type=Path)
+    args = p.parse_args()
+    try:
+        if args.action == 'check':
+            if args.state_dir == DEFAULT_STATE and os.geteuid() != 0:
+                raise PermissionError('protected observer state requires sudo; do not weaken its permissions')
+            result = live(args.state_dir)
+        else:
+            if not args.json:
+                raise ValueError('--json is required for scenario')
+            scenario = json.loads(args.json.read_text(encoding='utf-8'))
+            required = {'active', 'matching', 'pending', 'recovery_present', 'uptime_seconds', 'state'}
+            optional = {'state_boot_matches', 'session_locked', 'manual_override'}
+            if not isinstance(scenario, dict) or required - scenario.keys() or scenario.keys() - required - optional:
+                raise ValueError('invalid scenario fields')
+            result = compose(**scenario)
+        emit(result)
+        return 0
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, json.JSONDecodeError) as exc:
+        print('N66E_ERROR=' + type(exc).__name__ + ': ' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

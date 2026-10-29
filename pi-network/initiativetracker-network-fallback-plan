@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""N6.6H: read-only, fail-closed fallback/connection attempt planner.
+
+No NetworkManager writes, scans, persistent state mutation or systemd installation.
+Scenario evidence is for testing, NEVER converted into live evidence.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+import sys
+
+STATE_DIR = Path('/var/lib/initiativetracker-network')
+RECOVERY = 'InitiativeTracker-Recovery'
+MIN_UPTIME = 90
+MIN_DISCONNECTED = 30
+MIN_SCAN_SPACING = 180
+MAX_SCAN_AGE = 180
+RETRY_COOLDOWN = 120
+MAX_FAILURES = 3
+
+
+def nonnegative(n):
+    return isinstance(n, (int, float)) and not isinstance(n, bool) and math.isfinite(n) and n >= 0
+
+
+def assess(*, active, pending, recovery_present, uptime, downtime, scan_verification,
+           matches, failures, last_failure_age, scan_confirmations, session_locked=False,
+           manual_override=False, evidence_live=False):
+    if not isinstance(active, str) or not isinstance(pending, bool) or not isinstance(recovery_present, bool):
+        raise ValueError('invalid network flags')
+    if not nonnegative(uptime) or (downtime is not None and not nonnegative(downtime)):
+        raise ValueError('invalid uptime/downtime')
+    if not isinstance(matches, list) or not all(isinstance(m, str) and m for m in matches):
+        raise ValueError('invalid matches')
+    if failures is not None and (isinstance(failures, bool) or not isinstance(failures, int) or not 0 <= failures <= 1000):
+        raise ValueError('invalid failure count')
+    if last_failure_age is not None and not nonnegative(last_failure_age):
+        raise ValueError('invalid failure age')
+    if not isinstance(scan_confirmations, list) or len(scan_confirmations) > 8:
+        raise ValueError('invalid scan confirmations')
+    if not all(isinstance(x, (int,float)) and not isinstance(x, bool) and math.isfinite(x) and 0 <= x <= uptime for x in scan_confirmations):
+        raise ValueError('invalid scan times')
+    if not all(isinstance(x, bool) for x in (session_locked, manual_override, evidence_live)):
+        raise ValueError('invalid flag')
+    if scan_verification not in ('missing_scan_record', 'different_boot', 'scan_failed',
+                                 'scan_in_progress_or_interrupted', 'unknown_scan_result',
+                                 'invalid_scan_timestamp', 'stale_scan_request', 'fresh_scan_request'):
+        raise ValueError('invalid scan verification')
+    def result(decision, reason, executable=False):
+        # This phase has NO executor; executable is always false in ALL paths.
+        return {'decision': decision, 'reason': reason, 'would_require_network_change':
+                decision in ('CANDIDATE_SAVED_WIFI', 'HOTSPOT_ELIGIBLE'),
+                'execution_allowed': False, 'network_action': 'NONE'}
+    if pending:
+        return result('DEFER', 'recovery_transition_pending')
+    if manual_override or session_locked:
+        return result('HOLD', 'operator_or_session_protection')
+    if active == RECOVERY:
+        return result('HOLD', 'hotspot_already_active')
+    if active and active not in ('--', 'unknown'):
+        return result('HOLD', 'connected_profile_active')
+    if not recovery_present:
+        return result('BLOCKED', 'recovery_profile_missing')
+    if uptime < MIN_UPTIME:
+        return result('WAIT', 'startup_grace')
+    if downtime is None:
+        return result('UNKNOWN', 'disconnected_duration_unverified')
+    if downtime < MIN_DISCONNECTED:
+        return result('WAIT', 'brief_disconnection')
+    if failures is None:
+        return result('UNKNOWN', 'retry_history_unverified')
+    if failures > 0 and last_failure_age is None:
+        return result('UNKNOWN', 'last_failure_time_missing')
+    if failures > 0 and last_failure_age < RETRY_COOLDOWN:
+        return result('WAIT', 'retry_backoff')
+    if matches:
+        if failures >= MAX_FAILURES:
+            return result('WAIT', 'saved_network_retries_exhausted')
+        if scan_verification != 'fresh_scan_request':
+            return result('UNKNOWN', 'saved_network_candidate_needs_fresh_scan')
+        return result('CANDIDATE_SAVED_WIFI', 'explicit_validation_required')
+    if scan_verification != 'fresh_scan_request':
+        return result('UNKNOWN', 'fresh_scan_required')
+    # Two independently successful, spaced RF scan requests are *one* prerequisite,
+    # not sufficient evidence for hotspot switch; controller & session lock still needed.
+    confirmations = sorted(set(scan_confirmations))
+    if len(confirmations) < 2 or confirmations[-1] - confirmations[-2] < MIN_SCAN_SPACING:
+        return result('UNKNOWN', 'second_independent_scan_required')
+    if uptime - confirmations[-1] >= MAX_SCAN_AGE:
+        return result('UNKNOWN', 'scan_evidence_expired')
+    if not evidence_live:
+        return result('UNKNOWN', 'live_scan_evidence_not_integrated')
+    # Intentionally no live source sets evidence_live=true in H.
+    return result('HOTSPOT_ELIGIBLE', 'requires_separate_armed_transition_and_session_check')
+
+
+def load(name):
+    path = Path(__file__).with_name(name)
+    loader = importlib.machinery.SourceFileLoader(name.replace('-', '_'), str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    loader.exec_module(mod)
+    return mod
+
+
+def live(state_dir):
+    # No newly invented evidence: pass scan confirmations=[] / evidence_live=False.
+    verified = load('initiativetracker-network-verified-decision')
+    observer = load('initiativetracker-network-observer')
+    base = load('initiativetracker-network-decision')
+    discovery = load('initiativetracker-network-discovery')
+    result = verified.live(state_dir)
+    integrated = base.live(state_dir)
+    active, _, _, matching, pending, _, _ = discovery.discover()
+    recovered = discovery.RECOVERY in discovery.nmcli('-g', 'NAME', 'connection', 'show').splitlines()
+    state = observer.read_state(state_dir / 'observer.json', observer.boot_id())
+    age = None
+    failures = None
+    last_age = None
+    up = observer.uptime()
+    if state and integrated['observation_valid'] and state.get('last_active') == active:
+        down = state.get('disconnected_since_uptime')
+        if nonnegative(down) and down <= up:
+            age = up - down
+        failures = state.get('failures')
+        last = state.get('last_failure_uptime')
+        if nonnegative(last) and last <= up:
+            last_age = up - last
+    return assess(active=active, pending=pending, recovery_present=recovered, uptime=up,
+                  downtime=age, scan_verification=result['scan_verification'],
+                  matches=list(matching), failures=failures, last_failure_age=last_age,
+                  scan_confirmations=[], evidence_live=False), active, result['scan_verification']
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('action', choices=('check','scenario'))
+    ap.add_argument('--json', type=Path)
+    ap.add_argument('--state-dir', type=Path, default=STATE_DIR)
+    args = ap.parse_args()
+    try:
+        if args.action == 'check':
+            if os.geteuid() != 0 and args.state_dir == STATE_DIR:
+                raise PermissionError('protected state requires sudo')
+            outcome, active, scan = live(args.state_dir)
+        else:
+            if args.json is None:
+                raise ValueError('scenario requires --json')
+            obj = json.loads(args.json.read_text(encoding='utf-8'))
+            required = {'active','pending','recovery_present','uptime','downtime','scan_verification',
+                        'matches','failures','last_failure_age','scan_confirmations'}
+            optional = {'session_locked','manual_override','evidence_live'}
+            if not isinstance(obj, dict) or required - obj.keys() or obj.keys() - required - optional:
+                raise ValueError('missing or unknown scenario fields')
+            outcome = assess(**obj)
+            active, scan = obj['active'], obj['scan_verification']
+        print('N66H_MODE=READ_ONLY')
+        print('NETWORK_WRITES=DISABLED')
+        print('WIFI_RESCAN=DISABLED')
+        print('ACTIVE_PROFILE=' + active)
+        print('SCAN_VERIFICATION=' + scan)
+        print('FALLBACK_DECISION=' + outcome['decision'])
+        print('FALLBACK_REASON=' + outcome['reason'])
+        print('NETWORK_ACTION_ALLOWED=false')
+        print('EXECUTED_NETWORK_ACTION=NONE')
+        return 0
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+        print('N66H_ERROR=' + type(exc).__name__ + ': ' + str(exc), file=sys.stderr)
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())

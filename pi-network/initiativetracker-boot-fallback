@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""N6.7: opt-in automatic hotspot fallback when wlan0 has NO active connection.
+Never switches AWAY from an active connection; does not touch recovery transition journal.
+Runs every 30s under systemd; live changes require dedicated root-owned gate.
+"""
+import argparse, fcntl, json, os, subprocess, sys, tempfile
+from pathlib import Path
+
+ROOT=Path('/var/lib/initiativetracker-network')
+GATE=Path('/etc/initiativetracker/network/boot-fallback.enabled')
+RECOVERY='InitiativeTracker-Recovery'
+DEVICE='wlan0'
+MIN_UPTIME=120
+MIN_OFFLINE=60
+MIN_SCAN_GAP=60
+
+
+def nm(*args, timeout=25):
+    p=subprocess.run(['/usr/bin/nmcli',*args],capture_output=True,text=True,timeout=timeout)
+    if p.returncode: raise RuntimeError('nmcli failed: '+p.stderr.strip()[:300])
+    return p.stdout
+
+def gate():
+    if GATE.is_symlink() or not GATE.is_file(): return False
+    s=GATE.stat()
+    return s.st_uid==0 and s.st_mode & 0o777==0o600 and GATE.read_text().strip()=='ENABLE_BOOT_FALLBACK=yes'
+
+def active():
+    v=nm('-g','GENERAL.CONNECTION','device','show',DEVICE).strip().splitlines()
+    return v[0].strip() if v else ''
+
+def device_state():
+    return nm('-g','GENERAL.STATE','device','show',DEVICE).strip()
+
+def uptime(): return float(Path('/proc/uptime').read_text().split()[0])
+def boot_id(): return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+def pending():
+    p=ROOT/'transition.json'
+    if p.is_symlink(): return True
+    if not p.exists(): return False
+    try:
+        if p.stat().st_size>16384: return True
+        d=json.loads(p.read_text())
+        return not isinstance(d,dict) or d.get('state') not in ('completed','recovered')
+    except Exception: return True
+
+def save(s):
+    fd,name=tempfile.mkstemp(prefix='.boot-fallback-',dir=ROOT)
+    try:
+        os.fchmod(fd,0o600)
+        with os.fdopen(fd,'w') as f:
+            json.dump(s,f,sort_keys=True);f.write('\n');f.flush();os.fsync(f.fileno())
+        os.replace(name,ROOT/'boot-fallback.json')
+    finally:
+        if os.path.exists(name): os.unlink(name)
+
+def load(boot):
+    p=ROOT/'boot-fallback.json'
+    if p.is_symlink(): raise ValueError('state symlink')
+    if not p.exists(): return {'boot':boot,'offline_since':None,'scans':[],'last_action':None}
+    if not p.is_file() or p.stat().st_size>16384: raise ValueError('invalid state')
+    x=json.loads(p.read_text())
+    if not isinstance(x,dict) or x.get('boot')!=boot:
+        return {'boot':boot,'offline_since':None,'scans':[],'last_action':None}
+    return x
+
+def decision(active_profile,device,transition,up,offline_since,scans):
+    if transition:return 'HOLD','recovery_transition_pending'
+    if active_profile and active_profile not in ('--','unknown'):
+        return 'HOLD','active_connection'
+    if not device.startswith('30 '): return 'HOLD','device_not_disconnected'
+    if up<MIN_UPTIME:return 'WAIT','startup_grace'
+    if offline_since is None or up-offline_since<MIN_OFFLINE:return 'WAIT','offline_grace'
+    if len(scans)<2:return 'SCAN','need_independent_scans'
+    if scans[-1]-scans[-2]<MIN_SCAN_GAP:return 'WAIT','scan_spacing'
+    return 'HOTSPOT','offline_confirmed'
+
+def saved_visible():
+    """Conservatively ask the installed N6.6B discovery module for saved SSID matches.
+    Errors MUST fail closed rather than activate the hotspot.
+    """
+    import importlib.machinery, importlib.util
+    path='/usr/local/libexec/initiativetracker/initiativetracker-network-discovery'
+    loader=importlib.machinery.SourceFileLoader('it_boot_discovery', path)
+    spec=importlib.util.spec_from_loader('it_boot_discovery',loader)
+    mod=importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    _,_,_,matching,pending_transition,_,_=mod.discover()
+    if pending_transition: raise RuntimeError('transition became pending')
+    return matching
+
+
+def go(action):
+    if os.geteuid()!=0:raise PermissionError('requires sudo')
+    if ROOT.is_symlink() or not ROOT.is_dir():raise ValueError('state directory missing')
+    with (ROOT/'boot-fallback.lock').open('a+b') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        up=uptime(); st=load(boot_id()); a=active(); dev=device_state(); pend=pending()
+        if a and a not in ('--','unknown'):
+            st['offline_since']=None;st['scans']=[]
+        elif st['offline_since'] is None:st['offline_since']=up
+        outcome,reason=decision(a,dev,pend,up,st['offline_since'],st['scans'])
+        live=gate()
+        print('N67_MODE='+('LIVE_ARMED' if live else 'DRY_RUN'))
+        print('ACTIVE_PROFILE='+a)
+        print('TRANSITION_PENDING='+str(pend).lower())
+        print('RECOMMENDATION='+outcome)
+        print('REASON='+reason)
+        print('EXECUTED_NETWORK_ACTION=NONE',flush=True) if action=='status' or not live else None
+        if action=='status':return
+        if not live:
+            save(st)
+            return
+        if outcome=='SCAN':
+            # NetworkManager is expected to attempt saved autoconnections during grace.
+            if st['scans'] and up-st['scans'][-1]<MIN_SCAN_GAP:return
+            # Only proceed on disconnected wlan0 with no recovery transition.
+            nm('-w','20','device','wifi','rescan','ifname',DEVICE,timeout=25)
+            # A saved SSID in the fresh cache means wait for NetworkManager;
+            # never count such a scan toward fallback eligibility.
+            if saved_visible():
+                st['scans']=[]
+                save(st)
+                print('EXECUTED_NETWORK_ACTION=SCAN_FOUND_SAVED_WIFI')
+                return
+            st['scans'].append(uptime());st['scans']=st['scans'][-2:]
+            save(st)
+            print('EXECUTED_NETWORK_ACTION=REQUEST_SCAN')
+            return
+        if outcome=='HOTSPOT':
+            # Recheck immediately; no active profile may be interrupted.
+            if active() not in ('','--','unknown') or pending() or not device_state().startswith('30 '):
+                print('EXECUTED_NETWORK_ACTION=ABORT_RECHECK');return
+            if saved_visible():
+                st['scans']=[];save(st)
+                print('EXECUTED_NETWORK_ACTION=ABORT_SAVED_WIFI_VISIBLE');return
+            if RECOVERY not in nm('-g','NAME','connection','show').splitlines():
+                raise RuntimeError('recovery profile absent')
+            nm('--wait','25','connection','up','id',RECOVERY,'ifname',DEVICE,timeout=35)
+            print('EXECUTED_NETWORK_ACTION=ACTIVATE_PRIVATE_HOTSPOT')
+            st['last_action']=uptime();save(st)
+        else:save(st)
+
+def main():
+    ap=argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('action',choices=['status','tick'])
+    a=ap.parse_args()
+    try:go(a.action);return 0
+    except (OSError,ValueError,PermissionError,RuntimeError,subprocess.TimeoutExpired) as e:
+        print('N67_ERROR='+str(e),file=sys.stderr);return 1
+if __name__=='__main__':sys.exit(main())

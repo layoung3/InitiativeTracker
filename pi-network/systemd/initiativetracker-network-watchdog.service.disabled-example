@@ -1,0 +1,16 @@
+# REFERENCE ONLY: do not enable at N6.3. This command is read-only and exits.
+[Unit]
+Description=InitiativeTracker Network Watchdog (read-only prototype)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/libexec/initiativetracker-network-watchdog check
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+# Deliberately no [Install] section.

@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Root-only socket-activated broker. One request per connection; no credentials accepted."""
+import json
+import os
+import pwd
+import re
+import socket
+import struct
+import subprocess
+import sys
+
+HELPER = '/usr/local/libexec/initiativetracker/initiativetracker-web-network-bridge'
+SECRET_PATH = '/etc/initiativetracker/network/recovery-wifi.password'
+UUID = re.compile(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')
+
+
+def parse_request(data):
+    if len(data) > 1024:
+        raise ValueError('oversized request')
+    obj = json.loads(data)
+    if not isinstance(obj, dict) or set(obj) != {'action', 'uuid'}:
+        raise ValueError('unexpected fields')
+    action, value = obj['action'], obj['uuid']
+    if action == 'hotspot-join-qr' and value is None:
+        return ['hotspot-join-qr']
+    if action == 'rotate-hotspot-password':
+        if not isinstance(value, dict) or set(value) != {'password'} or not isinstance(value['password'], str):
+            raise ValueError('invalid hotspot password payload')
+        return ['/usr/local/libexec/initiativetracker/initiativetracker-hotspot-password']
+    if action == 'provision-wifi':
+        # Credential validation is repeated in the root-only provisioner.
+        if not isinstance(value, dict) or set(value) != {'ssid', 'password'}:
+            raise ValueError('invalid provision payload')
+        return ['/usr/local/libexec/initiativetracker/initiativetracker-wifi-provision']
+    if action == 'begin-return':
+        if not isinstance(value, str) or not UUID.fullmatch(value):
+            raise ValueError('invalid uuid')
+        return [HELPER, action, value]
+    if action in ('status', 'confirm-return', 'begin-hotspot', 'confirm-hotspot') and value is None:
+        return [HELPER, action]
+    raise ValueError('invalid action')
+
+
+def qr_escape(value):
+    return ''.join('\\' + c if c in ('\\', ';', ',', ':', '"') else c for c in value)
+
+
+def private_hotspot_payload():
+    st = os.stat(SECRET_PATH)
+    if st.st_uid != 0 or st.st_mode & 0o077 or not os.path.isfile(SECRET_PATH):
+        raise PermissionError('unsafe hotspot secret permissions')
+    with open(SECRET_PATH, encoding='utf-8') as f:
+        password = f.read().rstrip('\r\n')
+    if not (8 <= len(password.encode('utf-8')) <= 63) or any(ord(c) < 32 for c in password):
+        raise ValueError('invalid hotspot password')
+    ssid = subprocess.run(['/usr/bin/nmcli', '-g', '802-11-wireless.ssid',
+                           'connection', 'show', 'InitiativeTracker-Recovery'],
+                          capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+    if not ssid or len(ssid.encode('utf-8')) > 32 or any(ord(c) < 32 for c in ssid):
+        raise ValueError('invalid recovery SSID')
+    return 'WIFI:T:WPA;S:' + qr_escape(ssid) + ';P:' + qr_escape(password) + ';;'
+
+
+def handle(conn):
+    conn.settimeout(45)
+    peer = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
+    _, uid, _ = struct.unpack('3i', peer)
+    if uid != pwd.getpwnam('initiativetracker').pw_uid:
+        raise PermissionError('unauthorized peer')
+    data = bytearray()
+    while b'\n' not in data:
+        chunk = conn.recv(128)
+        if not chunk:
+            raise ValueError('incomplete request')
+        data.extend(chunk)
+        if len(data) > 1024:
+            raise ValueError('oversized request')
+    if data.index(b'\n') != len(data) - 1:
+        raise ValueError('extra data')
+    args = parse_request(data[:-1].decode('utf-8', errors='strict'))
+    if args[0] == 'hotspot-join-qr':
+        return {'ok': True, 'wifiQr': private_hotspot_payload()}
+    if args[0].endswith(('initiativetracker-wifi-provision', 'initiativetracker-hotspot-password')):
+        # Credentials are passed only via protected local Unix socket and subprocess stdin.
+        payload = json.loads(data[:-1].decode('utf-8'))['uuid']
+        result = subprocess.run(args, input=json.dumps(payload), capture_output=True,
+                                text=True, timeout=20)
+    else:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=38)
+    return {'ok': result.returncode == 0}
+
+
+def main():
+    if os.geteuid() != 0 or os.getenv('LISTEN_FDS') != '1' or int(os.getenv('LISTEN_PID', '0')) != os.getpid():
+        raise SystemExit('socket activation as root required')
+    srv = socket.socket(fileno=3)
+    srv.settimeout(50)
+    # Keep the systemd socket active across daemon restarts; allow one request per activation.
+    with srv.accept()[0] as conn:
+        try:
+            response = handle(conn)
+        except (OSError, ValueError, PermissionError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+            print('NETWORK_BRIDGE_REFUSED=' + type(exc).__name__, file=sys.stderr)
+            response = {'ok': False}
+        try:
+            conn.sendall((json.dumps(response) + '\n').encode('utf-8'))
+        except OSError:
+            pass
+
+
+if __name__ == '__main__':
+    main()

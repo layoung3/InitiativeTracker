@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""N6.8 hub-only: supervised hotspot -> saved Wi-Fi transition. No web access or credential input."""
+import argparse, fcntl, json, os, pathlib, subprocess, sys, tempfile, time
+
+ROOT = pathlib.Path('/var/lib/initiativetracker-network')
+JOURNAL = ROOT / 'return-transition.json'
+LOCK = ROOT / 'return-transition.lock'
+GATE = pathlib.Path('/etc/initiativetracker/network/return-switch.enabled')
+HOTSPOT = 'InitiativeTracker-Recovery'
+DEV = 'wlan0'
+RECOVERY_JOURNAL = ROOT / 'transition.json'
+
+def nm(*args, timeout=40):
+    p = subprocess.run(['/usr/bin/nmcli', *args], text=True, capture_output=True, timeout=timeout)
+    if p.returncode:
+        raise RuntimeError('NetworkManager command failed: ' + p.stderr.strip()[:240])
+    return p.stdout.strip()
+
+def enabled():
+    if GATE.is_symlink() or not GATE.is_file(): return False
+    st=GATE.stat()
+    return st.st_uid==0 and st.st_mode & 0o777 == 0o600 and GATE.read_text().strip()=='ENABLE_RETURN_SWITCH=yes'
+
+def active():
+    v=nm('-g','GENERAL.CONNECTION','device','show',DEV).splitlines()
+    return v[0] if v else ''
+
+def saved():
+    result=[]
+    for line in nm('-t','-f','UUID,TYPE','connection','show').splitlines():
+        # UUIDs are strictly 36-char hex/hyphen, type is canonical; ignore any malformed line.
+        pair=line.split(':',1)
+        if len(pair)!=2 or pair[1] not in ('802-11-wireless','wifi'): continue
+        uuid=pair[0]
+        if len(uuid)!=36 or any(c not in '0123456789abcdefABCDEF-' for c in uuid):continue
+        name=nm('-g','connection.id','connection','show',uuid)
+        mode=nm('-g','802-11-wireless.mode','connection','show',uuid)
+        if name == HOTSPOT or mode=='ap':continue
+        result.append({'uuid':uuid,'name':name})
+    return result
+
+def pending_recovery():
+    if RECOVERY_JOURNAL.is_symlink(): return True
+    if not RECOVERY_JOURNAL.exists():return False
+    try:
+        j=json.loads(RECOVERY_JOURNAL.read_text())
+        return j.get('state') not in ('recovered','completed')
+    except Exception:return True
+
+def read():
+    if JOURNAL.is_symlink():raise RuntimeError('Invalid journal symlink')
+    if not JOURNAL.exists():return None
+    if not JOURNAL.is_file() or JOURNAL.stat().st_size>8192:raise RuntimeError('Invalid journal')
+    j=json.loads(JOURNAL.read_text())
+    if not isinstance(j,dict) or j.get('state') not in ('pending','confirmed','rolled_back','failed'):
+        raise RuntimeError('Invalid journal state')
+    return j
+
+def write(j):
+    fd,name=tempfile.mkstemp(dir=ROOT,prefix='.return-')
+    try:
+        os.fchmod(fd,0o600)
+        with os.fdopen(fd,'w') as f:
+            json.dump(j,f,sort_keys=True);f.write('\n');f.flush();os.fsync(f.fileno())
+        os.replace(name,JOURNAL)
+    finally:
+        if os.path.exists(name):os.unlink(name)
+
+def rollback(j):
+    try:
+        nm('--wait','30','connection','up','id',HOTSPOT,'ifname',DEV,timeout=45)
+        j['state']='rolled_back';j['finished_at']=time.time();write(j)
+        print('RETURN_ACTION=ROLLED_BACK_TO_PRIVATE_HOTSPOT')
+    except Exception as e:
+        # Leave pending so future timer ticks retry recovery.
+        j['last_error']='Hotspot restore failed; retry pending';write(j)
+        raise RuntimeError('Hotspot rollback failed: '+str(e)) from e
+
+def run(args):
+    if os.geteuid()!=0:raise PermissionError('Run with sudo')
+    if ROOT.is_symlink() or not ROOT.is_dir():raise RuntimeError('Missing protected state directory')
+    with LOCK.open('a+b') as f:
+        fcntl.flock(f,fcntl.LOCK_EX)
+        j=read();a=active()
+        if args.command=='status':
+            print('RETURN_SWITCH_ENABLED='+str(enabled()).lower())
+            print('ACTIVE_PROFILE='+a)
+            print('RETURN_JOURNAL_STATE='+('none' if j is None else j['state']))
+            print('RECOVERY_TRANSITION_PENDING='+str(pending_recovery()).lower())
+            print('RETURN_ACTION=NONE');return
+        if args.command=='list-saved':
+            print('SAVED_WIFI='+json.dumps(saved(),sort_keys=True));return
+        if args.command=='tick':
+            if not j or j['state']!='pending':print('RETURN_ACTION=NONE');return
+            if not enabled():print('RETURN_ACTION=GATE_DISABLED_PENDING_ROLLBACK');return
+            if time.time()<j['deadline']:
+                print('RETURN_ACTION=WAIT');return
+            rollback(j);return
+        if args.command=='confirm':
+            if not j or j['state']!='pending':raise RuntimeError('No pending return')
+            if not enabled():raise RuntimeError('Return gate disabled')
+            if time.time()>=j['deadline']:rollback(j);return
+            targets=[x for x in saved() if x['uuid']==j['target_uuid']]
+            if len(targets)!=1 or a!=targets[0]['name']:raise RuntimeError('Target is not active')
+            j['state']='confirmed';j['finished_at']=time.time();write(j)
+            print('RETURN_ACTION=CONFIRMED');return
+        if args.command=='begin':
+            if not enabled():raise RuntimeError('Live return disabled')
+            if pending_recovery():raise RuntimeError('Independent recovery transition pending')
+            if j and j['state']=='pending':raise RuntimeError('Return transition already pending')
+            if a!=HOTSPOT:raise RuntimeError('Must begin from active private hotspot')
+            if not 90<=args.seconds<=600:raise RuntimeError('Invalid rollback deadline')
+            targets=[x for x in saved() if x['uuid']==args.uuid]
+            if len(targets)!=1:raise RuntimeError('Target not an eligible saved Wi-Fi profile UUID')
+            j={'state':'pending','target_uuid':args.uuid,'target_name':targets[0]['name'],
+               'previous':HOTSPOT,'deadline':time.time()+args.seconds,'created_at':time.time()}
+            write(j) # durable before potential SSH loss
+            print('RETURN_ACTION=ATTEMPT_SAVED_WIFI',flush=True)
+            try:
+                nm('--wait','30','connection','up','uuid',args.uuid,'ifname',DEV,timeout=45)
+                print('RETURN_ACTION=CONNECTED_AWAITING_CONFIRMATION',flush=True)
+            except Exception as e:
+                print('RETURN_CONNECTION_ERROR='+str(e),file=sys.stderr,flush=True)
+                rollback(j)
+                raise
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('command',choices=['status','list-saved','begin','tick','confirm'])
+    p.add_argument('--uuid',default='')
+    p.add_argument('--seconds',type=int,default=180)
+    args=p.parse_args()
+    try:run(args);return 0
+    except (OSError,ValueError,RuntimeError,PermissionError,subprocess.TimeoutExpired,json.JSONDecodeError) as e:
+        print('N68_ERROR='+str(e),file=sys.stderr);return 1
+if __name__=='__main__':sys.exit(main())

@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""N6.6F: manually invoked, rate-limited Wi-Fi scan gate. No connection changes.
+
+status/preflight never initiate RF scans. refresh requires explicit --execute.
+This checkpoint does not feed automatic switching or claim scan results prove reachability.
+"""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+
+STATE_DIR = Path('/var/lib/initiativetracker-network')
+FILE = 'scan.json'
+LOCK = 'scan.lock'
+COOLDOWN = 180
+MIN_UPTIME = 90
+DEVICE = 'wlan0'
+RECOVERY = 'InitiativeTracker-Recovery'
+
+
+def run_nm(*args, timeout=15):
+    done = subprocess.run(['/usr/bin/nmcli', *args], capture_output=True, text=True, timeout=timeout, check=False)
+    if done.returncode:
+        raise RuntimeError(f'nmcli exit={done.returncode}: {done.stderr.strip()}')
+    return done.stdout
+
+
+def active_name():
+    value = run_nm('-g', 'GENERAL.CONNECTION', 'device', 'show', DEVICE).strip().splitlines()
+    return value[0].strip() if value else ''
+
+
+def pending_journal(state_dir):
+    path = state_dir / 'transition.json'
+    if path.is_symlink():
+        return True
+    if not path.exists():
+        return False
+    if not path.is_file() or path.stat().st_size > 16384:
+        return True
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        return not isinstance(data, dict) or data.get('state') not in ('recovered', 'completed')
+    except (ValueError, OSError):
+        return True
+
+
+def boot_id():
+    return Path('/proc/sys/kernel/random/boot_id').read_text(encoding='ascii').strip()
+
+
+def uptime():
+    return float(Path('/proc/uptime').read_text(encoding='ascii').split()[0])
+
+
+def read_state(path, boot):
+    if path.is_symlink():
+        raise ValueError('scan state is a symlink')
+    if not path.exists():
+        return None
+    if not path.is_file() or path.stat().st_size > 32768:
+        raise ValueError('invalid scan state')
+    state = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(state, dict) or state.get('schema') != 1:
+        raise ValueError('invalid scan state schema')
+    if state.get('boot_id') != boot:
+        return None
+    value = state.get('last_attempt_uptime')
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1e9:
+        raise ValueError('invalid scan attempt time')
+    if state.get('result') not in ('attempting', 'success', 'failed'):
+        raise ValueError('invalid scan status')
+    if state.get('last_success_uptime') is not None:
+        success = state['last_success_uptime']
+        if isinstance(success, bool) or not isinstance(success, (int, float)) or not 0 <= success <= value:
+            raise ValueError('invalid success time')
+    return state
+
+
+def save_state(path, state):
+    raw = (json.dumps(state, sort_keys=True, indent=2) + '\n').encode()
+    fd, temp = tempfile.mkstemp(prefix='.scan-', dir=str(path.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(raw)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp, path)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+
+
+def assess(*, active, pending, current_uptime, last_attempt=None, device_state='disconnected'):
+    if pending:
+        return False, 'recovery_transition_pending'
+    if active == RECOVERY:
+        return False, 'hotspot_active'
+    if active and active not in ('--', 'unknown'):
+        return False, 'connected_profile_active'
+    if device_state not in ('disconnected', 'unavailable'):
+        return False, 'device_not_disconnected'
+    if current_uptime < MIN_UPTIME:
+        return False, 'startup_grace'
+    if last_attempt is not None and current_uptime - last_attempt < COOLDOWN:
+        return False, 'cooldown'
+    return True, 'safe_to_request_scan'
+
+
+def device_state():
+    val = run_nm('-g', 'GENERAL.STATE', 'device', 'show', DEVICE).strip()
+    # NetworkManager returns e.g. '30 (disconnected)' or '100 (connected)'.
+    if val.startswith('30 '):
+        return 'disconnected'
+    if val.startswith('20 '):
+        return 'unavailable'
+    return 'other'
+
+
+def preflight(state_dir, old, up):
+    active = active_name()
+    pending = pending_journal(state_dir)
+    state = device_state()
+    last = old['last_attempt_uptime'] if old else None
+    allowed, reason = assess(active=active, pending=pending, current_uptime=up,
+                             last_attempt=last, device_state=state)
+    return active, pending, state, allowed, reason
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('action', choices=('status', 'preflight', 'refresh'))
+    p.add_argument('--execute', choices=('REQUEST_SCAN',))
+    p.add_argument('--state-dir', type=Path, default=STATE_DIR)
+    args = p.parse_args()
+    try:
+        if os.geteuid() != 0 and args.state_dir == STATE_DIR:
+            raise PermissionError('use sudo for protected state')
+        if args.action == 'refresh' and args.execute != 'REQUEST_SCAN':
+            raise ValueError('refresh requires --execute REQUEST_SCAN')
+        if args.state_dir.is_symlink() or not args.state_dir.is_dir():
+            raise ValueError('state directory missing or symlink')
+        boot, up = boot_id(), uptime()
+        path = args.state_dir / FILE
+        # The lock is held across BOTH gating and scan to prevent racing invocations.
+        with (args.state_dir / LOCK).open('a+b') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            old = read_state(path, boot)
+            active, pending, state, allowed, reason = preflight(args.state_dir, old, up)
+            print('N66F_MODE=' + ('EXPLICIT_RF_SCAN' if args.action == 'refresh' else 'READ_ONLY'))
+            print('NETWORK_CONNECTION_WRITES=DISABLED')
+            print('ACTIVE_PROFILE=' + active)
+            print('DEVICE_STATE=' + state)
+            print('TRANSITION_PENDING=' + str(pending).lower())
+            print('SCAN_ALLOWED=' + str(allowed).lower())
+            print('SCAN_REASON=' + reason)
+            print('LAST_SCAN_RESULT=' + (old['result'] if old else 'none'))
+            if args.action != 'refresh':
+                print('EXECUTED_SCAN=false')
+                return 0
+            if not allowed:
+                print('EXECUTED_SCAN=false')
+                return 0
+            # Reserve the cooldown before making the request, including on error.
+            reservation = {'schema': 1, 'boot_id': boot, 'last_attempt_uptime': up,
+                           'last_success_uptime': old.get('last_success_uptime') if old else None,
+                           'result': 'attempting'}
+            save_state(path, reservation)
+            try:
+                # Recheck directly before scan: only one physical Wi-Fi interface.
+                again, pending2, state2, allowed2, reason2 = preflight(args.state_dir, None, uptime())
+                if not allowed2:
+                    reservation['result'] = 'failed'
+                    save_state(path, reservation)
+                    print('EXECUTED_SCAN=false')
+                    print('ABORT_REASON=' + reason2)
+                    return 0
+                run_nm('-w', '15', 'device', 'wifi', 'rescan', 'ifname', DEVICE, timeout=20)
+                reservation['last_success_uptime'] = uptime()
+                reservation['result'] = 'success'
+                save_state(path, reservation)
+                print('EXECUTED_SCAN=true')
+                print('SCAN_REQUEST_SUCCEEDED=true')
+                print('NOTE=Scan cache refresh does not guarantee that any network is reachable')
+                return 0
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                reservation['result'] = 'failed'
+                save_state(path, reservation)
+                print('EXECUTED_SCAN=true')
+                print('SCAN_REQUEST_SUCCEEDED=false')
+                print('SCAN_ERROR=' + str(error))
+                return 1
+    except (OSError, RuntimeError, ValueError, PermissionError, subprocess.TimeoutExpired) as error:
+        print('N66F_ERROR=' + type(error).__name__ + ': ' + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

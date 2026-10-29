@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# N5 read-only diagnostic report. Does not alter Wi-Fi, profiles, DNS or services.
+set -euo pipefail
+export LC_ALL=C
+if [[ $# -ne 0 ]]; then echo "usage: initiativetracker-network-preflight" >&2; exit 64; fi
+printf '%s\n' '=== InitiativeTracker networking read-only preflight ==='
+printf '%s\n' 'NOTE: This does not certify switching or recovery.'
+for bin in /usr/bin/nmcli /usr/bin/systemctl /usr/sbin/ip /usr/bin/ip; do
+  if [[ -x "$bin" ]]; then printf 'FOUND %s\n' "$bin"; fi
+done
+if ! command -v nmcli >/dev/null 2>&1; then
+  echo 'NetworkManager CLI unavailable'; exit 1
+fi
+printf '\nNetworkManager status:\n'
+nmcli -t -f RUNNING general || true
+printf '\nDevice states:\n'
+nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status || true
+printf '\nWi-Fi capability (no credentials):\n'
+nmcli -t -f GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE device show wlan0 2>/dev/null || true
+printf '\nCurrent active connection names (no secrets):\n'
+nmcli -t -f NAME,TYPE,DEVICE connection show --active || true
+printf '\nApplication service:\n'
+systemctl is-active initiativetracker.service || true
+printf '\nApplication health:\n'
+curl --fail --silent --max-time 5 http://127.0.0.1:5000/system/health || true
+printf '\nN5 keeps network switching DISABLED.\n'
