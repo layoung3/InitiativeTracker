@@ -1,9 +1,9 @@
 [Unit]
 Description=InitiativeTracker boot offline fallback checks
 [Timer]
-OnBootSec=30s
-OnUnitInactiveSec=30s
-AccuracySec=5s
+OnBootSec=10s
+OnUnitInactiveSec=10s
+AccuracySec=1s
 Unit=initiativetracker-boot-fallback.service
 [Install]
 WantedBy=timers.target

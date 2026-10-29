@@ -21,6 +21,8 @@ public class CombatantDisplayState
 
     public int Initiative { get; set; }
 
+    public int ExhaustionLevel { get; set; }
+
     public int? CurrentHp { get; set; }
 
     public int? MaxHp { get; set; }

@@ -53,6 +53,12 @@ public class IndexModel : PageModel
     [BindProperty]
     public int Quantity { get; set; } = 1;
 
+    [BindProperty]
+    public bool InitiallyHidden { get; set; }
+
+    [BindProperty]
+    public bool InitiallyHpHidden { get; set; }
+
     public bool CanUndo => _encounterState.CanUndo;
 
     public Combatant? ConditionCombatant { get; private set; }
@@ -81,7 +87,7 @@ public class IndexModel : PageModel
         {
             _encounterState
                 .AddPlayerCharacter(
-                    characterId);
+                    characterId, InitiallyHidden, InitiallyHpHidden);
 
             await BroadcastEncounterAsync();
 
@@ -130,7 +136,7 @@ public class IndexModel : PageModel
                 Initiative,
                 CurrentHp,
                 MaxHp,
-                Quantity);
+                Quantity, InitiallyHidden, InitiallyHpHidden);
 
             await BroadcastEncounterAsync();
         }
@@ -565,6 +571,9 @@ public class IndexModel : PageModel
             when (ex is ArgumentException
                   or InvalidOperationException)
         {
+            if (Request.Headers["X-Visibility-Autosave"] == "1")
+                return new JsonResult(new { error = ex.Message }) { StatusCode = 400 };
+
             ModelState.AddModelError(
                 string.Empty,
                 ex.Message);
@@ -575,6 +584,8 @@ public class IndexModel : PageModel
             return Page();
         }
 
+        if (Request.Headers["X-Visibility-Autosave"] == "1")
+            return new JsonResult(new { saved = true });
         return RedirectToPage();
     }
 

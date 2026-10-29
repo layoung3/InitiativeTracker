@@ -534,7 +534,7 @@
                                         name="exhaustionLevel"
                                         value="@level"
                                         class="exhaustion-pip
-                                    @(level <= Model.Character.ExhaustionLevel
+                                    @(level == Model.Character.ExhaustionLevel
                                         ? "is-active"
                                         : "")"
                                         title="Set exhaustion to level @level"

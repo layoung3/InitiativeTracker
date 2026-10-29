@@ -170,6 +170,17 @@
                                         </h2>
 
 
+                                        @if (combatant is null && !Model.Encounter.IsStarted)
+                                        {
+                                            <form method="post" asp-page-handler="AddCharacter">
+                                                <input type="hidden" name="characterId" value="@character.Id" />
+                                                <button class="btn btn-primary" type="submit">Add to encounter</button>
+                                            </form>
+                                        }
+                                        @if ((combatant?.ExhaustionLevel ?? character.ExhaustionLevel) > 0)
+                                        {
+                                            <span class="badge text-bg-warning">Exhaustion @(combatant?.ExhaustionLevel ?? character.ExhaustionLevel)</span>
+                                        }
                                         @if (isCurrent &&
                                              isControlled)
                                         {

@@ -1,201 +1,56 @@
 @page "/setup"
 @model InitiativeTracker.Web.Pages.Setup.IndexModel
-
 @{
     ViewData["Title"] = "Tracker Setup";
 }
-
-<div class="container py-4"
-     style="max-width: 760px;">
-
-    <div class="mb-4">
-        <h1 class="mb-1">
-            Initiative Tracker
-        </h1>
-
-        <div class="text-muted">
-            Hub setup and quick access
-        </div>
-    </div>
-
-
-    <div class="row g-3">
-
-        <div class="col-12 col-md-6">
-
-            <div class="card h-100">
-
-                <div class="card-body text-center">
-
-                    <div class="text-muted mb-2">
-                        Player Game Code
-                    </div>
-
-                    <div class="display-5
-                                fw-bold
-                                font-monospace
-                                mb-3">
-                        @Model.Session.JoinCode
-                    </div>
-
-
-                    <img src="@Model.PlayerQrDataUri"
-                         alt="Player join QR code"
-                         class="img-fluid
-                                border
-                                rounded
-                                bg-white
-                                p-2
-                                mb-2"
-                         style="width: min(220px, 80vw);" />
-
-
-                    <div class="small text-body-secondary">
-                        Scan to join this game.
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <div class="col-12 col-md-6">
-
-            <div class="card h-100">
-
-                <div class="card-body text-center">
-
-                    <div class="text-muted mb-2">
-                        DM PIN
-                    </div>
-
-                    <div class="display-5
-                                fw-bold
-                                font-monospace
-                                mb-3">
-                        @Model.Session.DmPin
-                    </div>
-
-
-                    <img src="/setup/dm-qr"
-                         alt="DM login QR code"
-                         class="img-fluid
-                                border
-                                rounded
-                                bg-white
-                                p-2
-                                mb-2"
-                         style="width: min(220px, 80vw);" />
-
-
-                    <div class="small text-body-secondary">
-                        Scan to open DM Login, then enter the PIN above.
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-
-    <div class="card mt-3">
-        <div class="card-body">
-            <h2 class="h5">Join Hub Private Wi-Fi</h2>
-            <p class="text-body-secondary">Scan this code with your phone's camera to join the hub's private Wi-Fi when it is active. After joining, open the Network Setup QR below.</p>
+@section Styles {
+    <link rel="stylesheet" href="~/css/setup.css" asp-append-version="true" />
+}
+<div class="setup-dashboard">
+    <header class="setup-heading">
+        <div><h1>Initiative Tracker</h1><p>Hub setup and quick access</p></div>
+        <a href="/display" class="btn btn-primary">Open Display</a>
+    </header>
+    <div class="setup-grid">
+        <section class="card"><div class="card-body">
+            <h2>1 · Join private Wi-Fi</h2>
             @if (Model.HotspotJoinQrAvailable)
             {
-                <div class="text-center">
-                    <img src="@Model.HotspotJoinQrDataUri" alt="Join InitiativeTracker private Wi-Fi" class="img-fluid border rounded bg-white p-2" style="width:min(220px,80vw);" />
-                    <div class="small mt-2">InitiativeTracker private Wi-Fi · password included in QR</div>
-                </div>
+                <img src="@Model.HotspotJoinQrDataUri" alt="Join hub private Wi-Fi" class="setup-qr" />
+                <p>Scan when the private hotspot is active.</p>
             }
             else
             {
-                <p class="alert alert-secondary mb-0">Private Wi-Fi QR is unavailable. The root-only network bridge or hotspot secret may not be configured.</p>
+                <p class="alert alert-secondary">Private Wi-Fi QR unavailable. Check Network Status.</p>
             }
-            <p class="small text-body-secondary mt-2 mb-0">This QR contains the hotspot password. It is shown only on the Pi's local Setup screen; anyone who can photograph it can join this Wi-Fi.</p>
-        </div>
+            <small>Local screen only. QR includes the Wi-Fi password.</small>
+        </div></section>
+        <section class="card"><div class="card-body">
+            <h2>2 · Join the game</h2>
+            <img src="@Model.PlayerQrDataUri" alt="Join this game as a player" class="setup-qr" />
+            <p>Game code <strong class="font-monospace">@Model.Session.JoinCode</strong></p>
+            <a href="/join" class="btn btn-outline-primary">Player Join</a>
+        </div></section>
+        <section class="card"><div class="card-body">
+            <h2>DM access</h2>
+            <img src="/setup/dm-qr" alt="Open DM login" class="setup-qr" />
+            <p>PIN <strong class="font-monospace">@Model.Session.DmPin</strong></p>
+            <a href="/dm/login" class="btn btn-outline-primary">DM Login</a>
+        </div></section>
+        <section class="card"><div class="card-body">
+            <h2>Connect a display</h2>
+            <img src="@Model.DisplayQrDataUri" alt="Connect a display device" class="setup-qr" />
+            <p>Scan on a satellite, laptop or display device.</p>
+            <a href="@Model.DisplayPairingUrl" class="btn btn-outline-primary">Display Pairing</a>
+        </div></section>
     </div>
-
-    <div class="card mt-3">
-        <div class="card-body">
-            <h2 class="h5">Network Setup</h2>
-            <div class="row align-items-center g-3">
-                <div class="col-sm-auto text-center">
-                    <img src="@Model.NetworkQrDataUri" alt="Open hub network management on your phone"
-                         class="img-fluid border rounded bg-white p-2" style="width: min(180px, 65vw);" />
-                </div>
-                <div class="col">
-                    <p>Scan with a phone on the same network to review network status.</p>
-                    <p class="small text-body-secondary">DM login is required. Network changes are supervised and require the Pi administrator to enable switching.</p>
-                    <a href="/dm/network" class="btn btn-outline-primary">Open Network Status</a>
-                    <div class="small text-break mt-2">@Model.NetworkPageUrl</div>
-                </div>
-            </div>
+    <section class="card setup-network"><div class="card-body">
+        <img src="@Model.NetworkQrDataUri" alt="Open network status on your phone" class="setup-network-qr" />
+        <div><h2>Network status and Wi-Fi setup</h2>
+            <p><strong>@Model.Network?.Connection</strong> · @(Model.Network?.Ipv4 ?? "No Wi-Fi address")</p>
+            <p>On the same network, scan to review status or join external Wi-Fi. DM login required.</p>
+            <p class="small text-break mb-0">@Model.NetworkPageUrl</p>
         </div>
-    </div>
-
-    <div class="card mt-3">
-
-        <div class="card-body">
-
-            <h2 class="h5">
-                Display Pairing
-            </h2>
-
-            <p class="text-muted">
-                Use this link once on a satellite,
-                laptop, or other display device.
-            </p>
-
-            <input type="text"
-                   value="@Model.DisplayPairingUrl"
-                   readonly
-                   class="form-control
-                          font-monospace" />
-
-        </div>
-
-    </div>
-
-
-    <div class="card mt-3">
-
-        <div class="card-body">
-
-            <h2 class="h5 mb-3">
-                Open Tracker
-            </h2>
-
-            <div class="d-grid
-                        d-sm-flex
-                        gap-2">
-
-                <a href="/dm/login"
-                   class="btn btn-primary">
-                    DM Login
-                </a>
-
-                <a href="/display"
-                   class="btn btn-outline-primary">
-                    Open Display
-                </a>
-
-                <a href="/join"
-                   class="btn btn-outline-secondary">
-                    Player Join
-                </a>
-
-            </div>
-
-        </div>
-
-    </div>
-
+        <a href="/dm/network" class="btn btn-outline-primary">Open Network Status</a>
+    </div></section>
 </div>

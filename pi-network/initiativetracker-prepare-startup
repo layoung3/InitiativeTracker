@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Before NetworkManager starts, disable autoconnect only on the staged recovery AP.
+Never activates a device, creates a profile, changes credentials, or edits other APs.
+"""
+import configparser
+import os
+from pathlib import Path
+import tempfile
+
+PROFILE = Path('/etc/NetworkManager/system-connections/InitiativeTracker-Recovery.nmconnection')
+
+
+def prepare(path=PROFILE):
+    if path.is_symlink(): raise ValueError('Recovery keyfile is a symlink')
+    if not path.exists(): return False
+    info = path.stat()
+    if info.st_uid != 0 or info.st_mode & 0o077:
+        raise ValueError('Recovery keyfile must be root-owned and private')
+    parser = configparser.ConfigParser(interpolation=None, strict=True)
+    parser.read_string(path.read_text())
+    if (parser.get('connection', 'id') != 'InitiativeTracker-Recovery' or
+            parser.get('wifi', 'mode') != 'ap'):
+        raise ValueError('Unexpected recovery profile identity or mode')
+    if parser.get('connection', 'autoconnect', fallback='true').lower() == 'false': return False
+    parser.set('connection', 'autoconnect', 'false')
+    fd, name = tempfile.mkstemp(prefix='.n7-recovery-', dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            parser.write(stream, space_around_delimiters=False)
+            stream.flush(); os.fsync(stream.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+    return True
+
+
+if __name__ == '__main__':
+    if os.geteuid() != 0: raise PermissionError('Requires root')
+    prepare()

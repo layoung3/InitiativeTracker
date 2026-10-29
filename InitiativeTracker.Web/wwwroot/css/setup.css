@@ -1,0 +1,16 @@
+.setup-dashboard { max-width: 1280px; margin: auto; padding: 20px; }
+.setup-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.setup-heading h1 { font-size: 1.7rem; margin: 0; }
+.setup-heading p { margin: 4px 0 0; }
+.setup-dashboard h2 { font-size: 1.1rem; margin-bottom: 12px; }
+.setup-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.setup-grid .card-body { text-align: center; padding: 14px; }
+.setup-qr { width: 220px; max-width: 100%; aspect-ratio: 1; background: white; padding: 8px; margin-bottom: 10px; }
+.setup-dashboard .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.setup-grid p { margin-bottom: 10px; }
+.setup-network { margin-top: 14px; }
+.setup-network .card-body { display: flex; align-items: center; gap: 20px; padding: 12px; }
+.setup-network-qr { width: 150px; height: 150px; background: white; padding: 6px; flex-shrink: 0; }
+.setup-network .btn { margin-left: auto; flex-shrink: 0; }
+@media(max-width: 1000px) { .setup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width: 540px) { .setup-grid { grid-template-columns: 1fr; } .setup-network .card-body, .setup-heading { flex-direction: column; } .setup-network .btn { margin-left: 0; } }

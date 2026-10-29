@@ -10,6 +10,8 @@ public class Combatant
 
     public int Initiative { get; set; }
 
+    public int ExhaustionLevel { get; set; }
+
     /// <summary>
     /// Represents the combatant's explicit position in the initiative order.
     /// Lower numbers act earlier.

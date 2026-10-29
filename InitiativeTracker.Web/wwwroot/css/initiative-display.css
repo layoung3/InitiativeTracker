@@ -176,7 +176,8 @@ body {
 .initiative-display {
     position: relative;
     isolation: isolate;
-    min-height: 100dvh;
+    height: 100dvh;
+    min-height: 0;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
@@ -398,7 +399,19 @@ body {
     min-width: 0;
 }
 
+.combatant-name-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.combatant-name-heading > .condition-badge {
+    flex-shrink: 0;
+}
+
 .combatant-name-text {
+    min-width: 0;
     overflow: hidden;
     color: var(--display-text);
     font-size: clamp(1.35rem, 2.6vw, 2.25rem);
@@ -724,15 +737,6 @@ body {
 
 @media (max-width: 767.98px) {
 
-    body {
-        overflow: auto;
-    }
-
-    .initiative-display {
-        min-height: 100dvh;
-        overflow: visible;
-    }
-
     .initiative-header {
         position: sticky;
         top: 0;
@@ -763,7 +767,6 @@ body {
     }
 
     .initiative-list {
-        overflow: visible;
         padding: 0.8rem;
     }
 

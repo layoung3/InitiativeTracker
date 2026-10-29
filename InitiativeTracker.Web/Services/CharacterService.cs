@@ -1330,7 +1330,8 @@ public class CharacterService
         int currentHp,
         int maxHp,
         int temporaryHp,
-        IReadOnlyCollection<PlayerCharacterCondition> conditions)
+        IReadOnlyCollection<PlayerCharacterCondition> conditions,
+        int exhaustionLevel)
     {
         lock (_lock)
         {
@@ -1347,6 +1348,8 @@ public class CharacterService
                     "Character was not found.",
                     nameof(characterId));
 
+
+            character.ExhaustionLevel = Math.Clamp(exhaustionLevel, 0, 6);
 
             character.MaxHp =
                 Math.Max(

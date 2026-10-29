@@ -16,12 +16,14 @@ public class IndexModel : PageModel
     private readonly TrackerUrlService
         _trackerUrl;
     private readonly NetworkCommandBridge _networkBridge;
+    private readonly NetworkStatusService _networkStatus;
+    public NetworkStatusService.Snapshot? Network { get; private set; }
 
 
     public IndexModel(
         GameSessionService gameSession,
         TrackerUrlService trackerUrl,
-        NetworkCommandBridge networkBridge)
+        NetworkCommandBridge networkBridge, NetworkStatusService networkStatus)
     {
         _gameSession =
             gameSession;
@@ -29,6 +31,7 @@ public class IndexModel : PageModel
         _trackerUrl =
             trackerUrl;
         _networkBridge = networkBridge;
+        _networkStatus = networkStatus;
     }
 
 
@@ -38,6 +41,8 @@ public class IndexModel : PageModel
 
     public string DisplayPairingUrl { get; private set; } =
         string.Empty;
+
+    public string DisplayQrDataUri { get; private set; } = string.Empty;
 
     public string DmLoginUrl { get; private set; } =
         string.Empty;
@@ -66,6 +71,8 @@ public class IndexModel : PageModel
         }
 
 
+        Network = await _networkStatus.GetAsync(cancellationToken);
+
         var baseUrl =
             _trackerUrl
                 .GetBaseUrl(
@@ -82,6 +89,11 @@ public class IndexModel : PageModel
             Uri.EscapeDataString(
                 Session.DisplayToken);
 
+
+        using var displayData = QRCodeGenerator.GenerateQrCode(DisplayPairingUrl, QRCodeGenerator.ECCLevel.Q);
+        using var displayQr = new SvgQRCode(displayData);
+        DisplayQrDataUri = "data:image/svg+xml;base64," +
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(displayQr.GetGraphic(8)));
 
         // Generate the player invitation QR inside the locally restricted
         // setup page. No anonymous QR endpoint is needed.

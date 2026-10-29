@@ -188,6 +188,14 @@ public class EncounterStateService
         db.SaveChanges();
     }
 
+    private void HydrateLegacyExhaustion(EncounterSnapshot snapshot)
+    {
+        foreach (var combatant in snapshot.Combatants.Where(c => !c.ExhaustionLevel.HasValue))
+            combatant.ExhaustionLevel = combatant.PlayerCharacterId is Guid characterId
+                ? _characterService.GetCharacter(characterId)?.ExhaustionLevel ?? 0
+                : 0;
+    }
+
     private void LoadPersistedState()
     {
         using var db =
@@ -213,6 +221,7 @@ public class EncounterStateService
 
             if (encounterSnapshot is not null)
             {
+                HydrateLegacyExhaustion(encounterSnapshot);
                 CurrentEncounter =
                     Encounter.FromSnapshot(
                         encounterSnapshot);
@@ -226,6 +235,7 @@ public class EncounterStateService
 
             if (undoHistory is not null)
             {
+                foreach (var snapshot in undoHistory) HydrateLegacyExhaustion(snapshot);
                 _undoHistory.Clear();
 
                 _undoHistory.AddRange(
@@ -330,67 +340,80 @@ public class EncounterStateService
     }
 
     public void AddPlayerCharacter(
-        Guid characterId)
+        Guid characterId,
+        bool isHiddenFromPublic = false,
+        bool isHpHiddenFromPublic = false,
+        Guid? submittingPlayerProfileId = null)
     {
-        var character =
-            _characterService.GetCharacter(
-                characterId)
-            ?? throw new ArgumentException(
-                "Character was not found.",
-                nameof(characterId));
-
-        var characterConditions =
-            _characterService
-                .GetConditions(
-                    character.Id);
-
-        ExecuteMutation(() =>
+        lock (_lock)
         {
-            if (CurrentEncounter.Combatants.Any(
-                    x =>
-                        x.PlayerCharacterId ==
-                        character.Id))
+            var character =
+                _characterService.GetCharacter(
+                    characterId)
+                ?? throw new ArgumentException(
+                    "Character was not found.",
+                    nameof(characterId));
+
+            var characterConditions =
+                _characterService
+                    .GetConditions(
+                        character.Id);
+
+            ExecuteMutation(() =>
             {
-                throw new InvalidOperationException(
-                    "This character is already in the encounter.");
-            }
+                if (submittingPlayerProfileId.HasValue &&
+                    (CurrentEncounter.IsStarted || character.PlayerProfileId != submittingPlayerProfileId.Value))
+                    throw new InvalidOperationException("Only your own characters can be added during encounter setup.");
 
-            CurrentEncounter.AddCombatant(
-                new Combatant
+                if (CurrentEncounter.Combatants.Any(
+                        x =>
+                            x.PlayerCharacterId ==
+                            character.Id))
                 {
-                    Name =
-                    character.Name,
+                    throw new InvalidOperationException(
+                        "This character is already in the encounter.");
+                }
 
-                    Initiative =
-                    0,
+                CurrentEncounter.AddCombatant(
+                    new Combatant
+                    {
+                        IsHiddenFromPublic = isHiddenFromPublic,
+                        IsHpHiddenFromPublic = isHpHiddenFromPublic,
+                        ExhaustionLevel = character.ExhaustionLevel,
+                        Name =
+                        character.Name,
 
-                    CurrentHp =
-                    character.CurrentHp,
+                        Initiative =
+                        0,
 
-                    MaxHp =
-                    character.MaxHp,
+                        CurrentHp =
+                        character.CurrentHp,
 
-                    TemporaryHp =
-                    character.TemporaryHp,
+                        MaxHp =
+                        character.MaxHp,
 
-                    PlayerCharacterId =
-                    character.Id,
+                        TemporaryHp =
+                        character.TemporaryHp,
 
-                    AssignedPlayerProfileId =
-                    character.PlayerProfileId,
+                        PlayerCharacterId =
+                        character.Id,
 
-                    Conditions = characterConditions
-                        .Select(
-                            condition =>
-                                new CombatantCondition
-                                {
-                                    Id = condition.Id,
-                                    Name = condition.Name,
-                                    IsCustom = condition.IsCustom,
-                                    Notes = condition.Notes
-                                }).ToList()
-                });
-        });
+                        AssignedPlayerProfileId =
+                        character.PlayerProfileId,
+
+                        Conditions = characterConditions
+                            .Select(
+                                condition =>
+                                    new CombatantCondition
+                                    {
+                                        Id = condition.Id,
+                                        Name = condition.Name,
+                                        IsCustom = condition.IsCustom,
+                                        Notes = condition.Notes
+                                    }).ToList()
+                    });
+            });
+        }
     }
 
     public void AddCombatants(
@@ -398,7 +421,9 @@ public class EncounterStateService
         int initiative,
         int? currentHp,
         int? maxHp,
-        int quantity)
+        int quantity,
+        bool isHiddenFromPublic = false,
+        bool isHpHiddenFromPublic = false)
     {
         if (quantity < 1 ||
             quantity > 50)
@@ -423,6 +448,8 @@ public class EncounterStateService
                 CurrentEncounter.AddCombatant(
                     new Combatant
                     {
+                        IsHiddenFromPublic = isHiddenFromPublic,
+                        IsHpHiddenFromPublic = isHpHiddenFromPublic,
                         Name = combatantName,
                         Initiative = initiative,
                         CurrentHp = currentHp,
@@ -580,6 +607,7 @@ public class EncounterStateService
                             {
                                 Id = c.Id,
                                 Name = c.Name,
+                                ExhaustionLevel = c.ExhaustionLevel,
                                 Initiative = c.Initiative,
                                 CurrentHp = hideHp ? null : c.CurrentHp,
                                 MaxHp = hideHp ? null : c.MaxHp,
@@ -811,6 +839,24 @@ public class EncounterStateService
         });
     }
 
+    public void SetCharacterExhaustion(Guid characterId, int level)
+    {
+        lock (_lock)
+        {
+            var linked = CurrentEncounter.Combatants.Where(c => c.PlayerCharacterId == characterId).ToList();
+            if (linked.Count == 0)
+            {
+                _characterService.SetCharacterExhaustion(characterId, level);
+                return;
+            }
+            ExecuteMutation(() =>
+            {
+                foreach (var combatant in linked)
+                    combatant.ExhaustionLevel = Math.Clamp(level, 0, 6);
+            });
+        }
+    }
+
     public void SetCombatantVisibility(
         Guid combatantId,
         bool isHiddenFromPublic,
@@ -869,7 +915,7 @@ public class EncounterStateService
                 combatant.CurrentHp.Value,
                 combatant.MaxHp.Value,
                 combatant.TemporaryHp,
-                conditions);
+                conditions, combatant.ExhaustionLevel);
     }
 
     private void SyncAllLinkedCharacters()

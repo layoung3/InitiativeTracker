@@ -17,6 +17,10 @@
           asp-append-version="true" />
 }
 
+<div class="dm-turn-context" role="status">
+    @(Model.Encounter.IsStarted ? $"Round {Model.Encounter.Round} · Current: {Model.Encounter.CurrentCombatant?.Name}" : "Encounter Setup")
+</div>
+
 <div class="container-fluid dm-page px-3 px-lg-4 py-3 py-lg-4">
 
     <header class="dm-header d-flex
@@ -195,6 +199,8 @@
                                         {
                                             <form method="post"
                                                   asp-page-handler="AddPlayerCharacter">
+                                                <label><input type="checkbox" name="InitiallyHidden" value="true" /> Hidden</label>
+                                                <label><input type="checkbox" name="InitiallyHpHidden" value="true" /> Hide HP</label>
 
                                                 <input type="hidden"
                                                        name="characterId"
@@ -236,6 +242,10 @@
 
                 <form method="post"
                       asp-page-handler="AddCombatant">
+                    <div class="d-flex gap-3 mb-3">
+                        <label><input asp-for="InitiallyHidden" /> Hide from public</label>
+                        <label><input asp-for="InitiallyHpHidden" /> Hide HP</label>
+                    </div>
 
                     <div class="row g-3 align-items-end">
 
@@ -452,12 +462,17 @@
                                             </div>
 
 
-                                            <input type="text"
-                                                   name="name"
-                                                   value="@combatant.Name"
-                                                   class="form-control
-                                            form-control-sm"
-                                                   required />
+                                            <div class="dm-combatant-name-heading">
+                                                <input type="text"
+                                                       name="name"
+                                                       value="@combatant.Name"
+                                                       class="form-control form-control-sm"
+                                                       required />
+                                                @if (combatant.ExhaustionLevel > 0)
+                                                {
+                                                    <span class="condition-badge dm-exhaustion-badge">Exhaustion @combatant.ExhaustionLevel</span>
+                                                }
+                                            </div>
 
                                         </div>
 
@@ -659,7 +674,7 @@
                                         }
                                     </a>
                                     <form method="post"
-                                          asp-page-handler="SetVisibility"
+                                          asp-page-handler="SetVisibility" data-visibility-autosave
                                           class="d-flex
                                         flex-wrap
                                         align-items-center
@@ -823,9 +838,13 @@
                                             align-items-center
                                             gap-1">
 
-                                            <span class="fw-bold fs-5">
-                                                @combatant.Name
-                                            </span>
+                                            <div class="dm-combatant-name-heading">
+                                                <span class="fw-bold fs-5">@combatant.Name</span>
+                                                @if (combatant.ExhaustionLevel > 0)
+                                                {
+                                                    <span class="condition-badge dm-exhaustion-badge">Exhaustion @combatant.ExhaustionLevel</span>
+                                                }
+                                            </div>
 
 
                                             @if (combatant.IsHiddenFromPublic)
@@ -1212,7 +1231,7 @@
                                 </a>
                                 @* Public Visibility *@
                                 <form method="post"
-                                      asp-page-handler="SetVisibility"
+                                      asp-page-handler="SetVisibility" data-visibility-autosave
                                       class="d-flex
                                     flex-wrap
                                     align-items-center
