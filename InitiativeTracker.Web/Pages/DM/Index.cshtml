@@ -462,12 +462,17 @@
                                             </div>
 
 
-                                            <input type="text"
-                                                   name="name"
-                                                   value="@combatant.Name"
-                                                   class="form-control
-                                            form-control-sm"
-                                                   required />
+                                            <div class="dm-combatant-name-heading">
+                                                <input type="text"
+                                                       name="name"
+                                                       value="@combatant.Name"
+                                                       class="form-control form-control-sm"
+                                                       required />
+                                                @if (combatant.ExhaustionLevel > 0)
+                                                {
+                                                    <span class="condition-badge dm-exhaustion-badge">Exhaustion @combatant.ExhaustionLevel</span>
+                                                }
+                                            </div>
 
                                         </div>
 
@@ -833,9 +838,13 @@
                                             align-items-center
                                             gap-1">
 
-                                            <span class="fw-bold fs-5">
-                                                @combatant.Name
-                                            </span>
+                                            <div class="dm-combatant-name-heading">
+                                                <span class="fw-bold fs-5">@combatant.Name</span>
+                                                @if (combatant.ExhaustionLevel > 0)
+                                                {
+                                                    <span class="condition-badge dm-exhaustion-badge">Exhaustion @combatant.ExhaustionLevel</span>
+                                                }
+                                            </div>
 
 
                                             @if (combatant.IsHiddenFromPublic)

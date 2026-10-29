@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """N6.7: opt-in automatic hotspot fallback when wlan0 has NO active connection.
 Never switches AWAY from an active connection; does not touch recovery transition journal.
-Runs every 30s under systemd; live changes require dedicated root-owned gate.
+Runs every 10s under systemd; live changes require dedicated root-owned gate.
 """
 import argparse, fcntl, json, os, subprocess, sys, tempfile, uuid
 from contextlib import ExitStack
@@ -32,6 +32,11 @@ def active():
 
 def device_state():
     return nm('-g','GENERAL.STATE','device','show',DEVICE).strip()
+
+def activated(profile, device):
+    # GENERAL.CONNECTION can already name a profile during association/authentication.
+    return bool(profile and profile not in ('--','unknown') and device.startswith('100 '))
+
 
 def uptime(): return float(Path('/proc/uptime').read_text().split()[0])
 def boot_id(): return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -98,7 +103,11 @@ def saved_visible():
         if field('802-11-wireless.mode') not in ('infrastructure',''): continue
         if field('connection.interface-name') not in ('', '--', DEVICE): continue
         if field('connection.autoconnect') != 'yes': continue
-        if field('802-11-wireless.ssid') not in visible: continue
+        # A single unescaped field needs only its output newline removed. SSID
+        # spaces, colons and backslashes are significant, unlike metadata fields.
+        ssid=nm('--escape','no','-g','802-11-wireless.ssid',
+                'connection','show','uuid',ident).removesuffix('\n')
+        if ssid not in visible: continue
         matches.append((int(field('connection.autoconnect-priority')),ident))
     return [ident for _,ident in sorted(matches, reverse=True)]
 
@@ -132,7 +141,8 @@ def go(action):
             fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         up=uptime(); st=load(boot_id()); a=active(); dev=device_state(); pend=pending()
         if a and a not in ('--','unknown'):
-            st['offline_since']=None;st['scans']=[];st['settled']=True
+            st['offline_since']=None;st['scans']=[]
+            if activated(a,dev): st['settled']=True
         elif st['offline_since'] is None:st['offline_since']=up
         outcome,reason=decision(a,dev,pend,up,st['offline_since'],st['scans'])
         live=gate()
@@ -170,7 +180,8 @@ def go(action):
                 raise RuntimeError('recovery profile absent')
             nm('--wait','25','connection','up','id',RECOVERY,'ifname',DEVICE,timeout=35)
             print('EXECUTED_NETWORK_ACTION=ACTIVATE_PRIVATE_HOTSPOT')
-            st['last_action']=uptime();st['settled']=True;save(st)
+            st['last_action']=uptime()
+            st['settled']=activated(active(),device_state());save(st)
         else:save(st)
 
 def main():

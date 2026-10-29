@@ -651,3 +651,9 @@ html[data-dm-theme] {
 
 /* Compact sticky turn context preserves access to the action toolbar. */
 .dm-turn-context { position: sticky; top: 0; z-index: 100; background: var(--bs-body-bg); padding: .75rem; border-bottom: 1px solid var(--bs-border-color); }
+
+.dm-combatant-name-heading { display: flex; align-items: center; gap: .5rem; min-width: 0; max-width: 100%; }
+.dm-combatant-name-heading > .form-control,
+.dm-combatant-name-heading > .fw-bold { min-width: 0; }
+.dm-combatant-name-heading > .fw-bold { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-exhaustion-badge { flex-shrink: 0; white-space: nowrap; }

@@ -2,11 +2,6 @@
 @using InitiativeTracker.Web.Rules.Dnd5e
 
 
-@if (Model.ExhaustionLevel > 0)
-{
-    <span class="condition-badge">Exhaustion @Model.ExhaustionLevel</span>
-}
-
 @if (Model.Conditions.Count > 0)
 {
     <div class="condition-badges mt-1">

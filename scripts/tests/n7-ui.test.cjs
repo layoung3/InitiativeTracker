@@ -172,3 +172,31 @@ for (const [width, height, reducedMotion] of [[1280, 800, 'no-preference'], [390
         } finally { await page.close(); }
     });
 }
+
+for (const width of [1280, 390]) {
+    test(`DM exhaustion stays beside editable and active names at ${width}px`, async () => {
+        const page = await fixture(`<div class="container-fluid dm-page"><div class="row">
+            <div class="col-md-4"><div class="dm-combatant-name-heading" id="setup-heading">
+                <input class="form-control form-control-sm" value="Player character">
+                <span class="condition-badge dm-exhaustion-badge">Exhaustion 3</span>
+            </div></div></div>
+            <div class="dm-combatant-name-heading" id="active-heading">
+                <span class="fw-bold fs-5">Player character</span>
+                <span class="condition-badge dm-exhaustion-badge">Exhaustion 5</span>
+            </div><div class="condition-badges"><span class="condition-badge">Prone</span></div>
+        </div>`, width);
+        try {
+            for (const file of ['lib/bootstrap/dist/css/bootstrap.min.css', 'css/site.css', 'css/dm.css', 'css/condition-badges.css'])
+                await page.addStyleTag({ content: source(file) });
+            for (const id of ['setup-heading', 'active-heading']) {
+                const heading = page.locator('#' + id);
+                const name = await heading.locator(':scope > :first-child').boundingBox();
+                const badge = await heading.locator('.dm-exhaustion-badge').boundingBox();
+                assert(badge.x >= name.x + name.width, 'badge immediately follows the name');
+                assert(badge.y < name.y + name.height && badge.y + badge.height > name.y, 'name and exhaustion share a line');
+                assert(badge.x + badge.width <= width, 'badge remains within viewport');
+            }
+            assert.equal(await page.locator('.condition-badges .dm-exhaustion-badge').count(), 0);
+        } finally { await page.close(); }
+    });
+}

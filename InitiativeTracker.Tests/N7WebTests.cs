@@ -1,3 +1,6 @@
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using System.Net;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
@@ -183,6 +186,73 @@ public sealed class N7WebTests : IDisposable
         var denied = await Post(url, token, ("combatantId", id.ToString()));
         Assert.NotEqual(HttpStatusCode.OK, denied.StatusCode);
         Assert.Empty(State.GetDisplayState().Combatants);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DmShowsCurrentExhaustionBesideNameAndReceivesPlayerSheetUpdates(bool started)
+    {
+        var owner = Guid.NewGuid(); var id = Character(owner);
+        State.AddPlayerCharacter(id);
+        State.AddCombatantCondition(State.CurrentEncounter.Combatants[0].Id, "Prone", false);
+        if (started) State.StartCombat();
+        SignIn("DM");
+        var dmCookie = client.DefaultRequestHeaders.GetValues("Cookie").Single();
+        var socketClient = app.Server.CreateWebSocketClient();
+        socketClient.ConfigureRequest = request => request.Headers["Cookie"] = dmCookie;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var socket = await socketClient.ConnectAsync(new Uri("ws://localhost/hubs/encounter"), timeout.Token);
+        await socket.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes("{\"protocol\":\"json\",\"version\":1}\u001e")),
+            WebSocketMessageType.Text, true, timeout.Token);
+        var buffer = new byte[16384];
+        var handshake = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), timeout.Token);
+        Assert.Contains("{}", Encoding.UTF8.GetString(buffer, 0, handshake.Count));
+
+        SignIn("Player", owner);
+        var playerCookie = client.DefaultRequestHeaders.GetValues("Cookie").Single();
+        var sheet = $"/player/character/{id}";
+        var token = await Token(sheet);
+        foreach (var level in new[] { 3, 5, 0 })
+        {
+            client.DefaultRequestHeaders.Remove("Cookie"); client.DefaultRequestHeaders.Add("Cookie", playerCookie);
+            Assert.Equal(HttpStatusCode.Redirect, (await Post(sheet + "?handler=SetExhaustion", token,
+                ("exhaustionLevel", level.ToString()))).StatusCode);
+            // Receive the actual broadcast over the authenticated DM SignalR socket.
+            JsonElement? update = null;
+            while (update is null)
+            {
+                var frame = new StringBuilder();
+                WebSocketReceiveResult received;
+                do
+                {
+                    received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), timeout.Token);
+                    Assert.NotEqual(WebSocketMessageType.Close, received.MessageType);
+                    frame.Append(Encoding.UTF8.GetString(buffer, 0, received.Count));
+                } while (!received.EndOfMessage);
+                foreach (var record in frame.ToString().Split('\u001e', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    using var json = JsonDocument.Parse(record);
+                    if (json.RootElement.TryGetProperty("target", out var target) && target.GetString() == "EncounterUpdated")
+                        update = json.RootElement.GetProperty("arguments")[0].Clone();
+                }
+            }
+            var publicCharacter = update.Value.GetProperty("combatants")[0];
+            Assert.Equal(level, publicCharacter.GetProperty("exhaustionLevel").GetInt32());
+            Assert.Equal(17, publicCharacter.GetProperty("currentHp").GetInt32());
+            Assert.Equal(4, publicCharacter.GetProperty("temporaryHp").GetInt32());
+            Assert.Equal("Prone", publicCharacter.GetProperty("conditions")[0].GetProperty("name").GetString());
+            client.DefaultRequestHeaders.Remove("Cookie"); client.DefaultRequestHeaders.Add("Cookie", dmCookie);
+            var html = await client.GetStringAsync("/dm");
+            var heading = Assert.Single(Regex.Matches(html, "class=\"dm-combatant-name-heading\"[^>]*>(.*?)</div>", RegexOptions.Singleline).Cast<Match>()).Groups[1].Value;
+            Assert.Contains("Test character", heading);
+            if (level == 0) Assert.DoesNotContain("dm-exhaustion-badge", html);
+            else
+            {
+                Assert.Single(Regex.Matches(html, "dm-exhaustion-badge").Cast<Match>());
+                Assert.Contains($"Exhaustion {level}</span>", heading);
+            }
+        }
     }
 
     [Fact]
