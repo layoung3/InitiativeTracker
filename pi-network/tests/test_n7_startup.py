@@ -1,4 +1,6 @@
 import contextlib
+import errno
+import fcntl
 import importlib.machinery
 import importlib.util
 import io
@@ -24,6 +26,90 @@ class StartupTests(unittest.TestCase):
             self.stack.enter_context(patch.object(m,target,value))
         self.stack.enter_context(patch.object(m.os,'geteuid',return_value=0))
         self.stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+    def assert_locks_available(self, names):
+        for name in names:
+            with (self.root/name).open('a+b') as lock:
+                fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def run_main(self):
+        output=io.StringIO();errors=io.StringIO()
+        with patch.object(m.sys,'argv',['boot-fallback','tick']), \
+             contextlib.redirect_stdout(output),contextlib.redirect_stderr(errors):
+            result=m.main()
+        return result,output.getvalue(),errors.getvalue()
+
+    def test_each_busy_lock_holds_without_state_access_and_releases_for_retry(self):
+        names=('boot-fallback.lock','control.lock','return-transition.lock')
+        for index,name in enumerate(names):
+            with self.subTest(lock=name):
+                state=self.root/'boot-fallback.json'
+                state.write_text(json.dumps({'boot':'boot','offline_since':None,'scans':[],'last_action':None}))
+                before=state.read_bytes()
+                with (self.root/name).open('a+b') as holder:
+                    fcntl.flock(holder,fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    with patch.object(m,'nm') as commands,patch.object(m,'load') as reads,patch.object(m,'save') as writes:
+                        result,output,errors=self.run_main()
+                        self.assertEqual(result,0)
+                        self.assertEqual(errors,'')
+                        self.assertEqual(output.splitlines(),[
+                            'RECOMMENDATION=HOLD','REASON=controller_lock_busy',
+                            'BUSY_LOCK='+name,'EXECUTED_NETWORK_ACTION=NONE'])
+                        commands.assert_not_called();reads.assert_not_called();writes.assert_not_called()
+                        self.assertEqual(state.read_bytes(),before)
+                    # Earlier acquired locks must already be closed, even while
+                    # the independent controller still owns the contended lock.
+                    self.assert_locks_available(names[:index])
+                self.assert_locks_available(names)
+                with patch.object(m,'gate',return_value=False), \
+                     patch.object(m,'nm') as commands, \
+                     patch.object(m,'load',wraps=m.load) as reads, \
+                     patch.object(m,'save',wraps=m.save) as writes:
+                    result,output,errors=self.run_main()
+                    self.assertEqual(result,0);self.assertEqual(errors,'')
+                    self.assertNotIn('controller_lock_busy',output)
+                    reads.assert_called_once();writes.assert_called_once();commands.assert_not_called()
+                    self.assertEqual(m.load('boot')['offline_since'],60)
+
+    def test_only_contention_errno_values_at_flock_are_holds(self):
+        for code in (errno.EAGAIN,errno.EWOULDBLOCK):
+            with self.subTest(errno=code), \
+                 patch.object(m.fcntl,'flock',side_effect=OSError(code,'fixture contention')), \
+                 patch.object(m,'nm') as commands,patch.object(m,'save') as writes:
+                result,output,errors=self.run_main()
+                self.assertEqual(result,0);self.assertEqual(errors,'')
+                self.assertIn('BUSY_LOCK=boot-fallback.lock',output)
+                commands.assert_not_called();writes.assert_not_called()
+
+    def test_other_flock_errors_remain_failures_and_release_previous_locks(self):
+        original=fcntl.flock
+        for code in (errno.EACCES,errno.EBADF,errno.EINTR):
+            def acquire(lock,operation):
+                if Path(lock.name).name=='return-transition.lock':
+                    raise OSError(code,'fixture non-contention lock error')
+                return original(lock,operation)
+            with self.subTest(errno=code),patch.object(m.fcntl,'flock',side_effect=acquire), \
+                 patch.object(m,'nm') as commands,patch.object(m,'save') as writes:
+                result,output,errors=self.run_main()
+                self.assertEqual(result,1);self.assertIn('N67_ERROR=',errors)
+                self.assertNotIn('controller_lock_busy',output)
+                commands.assert_not_called();writes.assert_not_called()
+            self.assert_locks_available(('boot-fallback.lock','control.lock','return-transition.lock'))
+
+    def test_eagain_outside_lock_acquisition_remains_failure(self):
+        original=Path.open
+        def open_file(path,*args,**kwargs):
+            if path.name=='control.lock':raise OSError(errno.EAGAIN,'fixture open failure')
+            return original(path,*args,**kwargs)
+        for stage in ('open','load','nm','save'):
+            with self.subTest(stage=stage),contextlib.ExitStack() as stack:
+                if stage=='open':stack.enter_context(patch.object(Path,'open',open_file))
+                else:stack.enter_context(patch.object(m,stage,side_effect=OSError(errno.EAGAIN,'fixture '+stage+' failure')))
+                stack.enter_context(patch.object(m,'gate',return_value=stage=='nm'))
+                result,output,errors=self.run_main()
+                self.assertEqual(result,1);self.assertIn('N67_ERROR=',errors)
+                self.assertNotIn('controller_lock_busy',output)
+            self.assert_locks_available(('boot-fallback.lock','control.lock','return-transition.lock'))
 
     def test_both_pending_journals_fail_closed(self):
         for name,terminal in [('transition.json','completed'),('return-transition.json','confirmed')]:
