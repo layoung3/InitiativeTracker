@@ -219,6 +219,13 @@ def verify_updater_sources():
         path = REPO / 'hub-updater' / 'original' / name
         if not path.is_file() or path.is_symlink() or digest(path) != expected:
             raise InstallError('Approved updater sources unavailable or mismatched; recover the verified source handoff before hub installation')
+    manifest = json.loads((REPO / 'hub-updater/runtime-manifest.json').read_text())
+    if manifest.get('formatVersion') != 1 or set(manifest.get('sha256', {})) != set(ORIGINAL_HASHES):
+        raise InstallError('Invalid reviewed updater runtime manifest')
+    for name, expected in manifest['sha256'].items():
+        path = REPO / 'hub-updater/runtime' / name
+        if not path.is_file() or path.is_symlink() or digest(path) != expected:
+            raise InstallError('Updater runtime hash mismatch; inspect the reviewed checkout/transfer')
     recipe = REPO / 'hub-updater' / 'provision.py'
     if not recipe.is_file():
         raise InstallError('Approved updater provisioning/hardening is not yet available; hub apply is blocked')
@@ -547,7 +554,10 @@ def desktop_install(host, desktop, settings):
         text = '#!/usr/bin/env bash\n'
     if 'initiativetracker-' in text:
         raise InstallError('Existing InitiativeTracker desktop startup preserved; inspect locally')
-    line = f'/usr/bin/python3 -I {shlex.quote(local + "/kiosk.py")} {shlex.quote(config + "/kiosk.json")} &'
+    if role == 'hub':
+        line = f'{shlex.quote(local + "/initiativetracker-hub-launch")} --supervise {shlex.quote(config + "/kiosk.json")} &'
+    else:
+        line = f'/usr/bin/python3 -I {shlex.quote(local + "/kiosk.py")} {shlex.quote(config + "/kiosk.json")} &'
     host.write(autostart, text + '\n# InitiativeTracker commissioned kiosk\n' + line + '\n', 0o700, owner, replace=target.exists())
     if settings['autologin']:
         session = next(host.path('/usr/share/wayland-sessions').glob('*labwc*.desktop')).stem

@@ -2,6 +2,11 @@
 
 [Setup index](../../SetupReadme.md) · [Manual hub](fresh-hub.md) · [Manual satellite](satellite.md)
 
+For an **existing** hub, use only the separately reviewed
+[component upgrade/rollback procedure](../../hub-updater/EXISTING-HUB-UPGRADE.md)
+after explicit device-specific approval. These fresh installers always refuse
+an existing installation. They are not an existing-hub upgrade mechanism.
+
 Use only on a **new, disposable commissioning device** after reviewing this PR.
 Do not run the installers on the owner's existing hub or satellite. This change
 depends on documentation PR #2 at `53e48642a95e528578274893e384df9526b13790`;
@@ -129,8 +134,12 @@ opportunity: minimum 60 seconds, scans and bounded eligible-profile attempts.
 This is not a universal radio watchdog or an Internet test. A functioning AP is
 not silently abandoned when external Wi-Fi appears. See [networking](networking.md).
 
-The Labwc entry starts a single-instance supervisor that invokes the recovered
-hub launcher. Ordering remains **health → GUI checker → zero-argument sudo root
+The selected user's Labwc entry backgrounds the resolved home launcher with
+`--supervise` and that user's kiosk config. Its opt-in dispatch starts a
+single-instance supervisor, which calls the same launcher without arguments.
+The launcher is owned by the selected desktop user/group at 0755; no home path is
+hardcoded. The no-argument path preserves existing direct Labwc integration.
+Ordering remains **health → GUI checker → zero-argument sudo root
 installer → health → Chromium `/setup`**. The launcher now has bounded individual
 health waits with a local error dialog, and its supervisor retries after process
 exit. It does not detect a hung renderer or guarantee recovery of Chromium's

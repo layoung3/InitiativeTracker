@@ -1,8 +1,9 @@
 # Installer validation record
 
 Date: **2026-10-30**. Scope: `layoung3/InitiativeTracker` only. Branch:
-`feat/automated-pi-install`, stacked on documentation PR #2 / exact baseline
-`53e48642a95e528578274893e384df9526b13790`. No repository/workspace AGENTS or
+`feat/automated-pi-install`, originally stacked on documentation PR #2 at
+`53e48642a95e528578274893e384df9526b13790`, reconciled with its final base
+`a40f534fc6d30d1156206435a52f11268636da1e`. No repository/workspace AGENTS or
 `.agents/skills` instructions were present. No file contents in other mounted repositories were read or changed. No live hub/satellite access, deployment, merge, master
 push, host OS installation or production data/secret transfer occurred.
 
@@ -20,8 +21,8 @@ were never executed here. Runtime changes are separately reviewable against them
 
 | Check | Result / scope |
 | --- | --- |
-| Local installer tests | 21 passed; 13 container-only tests intentionally skipped on host |
-| Debian 13 disposable container | 34 passed, including the 13 container-only tests; no skips |
+| Local installer tests | 21 passed; 20 container-only tests intentionally skipped on host |
+| Debian 13 disposable container | 41 passed, including the 20 container-only tests; no skips |
 | Existing network controller suite | 195 passed |
 | ShellCheck 0.10 | Passed for all three shell entry points and all derived runtime scripts |
 | Python compilation and shell syntax | Passed for added Python modules and runtime shell scripts |
@@ -76,6 +77,18 @@ and Chromium are recordings/stubs, not live services or windows. They verify:
   The production recipe does not add that allowance.
 - A spaced active Imager profile ID stops hub preflight before mutation with
   explicit commissioning guidance; no rename, activation or connectivity change.
+- Fresh provisioning for an alternate account with actual home `/srv/tabletop-screen`
+  installs its launcher as that desktop UID/GID 0755, generates a backgrounded
+  resolved-home launcher entry, and keeps privileged binaries root:root 0755.
+- The separate existing-hub component helper inspects without writes and preserves
+  direct marked Labwc integration byte-for-byte. Apply/no-op repeat/rollback keep
+  fixture app/current, DB/identity, Wi-Fi credentials, browser pairing, production
+  config and privilege policy unchanged. Backups are private, and partial
+  replacement/rollback failures recover prior component bytes where possible.
+- Unknown target/candidate hashes, custom component metadata/extended attributes,
+  later autostart/component edits and noninteractive approval refusal stop the
+  component procedure without silently overwriting state. The helper never invokes
+  a checker/installer/launcher, app update, service or network operation.
 
 Interpreter audit: all privileged stdin/command Python calls in the derived
 updater, checker and bootstrap/hostname helper use `/usr/bin/python3 -I`.
@@ -93,7 +106,21 @@ for this installer. No .NET SDK is installed on the development host. The existi
 Build/Test/Stage/GUI workflow remains the release procedure, and real app health
 on ARM64 still needs the hardware exercise below.
 
-## Pending acceptance and metadata
+## Reconciled owner evidence and pending acceptance
+
+The final documentation base records owner-performed existing-hub observations:
+Debian 13 Trixie/aarch64, graphical target and LightDM active, healthy 0.1.5 with
+connected DB/current migrations/storage ready and unchanged identity, boot fallback
+enabled, bridge/recovery/return active, external profiles present and recovery AP
+autoconnect disabled. These observations support compatibility with the existing
+deployment; they are not fresh-device test outcomes from this task.
+
+All three original updater/checker/launcher live hash receipts now match the
+unchanged snapshots. The owner explicitly corrected the malformed launcher hash
+to `4bd743792f68b6041fb80e5c83cb377231bce743d5194115db146bbcb8b2c44a` copied
+from the Pi terminal. Its observed `/home/dnd` location and dnd:dnd 0755/974-byte
+metadata are evidence only; no personal home is hardcoded in new targets. The
+transcription discrepancy is resolved, with no further Pi command/checksum request.
 
 This **does not prove a fresh Raspberry Pi OS boot**. No ARM64 Pi, real systemd
 boot, NetworkManager radio/AP/DHCP, mDNS across devices, physical desktop autologin,
@@ -103,13 +130,15 @@ update was exercised. These remain unchecked in the
 does not establish equivalent physical coverage, and this draft is not a certified
 image or permission to run experimental installers on working devices.
 
-Pending owner evidence (being collected separately): effective deployed narrow
-sudo grant/location; allowlisted network unit override; LightDM autologin/session
-fields; exact Pi OS/package baseline and Python data-filter support. These are
-not claims that those dependencies are missing. The recipe is explicit and newly
-proposed; it does not guess the deployed recipe. It selects the installed Labwc
-desktop session instead of hardcoding a session name. Exact Waveshare SKU and
-video/touch connection remain unknown; no overlays or calibration are guessed.
+Before any separately approved existing-hub change, the maintenance procedure
+checks effective deployed narrow sudo policy, script/config metadata and Python
+data-filter support locally. Those are operational preconditions, not claims of
+missing dependencies or a request for more live retrieval now. Fresh provisioning
+selects the installed Labwc session and actual selected account home. The separate
+component replacement leaves existing LightDM/Labwc/privileges/config unchanged.
+Exact Waveshare SKU and video/touch connection remain unknown; no overlays or
+calibration are guessed. See [existing-hub upgrade](../../hub-updater/EXISTING-HUB-UPGRADE.md)
+for private backups, explicit approvals, nonexecuting validation and rollback.
 
 No automatic satellite Wi-Fi following, two-minute hub-reachability policy,
 fleet updater, renderer-hang detection, or crash-consistent power-loss rollback

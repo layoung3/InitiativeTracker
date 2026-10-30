@@ -1,6 +1,16 @@
 #!/bin/bash -p
 set -u
 
+# Fresh installs background this same resolved home launcher from Labwc. The
+# optional supervisor dispatch preserves the original no-argument launch path
+# used by existing hubs and by the supervisor's own child invocation.
+if [[ "${1:-}" == --supervise && $# -eq 2 ]]; then
+    exec /usr/bin/python3 -I "${HOME}/.local/lib/initiativetracker-hub/kiosk.py" "$2"
+elif [[ $# -ne 0 ]]; then
+    printf '%s\n' 'Usage: initiativetracker-hub-launch [--supervise /path/to/kiosk.json]' >&2
+    exit 64
+fi
+
 BASE_URL="http://127.0.0.1:5000"
 TARGET_URL="${BASE_URL}/setup"
 PROFILE_DIR="${HOME}/.config/initiativetracker-hub/chromium"

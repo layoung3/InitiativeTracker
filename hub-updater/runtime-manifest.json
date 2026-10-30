@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "componentSet": "privileged-python-isolation-v1",
+  "sha256": {
+    "initiativetracker-check-update": "1e1727161780b6caf381facd63de9de5d3d2ed5370a6a1ba1b53cb3509cfb15c",
+    "initiativetracker-hub-launch": "d2bfac1e7568df67690417cfe62a18cd031d0f7dc734a0553efa64a8d8039f60",
+    "initiativetracker-install-update": "c0a7002d9b81aaae4d6ef7f5ca1c8b5f3424970757c26e92ba8867cac8e45674"
+  }
+}

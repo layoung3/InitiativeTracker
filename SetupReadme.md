@@ -17,6 +17,7 @@ without automation, and complete hardware acceptance before handover.
 | Task | Guide |
 | --- | --- |
 | Preview/install a fresh hub or satellite automatically | [Automated installation and rollback checks](docs/setup/automated-installation.md) |
+| Review a backed-up component-only upgrade for an existing hub | [Separate approval-gated maintenance procedure](hub-updater/EXISTING-HUB-UPGRADE.md) |
 | Update an already configured hub | [Canonical hub release procedure](docs/setup/hub-release.md) |
 | Image a new Pi and install the hub | [Fresh hub installation](docs/setup/fresh-hub.md) |
 | Install hub networking and understand fallback | [Hub networking](docs/setup/networking.md) |

@@ -36,10 +36,11 @@ def provision(host, desktop, manifest, package):
     ):
         host.copy(ROOT / 'runtime' / name, destination + name, 0o755)
     local = desktop.pw_dir + '/.local/lib/initiativetracker-hub'
-    # Root owns the approved executable; desktop-owned parent paths are never
-    # consulted by sudo. This launcher itself has no privileged arguments.
+    # Match the deployed home integration: selected desktop user's launcher is
+    # user-owned 0755. Sudo consults only the separate root-owned installer path.
     host.mkdir(local, 0o755, (desktop.pw_uid, desktop.pw_gid))
-    host.copy(ROOT / 'runtime/initiativetracker-hub-launch', local + '/initiativetracker-hub-launch', 0o755)
+    host.copy(ROOT / 'runtime/initiativetracker-hub-launch', local + '/initiativetracker-hub-launch', 0o755,
+              (desktop.pw_uid, desktop.pw_gid))
     policy = sudo_policy(desktop.pw_name)
     with tempfile.NamedTemporaryFile(mode='w', prefix='it-sudoers-', dir=host.path('/var/lib/initiativetracker-install')) as candidate:
         candidate.write(policy)

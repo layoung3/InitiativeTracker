@@ -44,3 +44,11 @@ renderer watchdog or satellite network following is introduced.
 Run disposable tests and complete the physical
 [installation/update/rollback checklist](../docs/setup/automated-installation.md)
 before approving the draft for use on a new Pi.
+
+Existing hubs use the separate, default-inspection
+[`upgrade-existing-components.py`](upgrade-existing-components.py) and the
+[approval-gated backed-up upgrade/rollback procedure](EXISTING-HUB-UPGRADE.md),
+never a fresh installer. `runtime-manifest.json` pins the reviewed replacement
+hashes. Existing Labwc/config/privileges/app/data/network/pairing are preserved;
+the home launcher belongs to the selected desktop user at 0755. No existing hub
+is changed by this PR or by documentation approval.

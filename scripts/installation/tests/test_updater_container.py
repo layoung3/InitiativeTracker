@@ -290,6 +290,14 @@ Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps({'status':'he
         args = (self.base / 'chromium-args').read_text()
         self.assertIn('http://127.0.0.1:5000/setup', args)
         self.assertIn('/.config/initiativetracker-hub/chromium', args)
+        self.stub('python-entry', '#!/bin/sh\nprintf "%s\\n" "$@" > ' + str(self.base / 'supervisor-args') + '\n')
+        launcher.write_text(text.replace('/usr/bin/python3', str(self.bin / 'python-entry')))
+        result = subprocess.run(['bash', str(launcher), '--supervise', str(self.base / 'kiosk.json')],
+                                env={**os.environ, 'HOME': str(self.base / 'home')}, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.base / 'supervisor-args').read_text().splitlines(),
+                         ['-I', str(self.base / 'home/.local/lib/initiativetracker-hub/kiosk.py'), str(self.base / 'kiosk.json')])
+        self.assertEqual(events.read_text().splitlines(), ['health', 'checker', 'health', 'chromium'])
 
 
 @unittest.skipUnless(CONTAINER, 'requires real sudo in explicitly disposable Debian container')
