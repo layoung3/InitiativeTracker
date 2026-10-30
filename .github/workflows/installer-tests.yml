@@ -1,0 +1,22 @@
+name: Fresh Pi installer tests
+on:
+  pull_request:
+    paths:
+      - 'scripts/install*.sh'
+      - 'scripts/installation/**'
+      - 'hub-updater/**'
+      - 'hub-bootstrap/**'
+      - 'pi-network/**'
+      - '.github/workflows/installer-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disposable-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s pi-network/tests
+      - run: docker build -f scripts/installation/tests/Dockerfile -t initiativetracker-installer-tests .
+      - run: docker run --rm --network none initiativetracker-installer-tests
+      - run: docker run --rm --network none initiativetracker-installer-tests shellcheck scripts/install.sh scripts/install-hub.sh scripts/install-satellite.sh hub-updater/runtime/*

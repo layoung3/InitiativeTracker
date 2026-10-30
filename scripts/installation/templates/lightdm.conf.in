@@ -1,0 +1,5 @@
+[Seat:*]
+autologin-user={desktop_user}
+autologin-user-timeout=0
+user-session={session}
+autologin-session={session}

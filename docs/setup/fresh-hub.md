@@ -2,12 +2,18 @@
 
 [Setup index](../../SetupReadme.md) · [Networking](networking.md) · [Acceptance](acceptance.md)
 
+For the new draft automation, start with [automated installation](automated-installation.md).
+It includes the recovered source snapshots, proposed provisioning recipe and
+targeted updater/launcher corrections. The manual steps below describe the
+original deployment baseline; their updater caveats still apply to existing
+devices running the originals. No existing device has been changed by this PR.
+
 These are **commissioning templates**, checked against source but not executed on
 a newly imaged Pi during this task. Run them only on the new intended hub. They
 are not an in-place repair or upgrade procedure. The app bootstrap exists;
-graphical-updater/launcher provisioning still requires the approved external
-components listed below. Do not declare keyboardless readiness until those are
-available and the acceptance checks pass.
+graphical-updater/launcher provisioning uses the recovered components listed
+below and the [reviewable recipe](../../hub-updater/README.md). Do not declare
+keyboardless readiness until fresh-device acceptance checks pass.
 
 ## 1. Hardware and imaging
 
@@ -223,11 +229,13 @@ waits for app health again, then `exec`s Chromium. It has **no browser crash-res
 loop**. This is the N7-era installed mechanism;
 do not replace it with old LXDE autostart, an invented Chromium system service,
 or a launcher that races the updater. Audited installer/checker/launcher source
-has been preserved by the owner and independently reviewed, but those components
-and a reproducible provisioning recipe are **not tracked** in this repository.
-Obtain the approved files and installation recipe before this step can be
-completed reproducibly. An unhealthy app can hold the launcher before either
-the update prompt or Chromium without a deadline.
+has been preserved by the owner and independently reviewed, and those components are
+now tracked under [`hub-updater/original`](../../hub-updater/original), with exact
+hashes and provenance. The new [fresh-device recipe](automated-installation.md)
+installs derived working copies with bounded health waits and browser-exit
+supervision. The **original deployed launcher** can hold indefinitely before
+either the update prompt or Chromium; do not attribute the new behavior to an
+existing device without an independently approved installation.
 
 Required approved component inventory:
 
@@ -240,11 +248,11 @@ Required approved component inventory:
 Audit hashes for comparison are in [the verification record](evidence-and-gaps.md).
 The graphical checker needs Zenity in the desktop session and calls
 `sudo -n /usr/local/sbin/initiativetracker-install-update` with **zero arguments**.
-Provisioning must supply the reviewed narrow noninteractive privilege integration
-for that exact entry point; no broad passwordless sudo. Checker exit 0 can also
-mean an install failure was displayed: always verify release and health.
-The preserved source does not yet provide an approved complete OS-install recipe.
-Do not fabricate components or copy credentials from another machine.
+The new proposed recipe supplies a validated zero-argument-only sudo entry for
+that exact path; the deployed device's privilege recipe remains separate pending
+evidence. Original checker exit 0 can also mean an install failure was displayed;
+the derived working copy returns nonzero. Always verify release and health.
+Do not copy credentials from another machine.
 
 On a fresh desktop use Raspberry Pi Configuration / `raspi-config` to choose
 **desktop autologin for your selected user**, with a Labwc session. Verify locally:

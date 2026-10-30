@@ -4,17 +4,19 @@ Start here to assemble a Raspberry Pi hub and satellite, or to update an existin
 hub. The deployed baseline reported by the owner is **0.1.5**. This guide was
 checked against `master` commit `353a1c78b0eb9150d6587a6c442c7dca76aaf5e4`.
 
-**A release package is not a complete device image.** The application bootstrap
-and network components are tracked here; the proven graphical updater and hub
-desktop launcher are installed OS components whose distributable installers are
-missing. A fresh hub cannot yet be certified as reproducible from this repository
-alone. Follow the documented steps and checkpoints, obtain the missing approved
-components, and finish the hardware acceptance checklist before calling it ready.
+**A release package is not a complete device image.** This branch adds an
+[automated fresh-device installer](docs/setup/automated-installation.md), including
+the recovered graphical updater sources and an explicit provisioning recipe.
+It is a draft implementation validated with disposable fixtures and a Debian
+container, pending physical fresh-Pi acceptance. Do not run it on an existing
+working hub or satellite. Follow the manual guides below when commissioning
+without automation, and complete hardware acceptance before handover.
 
 ## Choose your route
 
 | Task | Guide |
 | --- | --- |
+| Preview/install a fresh hub or satellite automatically | [Automated installation and rollback checks](docs/setup/automated-installation.md) |
 | Update an already configured hub | [Canonical hub release procedure](docs/setup/hub-release.md) |
 | Image a new Pi and install the hub | [Fresh hub installation](docs/setup/fresh-hub.md) |
 | Install hub networking and understand fallback | [Hub networking](docs/setup/networking.md) |

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -u
+
+BASE_URL="http://127.0.0.1:5000"
+TARGET_URL="${BASE_URL}/setup"
+PROFILE_DIR="${HOME}/.config/initiativetracker-hub/chromium"
+UPDATE_CHECKER="/usr/local/bin/initiativetracker-check-update"
+
+mkdir -p \
+    "$PROFILE_DIR"
+
+wait_for_hub()
+{
+    until curl \
+        --fail \
+        --silent \
+        --connect-timeout 2 \
+        --max-time 4 \
+        "${BASE_URL}/system/health" \
+        >/dev/null 2>&1; do
+
+        sleep 2
+    done
+}
+
+wait_for_hub
+
+if [[ -x "$UPDATE_CHECKER" ]]; then
+    "$UPDATE_CHECKER" ||
+        true
+fi
+
+# The updater may have restarted the application.
+wait_for_hub
+
+exec /usr/bin/chromium \
+    --kiosk \
+    --start-maximized \
+    --noerrdialogs \
+    --disable-infobars \
+    --no-first-run \
+    --disable-session-crashed-bubble \
+    --disable-features=TranslateUI \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --password-store=basic \
+    --user-data-dir="$PROFILE_DIR" \
+    "$TARGET_URL"
