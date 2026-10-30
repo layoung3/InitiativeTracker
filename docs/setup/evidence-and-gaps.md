@@ -45,7 +45,8 @@ UUID are omitted from reusable examples.
 | Health / identity | Healthy 0.1.5; database connected, migrations current, storage ready; identity unchanged |
 | Network components | Boot fallback enabled; bridge socket active; independent recovery and return timers active |
 | Profiles | Saved external networks present; `InitiativeTracker-Recovery` AP autoconnect disabled |
-| Launcher metadata | Selected desktop-user ownership/group, mode 0755, 974 bytes, under that user's `.local/lib/initiativetracker-hub/` |
+| Launcher metadata (observed location only) | `/home/dnd/.local/lib/initiativetracker-hub/initiativetracker-hub-launch`, `dnd:dnd`, mode 0755, 974 bytes; new-install instructions resolve the selected user's home instead |
+| Corrected live launcher SHA-256 | Owner copied terminal value `4bd743792f68b6041fb80e5c83cb377231bce743d5194115db146bbcb8b2c44a`, matching the preserved original source |
 
 These observations do not certify a fresh installation, offline boot/AP/DHCP
 behavior, confirmation-expiry recovery, touchscreen/QR usability, satellite trust
@@ -140,13 +141,14 @@ da1f8ee834c49cb2563ac0c77789ab837fc4ed2d7d4defd8b1a9e1bdc94ce859
 The tracked boot-fallback script at the inspected baseline has that same SHA-256;
 this task verified the repository file hash, not a new installed-device copy.
 
-The owner's latest installer/checker digest strings match those original-source
-references. The latest launcher digest transcription was **74 hexadecimal
-characters**, not a valid 64-character SHA-256, and conflicts with the preserved
-original. It is rejected as a live-hash receipt; the original launcher hash above
-does **not** silently certify today's installed launcher. Its current exact hash
-still needs a corrected owner-supplied read-only receipt. Reported ownership,
-mode and byte length alone cannot settle that discrepancy.
+The owner's installer/checker digest strings match those original-source
+references. The owner subsequently supplied the launcher hash **copied directly
+from Raspberry Pi terminal output**: the valid 64-character value shown above
+also matches the preserved original. This corrected live-hub receipt supersedes
+the earlier malformed 74-character transcription and resolves that discrepancy.
+No further Pi command or checksum request is required. This is owner-supplied
+live evidence, distinct from this task's repository-byte rehash and from any
+claim that proposed hardening has been installed.
 
 The owner preserved the unchanged sources in
 `InitiativeTracker-updater-source-handoff-17bfda06.zip`; independent review first
@@ -215,9 +217,10 @@ Checks completed for the documentation:
 - Referenced source paths, PowerShell parameters, units, gates, endpoints,
   profile semantics and the boot-controller hash were cross-checked with source.
 - Three original updater/checker/launcher snapshots rehashed at the cited PR #3
-  commit: byte lengths and all reference SHA-256 values match. The malformed
-  74-character live-launcher transcription remains explicitly unverified; no
-  personal desktop home, hub UUID or network name was added to examples.
+  commit: byte lengths and all reference SHA-256 values match. The corrected
+  owner-supplied terminal hash also matches; the malformed transcription is
+  superseded. No personal desktop home, hub UUID or network name was added to
+  examples; the personal path appears only as owner-observed evidence.
 - Documentation-only diff, placeholders and secret handling reviewed;
   `git diff --check` passes.
 

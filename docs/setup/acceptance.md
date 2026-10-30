@@ -13,8 +13,8 @@ The owner's 2026-10-30 read-only checks also establish the existing device's
 Debian 13 ARM64/aarch64 desktop, active application/LightDM, healthy 0.1.5,
 unchanged identity and selected networking unit/profile states. They do not tick
 the fresh-install, offline fallback, touchscreen, satellite or restore boxes
-below. See [the evidence record](evidence-and-gaps.md) for the separate unresolved
-live-launcher hash transcription.
+below. See [the evidence record](evidence-and-gaps.md) for separate owner-observed
+and repository-source provenance, including the corrected launcher checksum receipt.
 
 Keep a private record: device/model, storage, PSU, screen revision, OS image/date,
 Debian base, reviewed commit, package/manifest hashes, installed OS-component
