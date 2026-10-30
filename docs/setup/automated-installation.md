@@ -16,6 +16,14 @@ NetworkManager active, `wlan0`, and local keyboard/Ethernet recovery. Lite, X11,
 arbitrary renamed interfaces, and other distributions fail preflight. Install
 normal OS security updates first; Python must provide `tarfile.data_filter`.
 The hub also checks `iw` AP capability before any installation changes.
+Hub preflight also checks the **already-active** `wlan0` profile ID. Supervised
+DM switches require `[A-Za-z0-9_.:-]{1,80}`; a common Imager ID such as `Home WiFi`
+fails this check even if its network works normally. Installation stops before
+changes and preserves connectivity. Review the active profile's UUID locally and,
+in an intentional commissioning window with recovery access, rename it to a
+unique simple ID such as `IT-Imager-External`, then rerun. The installer never
+silently renames or switches an active profile. See the
+[manual profile-ID guidance](networking.md#3-configure-saved-external-wi-fi).
 
 Transfer a reviewed source checkout including `scripts`, `hub-updater`,
 `hub-bootstrap`, and `pi-network` to the new device. The executable bits are
@@ -144,6 +152,11 @@ sudoers, adds no grant to the web service, and installs root-controlled executab
 and root-owned regular 0644 `updater.conf`. Existing OS-wide sudo privileges are
 not removed. Production JSON stays non-secret: the existing release contract
 copies it into releases at 0644. Network passwords stay in separate 0600 files.
+Privileged Python uses the fixed system interpreter with `-I` so caller CWD,
+Python environment overrides and user site packages cannot supply root imports.
+Root shell entry points use a fixed Bash interpreter in privileged mode and a
+fixed PATH. The recovered originals remain unchanged; install only the reviewed
+runtime copies through the recipe.
 
 The first release is staged under root-owned 0755 `incoming`, with its manifest
 renamed to `InitiativeTracker-<version>-linux-arm64.manifest.json` and a bare local

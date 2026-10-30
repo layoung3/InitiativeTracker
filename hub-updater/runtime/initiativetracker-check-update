@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -u
 
 CONFIG_FILE="/etc/initiativetracker/updater.conf"
@@ -58,7 +58,7 @@ is_newer_version()
     local remote_version="$1"
     local current_version="$2"
 
-    python3 - "$remote_version" "$current_version" <<'PY'
+    /usr/bin/python3 -I - "$remote_version" "$current_version" <<'PY'
 import re
 import sys
 
@@ -166,7 +166,7 @@ if ! fetch_source \
 fi
 
 mapfile -t manifest_values < <(
-    python3 - "$manifest_path" <<'PY'
+    /usr/bin/python3 -I - "$manifest_path" <<'PY'
 import json
 import re
 import sys
@@ -234,7 +234,7 @@ status_json="$(
 
 current_version="$(
     printf '%s' "$status_json" |
-        python3 -c '
+        /usr/bin/python3 -I -c '
 import json
 import sys
 

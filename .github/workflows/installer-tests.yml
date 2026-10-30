@@ -19,4 +19,4 @@ jobs:
       - run: python3 -m unittest discover -s pi-network/tests
       - run: docker build -f scripts/installation/tests/Dockerfile -t initiativetracker-installer-tests .
       - run: docker run --rm --network none initiativetracker-installer-tests
-      - run: docker run --rm --network none initiativetracker-installer-tests shellcheck scripts/install.sh scripts/install-hub.sh scripts/install-satellite.sh hub-updater/runtime/*
+      - run: docker run --rm --network none initiativetracker-installer-tests shellcheck scripts/install.sh scripts/install-hub.sh scripts/install-satellite.sh hub-updater/runtime/* hub-bootstrap/install-hub-release.sh hub-bootstrap/initiativetracker-sync-hostname

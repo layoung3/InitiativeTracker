@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """Root-only socket-activated broker. One request per connection; no credentials accepted."""
 import json
 import os

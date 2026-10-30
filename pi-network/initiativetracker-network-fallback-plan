@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.6H: read-only, fail-closed fallback/connection attempt planner.
 
 No NetworkManager writes, scans, persistent state mutation or systemd installation.

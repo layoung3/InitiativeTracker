@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import pwd
 from pathlib import Path
 import shutil
 import stat
@@ -61,7 +62,7 @@ class UpdaterLifecycleTests(unittest.TestCase):
         self.stub('uname', '#!/bin/sh\necho aarch64\n')
         self.stub('sleep', '#!/bin/sh\nexit 0\n')
         self.stub('logger', '#!/bin/sh\nexit 0\n')
-        self.stub('systemctl', '''#!/usr/local/bin/python3
+        self.stub('systemctl', '''#!/usr/local/bin/python3 -I
 from pathlib import Path
 import sys
 base=Path(__file__).resolve().parents[1]
@@ -76,7 +77,7 @@ if operation=='start' and active.startswith('0.1.6'):
     if mode=='startfail-new': sys.exit(1)
 sys.exit(0)
 ''')
-        self.stub('curl', '''#!/usr/local/bin/python3
+        self.stub('curl', '''#!/usr/local/bin/python3 -I
 from pathlib import Path
 import json,sys
 base=Path(__file__).resolve().parents[1]
@@ -179,6 +180,64 @@ Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps({'status':'he
         result = self.execute()
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.base / 'operations').exists())
+
+    def sudo_from_hostile_directory(self, hostile_environment=False, vulnerable_control=False):
+        spec = importlib.util.spec_from_file_location('provision', ROOT / 'hub-updater/provision.py')
+        provision = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(provision)
+        operator = pwd.getpwnam('operator')
+        hostile = Path(tempfile.mkdtemp(prefix='it-hostile-', dir='/home/operator'))
+        os.chown(hostile, operator.pw_uid, operator.pw_gid)
+        self.addCleanup(shutil.rmtree, hostile)
+        marker = hostile / 'import-executed'
+        # Only a harmless UID marker inside the disposable directory. Never
+        # executes outside the explicitly marked container or touches real data.
+        payload = 'import os\nwith open(' + repr(str(marker)) + ', "a") as f: f.write(str(os.geteuid()) + "\\n")\nraise RuntimeError("hostile import control")\n'
+        for name in ('pathlib', 'json', 'tarfile', 'sitecustomize', 'usercustomize'):
+            module = hostile / (name + '.py')
+            module.write_text(payload)
+            os.chown(module, operator.pw_uid, operator.pw_gid)
+        bash_env = hostile / 'bash-env.sh'
+        bash_env.write_text('/usr/bin/id -u >> ' + str(marker) + '\n')
+        os.chown(bash_env, operator.pw_uid, operator.pw_gid)
+        binary = Path('/usr/local/sbin/initiativetracker-install-update')
+        policy = Path('/etc/sudoers.d/initiativetracker-import-fixture')
+        self.addCleanup(binary.unlink, missing_ok=True)
+        self.addCleanup(policy.unlink, missing_ok=True)
+        policy.write_text(provision.sudo_policy('operator') +
+            'Defaults!/usr/local/sbin/initiativetracker-install-update env_keep += "PYTHONPATH PYTHONHOME PYTHONUSERBASE BASH_ENV"\n')
+        policy.chmod(0o440)
+        subprocess.run(['visudo', '-c'], check=True, capture_output=True)
+        text = self.script.read_text()
+        env_receipt = self.base / 'inherited-python-environment'
+        text = text.replace('set -Eeuo pipefail\n', 'set -Eeuo pipefail\nprintf "%s\\n" "${PYTHONPATH:-}" "${PYTHONHOME:-}" "${PYTHONUSERBASE:-}" "${BASH_ENV:-}" > ' + str(env_receipt) + '\n', 1)
+        command = ['sudo', '-u', 'operator', 'env']
+        if hostile_environment:
+            command += ['PYTHONPATH=' + str(hostile), 'PYTHONHOME=/nonexistent-hostile-python-home', 'PYTHONUSERBASE=' + str(hostile), 'BASH_ENV=' + str(bash_env)]
+        command += ['sudo', '-n', str(binary)]
+        if vulnerable_control:
+            # Prove this test detects the reported root import, rather than
+            # merely relying on sudo's normal environment cleanup.
+            binary.write_text(text.replace('/usr/bin/python3 -I - "$CONFIG_FILE"', '/usr/bin/python3 - "$CONFIG_FILE"', 1))
+            binary.chmod(0o755)
+            result = subprocess.run(command, cwd=hostile, capture_output=True, text=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('0', marker.read_text().splitlines())
+            marker.unlink()
+        binary.write_text(text)
+        binary.chmod(0o755)
+        result = subprocess.run(command, cwd=hostile, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(marker.exists(), 'Caller-controlled module was imported')
+        self.assertEqual((self.app / 'current').resolve().name, '0.1.6-linux-arm64')
+        if hostile_environment:
+            self.assertEqual(env_receipt.read_text().splitlines(), [str(hostile), '/nonexistent-hostile-python-home', str(hostile), str(bash_env)])
+
+    def test_real_sudo_hostile_cwd_modules_cannot_execute_as_root(self):
+        self.sudo_from_hostile_directory(vulnerable_control=True)
+
+    def test_real_sudo_preserved_python_environment_is_ignored(self):
+        self.sudo_from_hostile_directory(hostile_environment=True)
 
     def checker_fixture(self):
         # Retain the actual checker and actual hardened root lifecycle, changing

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.7: opt-in automatic hotspot fallback when wlan0 has NO active connection.
 Never switches AWAY from an active connection; does not touch recovery transition journal.
 Runs every 10s under systemd; live changes require dedicated root-owned gate.

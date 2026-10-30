@@ -1,5 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
 
 HUB_INFO_URL="${HUB_INFO_URL:-http://127.0.0.1:5000/system/hub-info}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
@@ -17,7 +19,7 @@ for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
 
         host_name="$(
             printf '%s' "$hub_info" |
-                python3 -c '
+                /usr/bin/python3 -I -c '
 import json
 import sys
 
@@ -28,7 +30,7 @@ print(data.get("hostName", ""))
 
         hub_id="$(
             printf '%s' "$hub_info" |
-                python3 -c '
+                /usr/bin/python3 -I -c '
 import json
 import sys
 

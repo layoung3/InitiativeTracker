@@ -1,3 +1,5 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -euo pipefail
-exec python3 "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/installation/install.py" "$@"
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+exec /usr/bin/python3 -I "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/installation/install.py" "$@"

@@ -19,6 +19,12 @@ Targeted changes:
 - Installer fixes PATH/umask to a readable release baseline, checks root-trusted
   config/staging ancestry and local manifest confinement, creates backup root
   0700 and archive under a narrowly scoped umask 077, then explicit 0600.
+- All derived updater/checker Python snippets use `/usr/bin/python3 -I`, excluding
+  the caller's CWD, user site and Python environment overrides from root imports.
+  The privileged installer uses `/bin/bash -p`, ignoring inherited Bash startup
+  files/functions. Real-sudo disposable regressions reproduce the old import
+  flaw with a harmless UID marker and verify the hardened full update rejects
+  hostile modules and deliberately retained Python/shell environment overrides.
 - Failure cleanup restarts the old app after pre-activation errors, attempts
   rollback after post-activation errors, refuses data moves if stop fails, builds
   a complete restore tree before moving failed data, and refuses backup/data/link

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """Fresh-device commissioning. No live-device repair, update, or network switch.
 
 The CLI intentionally has no alternate-root, noninteractive apply, or force option.
@@ -241,6 +241,10 @@ def preflight(host, role, desktop=None):
     reserved = {'IT-External-1'} | ({'InitiativeTracker-Recovery'} if role == 'hub' else {'IT-Hub-Private'})
     if reserved.intersection(host.run('nmcli', '-g', 'NAME', 'connection', 'show').splitlines()):
         raise InstallError('A reserved InitiativeTracker network profile name already exists; preserved without changes')
+    if role == 'hub':
+        active_profile = host.run('nmcli', '--escape', 'no', '-g', 'GENERAL.CONNECTION', 'device', 'show', 'wlan0')
+        if active_profile not in ('', '--') and not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', active_profile):
+            raise InstallError('Active wlan0 profile ID is incompatible with supervised DM switches (requires [A-Za-z0-9_.:-]{1,80}). Connection preserved; review its UUID and explicitly rename the profile to a unique simple ID such as IT-Imager-External during local commissioning, then rerun preflight. No profile was renamed or switched.')
     if host.run('nmcli', '-g', 'GENERAL.TYPE', 'device', 'show', 'wlan0') != 'wifi':
         raise InstallError('The existing hub controllers require the wlan0 Wi-Fi interface')
     if role == 'hub':
@@ -543,7 +547,7 @@ def desktop_install(host, desktop, settings):
         text = '#!/usr/bin/env bash\n'
     if 'initiativetracker-' in text:
         raise InstallError('Existing InitiativeTracker desktop startup preserved; inspect locally')
-    line = f'python3 {shlex.quote(local + "/kiosk.py")} {shlex.quote(config + "/kiosk.json")} &'
+    line = f'/usr/bin/python3 -I {shlex.quote(local + "/kiosk.py")} {shlex.quote(config + "/kiosk.json")} &'
     host.write(autostart, text + '\n# InitiativeTracker commissioned kiosk\n' + line + '\n', 0o700, owner, replace=target.exists())
     if settings['autologin']:
         session = next(host.path('/usr/share/wayland-sessions').glob('*labwc*.desktop')).stem

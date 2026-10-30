@@ -35,6 +35,7 @@ class FakeHost(m.Host):
         self.commands = []
         self.fail = None
         self.arch = 'arm64'
+        self.active_profile = 'IT-Imager-External'
 
     def write(self, path, content, mode=0o644, owner=None, replace=False):
         # Fixture ownership maps root to the current test user. Real ownership
@@ -53,6 +54,8 @@ class FakeHost(m.Host):
             return 'aarch64'
         if args[0] == 'nmcli' and 'GENERAL.TYPE' in args:
             return 'wifi'
+        if args[0] == 'nmcli' and 'GENERAL.CONNECTION' in args:
+            return self.active_profile
         if args[0] == 'iw':
             return 'wiphy 0' if 'dev' in args else 'Supported interface modes:\n * AP\n'
         if args[0] == 'curl' and args[-1].endswith('/system/hub-info'):
@@ -238,6 +241,18 @@ class InstallerTests(unittest.TestCase):
         self.host.path('/etc/os-release').write_text('VERSION_ID=11\n')
         with self.assertRaises(m.InstallError):
             m.preflight(self.host, 'hub')
+
+    def test_spaced_active_hub_profile_requires_explicit_commissioning_without_rename(self):
+        self.host.active_profile = 'Home WiFi'
+        before = {str(x): x.read_bytes() for x in self.host.root.rglob('*') if x.is_file()}
+        with self.assertRaisesRegex(m.InstallError, 'Active wlan0 profile ID is incompatible.*Connection preserved'):
+            m.preflight(self.host, 'hub')
+        self.assertEqual(before, {str(x): x.read_bytes() for x in self.host.root.rglob('*') if x.is_file()})
+        for args, _ in self.host.commands:
+            if args[0] == 'nmcli':
+                self.assertNotIn('modify', args)
+                self.assertNotIn('up', args)
+                self.assertNotIn('down', args)
 
     def test_malicious_manifests_archives_and_wrong_runtime_rejected(self):
         for entries in ([('../escape', b'x')], [('/absolute', b'x')], [('InitiativeTracker.Web', b'x')], [('duplicate', b'x'), ('duplicate', b'x')]):

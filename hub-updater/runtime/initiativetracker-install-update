@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -98,7 +98,7 @@ wait_for_health()
             --output "$response_file" \
             2>/dev/null; then
 
-            if python3 - \
+            if /usr/bin/python3 -I - \
                 "$response_file" \
                 "$expected_version" <<'PY'
 import json
@@ -142,7 +142,7 @@ if [[ $# -ne 0 ]]; then
     fail "Installer does not accept command-line update sources."
 fi
 
-python3 - "$CONFIG_FILE" <<'PY'
+/usr/bin/python3 -I - "$CONFIG_FILE" <<'PY'
 from pathlib import Path
 import os, stat, sys
 path = Path(sys.argv[1])
@@ -167,7 +167,7 @@ MANIFEST_SOURCE="${MANIFEST_SOURCE:-}"
 # The first test accepts only a root-owned local staging folder.
 # Future HTTPS releases require a separate signed-manifest security pass.
 STAGING_DIR="/var/cache/initiativetracker-updater/incoming"
-python3 - "$MANIFEST_SOURCE" "$STAGING_DIR" <<'PY'
+/usr/bin/python3 -I - "$MANIFEST_SOURCE" "$STAGING_DIR" <<'PY'
 from pathlib import Path
 import stat, sys
 path, staging = map(Path, sys.argv[1:])
@@ -258,7 +258,7 @@ fetch_source \
 
 
 mapfile -t manifest_values < <(
-    python3 - "$manifest_path" <<'PY'
+    /usr/bin/python3 -I - "$manifest_path" <<'PY'
 import json
 import os
 import re
@@ -375,7 +375,7 @@ if [[ "$version" == "$current_version" ]]; then
 fi
 
 package_source="$(
-    python3 - \
+    /usr/bin/python3 -I - \
         "$MANIFEST_SOURCE" \
         "$package_file_name" <<'PY'
 from pathlib import Path
@@ -441,7 +441,7 @@ mkdir -p \
 
 log "Inspecting and extracting release package."
 
-python3 - \
+/usr/bin/python3 -I - \
     "$package_path" \
     "$extracted_directory" <<'PY'
 from pathlib import Path, PurePosixPath

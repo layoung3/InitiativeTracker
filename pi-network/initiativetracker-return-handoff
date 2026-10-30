@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.9D: hand off an active hotspot to supervised saved-Wi-Fi return.
 
 Root only, launched independently by systemd-run through restricted socket broker.

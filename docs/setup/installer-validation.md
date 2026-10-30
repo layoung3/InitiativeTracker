@@ -20,8 +20,8 @@ were never executed here. Runtime changes are separately reviewable against them
 
 | Check | Result / scope |
 | --- | --- |
-| Local installer tests | 20 passed; 11 container-only tests intentionally skipped on host |
-| Debian 13 disposable container | 31 passed, including the 11 container-only tests; no skips |
+| Local installer tests | 21 passed; 13 container-only tests intentionally skipped on host |
+| Debian 13 disposable container | 34 passed, including the 13 container-only tests; no skips |
 | Existing network controller suite | 195 passed |
 | ShellCheck 0.10 | Passed for all three shell entry points and all derived runtime scripts |
 | Python compilation and shell syntax | Passed for added Python modules and runtime shell scripts |
@@ -30,7 +30,7 @@ were never executed here. Runtime changes are separately reviewable against them
 
 Container base: official `python:3.13-slim-trixie`, digest
 `sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb`.
-Test image installs only test dependencies (`sudo` 1.9.16p2, ShellCheck) and
+Test image installs only test dependencies (system Python, `sudo` 1.9.16p2, ShellCheck) and
 synthetic accounts. Build needed the environment's existing HTTP proxy routing
 and public CA bundle as a transient BuildKit certificate secret (0444 for APT's
 unprivileged reader). No certificate or proxy credentials are stored in Git or
@@ -65,8 +65,29 @@ and Chromium are recordings/stubs, not live services or windows. They verify:
   profile, including after a checker failure.
 - Real sudo permits the proposed desktop rule's exact zero-argument entry, rejects
   additional source arguments/shell execution, and grants the app account nothing.
+- Real sudo from an operator-owned hostile CWD: a deliberately unisolated
+  configuration-check control imports the synthetic `pathlib.py` as UID 0,
+  proving exploit coverage; the hardened complete update imports none of the
+  hostile `pathlib`, `json`, `tarfile` or site customization modules.
+- A second real-sudo fixture deliberately preserves hostile `PYTHONPATH`,
+  nonexistent `PYTHONHOME`, `PYTHONUSERBASE` and `BASH_ENV` through a **test-only**
+  sudoers environment allowance, confirms they reached the root process, and
+  verifies a successful update with no imported module/shell-startup marker.
+  The production recipe does not add that allowance.
+- A spaced active Imager profile ID stops hub preflight before mutation with
+  explicit commissioning guidance; no rename, activation or connectivity change.
 
-Application source and release scripts were not changed. The owner already has
+Interpreter audit: all privileged stdin/command Python calls in the derived
+updater, checker and bootstrap/hostname helper use `/usr/bin/python3 -I`.
+Fresh installer entry points reset PATH and invoke the same isolated interpreter.
+Installed Python network helpers use `#!/usr/bin/python3 -I`; their intentional
+sibling loads use explicit `__file__`-relative paths under the root-owned helper
+directory, with no caller-CWD `sys.path` insertion. Kiosk invocation also uses
+isolated mode. Root shell entry points use `/bin/bash -p` to ignore inherited
+shell startup/functions, as well as fixed interpreter/PATH selection. Exact
+updater originals and their provenance hashes are unchanged.
+
+Application source and Build/Test/Stage scripts were not changed. The owner already has
 the approved 0.1.5 artifact; no new application release/build was produced solely
 for this installer. No .NET SDK is installed on the development host. The existing
 Build/Test/Stage/GUI workflow remains the release procedure, and real app health

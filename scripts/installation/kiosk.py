@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """Labwc-owned kiosk supervisor. Preserves hub updater-before-browser ordering."""
 import fcntl
 import json

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.10B: stage a root-owned NM Wi-Fi profile from stdin JSON; never connects."""
 import configparser
 import json
