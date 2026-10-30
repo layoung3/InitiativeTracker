@@ -2,6 +2,19 @@
 
 This bootstrap installer installs the first InitiativeTracker release onto a clean ARM64 Linux hub.
 
+Start with [SetupReadme.md](../SetupReadme.md) and the complete
+[fresh hub guide](../docs/setup/fresh-hub.md) for OS/native dependencies, release
+transfer/validation, desktop/updater prerequisites, network provisioning and
+acceptance. This script alone does **not** produce a keyboardless hub. It does
+not install the graphical updater, kiosk launcher, networking helpers, socket,
+timers or gates, and it is not rollback-aware. Never use it for upgrades; follow
+[the canonical graphical release procedure](../docs/setup/hub-release.md).
+The approved release is self-contained; a separate system .NET runtime is optional.
+
+Examples below use the inspected 0.1.5 version; use your actual approved artifact.
+The deployment workflow's Stage step names the staged manifest
+`release-manifest.json`; substitute that path if using staged output.
+
 It consumes the same:
 - release manifest
 - linux-arm64 `.tar.gz`
@@ -29,8 +42,8 @@ chmod +x ~/hub-bootstrap/install-hub-release.sh
 chmod +x ~/hub-bootstrap/initiativetracker-sync-hostname
 
 sudo ~/hub-bootstrap/install-hub-release.sh \
-    ~/InitiativeTracker-0.1.0-linux-arm64.manifest.json \
-    ~/InitiativeTracker-0.1.0-linux-arm64.tar.gz
+    ~/InitiativeTracker-0.1.5-linux-arm64.manifest.json \
+    ~/InitiativeTracker-0.1.5-linux-arm64.tar.gz
 ```
 
 The installer validates:
