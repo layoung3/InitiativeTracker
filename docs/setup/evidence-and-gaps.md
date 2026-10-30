@@ -135,10 +135,16 @@ into a generic image or Git repository.
 Checks completed for the documentation:
 
 - 10 Markdown files reviewed; 71 internal file links/section targets resolve.
-- 32 fenced shell blocks and four nested shell scripts pass `bash -n`.
+- 30 fenced shell blocks and six nested shell scripts pass `bash -n`.
 - Four Python snippets parse; the transfer-check example accepts a matching
   synthetic pair and rejects both corruption and a traversal filename (three checks
   using disposable temporary files).
+- 18 disposable recovery-script cases pass: successful binary/data restoration;
+  rejected release/backup pairing and checksum; failed stop, preservation-directory
+  creation, failed-data move, extraction, integrity/migration check, data install,
+  symlink operations and health. Service, SQLite, health and ownership checks are
+  stubbed; ACL flags are omitted on the temporary test filesystem. These verify
+  shell failure sequencing and preservation, not live restore correctness.
 - Referenced source paths, PowerShell parameters, units, gates, endpoints,
   profile semantics and the boot-controller hash were cross-checked with source.
 - Documentation-only diff, placeholders and secret handling reviewed;

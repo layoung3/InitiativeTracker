@@ -95,82 +95,177 @@ schema/config. N7/0.1.5 introduces no migration, but that does not prove every
 older/future release is compatible. Check release notes and migration metadata.
 Record the currently active path and take the consistent backup described in
 [the release guide](hub-release.md#5-record-the-current-release-and-take-a-consistent-private-backup).
-In an operator-approved pause in play, replace the placeholder with the retained
-previous versioned directory, not another machine's path:
+Execution requires the owner's approval for the maintenance pause **and** reviewed
+compatibility of the previous application with the current schema/config. This
+example is **binary-only**; do not reuse it as a data-restore shortcut. Replace the
+placeholder with the retained previous versioned directory, not another machine's
+path. Run the complete checked block, not individual commands after a failure:
 
 ```bash
+sudo bash <<'SH'
+set -eEuo pipefail
 previous_release='/opt/initiativetracker/releases/PREVIOUS_VERSION-linux-arm64'
 case "$previous_release" in /opt/initiativetracker/releases/*-linux-arm64) ;; *) exit 1;; esac
-test -d "$previous_release" && test -x "$previous_release/InitiativeTracker.Web" || exit 1
-test ! -e /opt/initiativetracker/current.rollback && test ! -L /opt/initiativetracker/current.rollback || exit 1
-sudo systemctl stop initiativetracker.service
-systemctl is-active initiativetracker.service
-```
-
-Expected: `inactive` (normally exit 3). Confirm it is stopped, then:
-
-```bash
-sudo ln -s "$previous_release" /opt/initiativetracker/current.rollback
-sudo mv -Tf /opt/initiativetracker/current.rollback /opt/initiativetracker/current
-sudo systemctl start initiativetracker.service
+test "$(readlink -e "$previous_release")" = "$previous_release"
+test -x "$previous_release/InitiativeTracker.Web"
+test ! -e /opt/initiativetracker/current.rollback
+test ! -L /opt/initiativetracker/current.rollback
+systemctl stop initiativetracker.service
+test "$(systemctl show -p ActiveState --value initiativetracker.service)" = inactive
+test "$(systemctl show -p MainPID --value initiativetracker.service)" = 0
+# On a later error leave the service stopped; never guess a data rollback.
+hold_stopped() {
+  result=$?
+  trap - ERR
+  if systemctl stop initiativetracker.service &&
+     test "$(systemctl show -p ActiveState --value initiativetracker.service)" = inactive &&
+     test "$(systemctl show -p MainPID --value initiativetracker.service)" = 0; then
+    printf '%s\n' 'Rollback incomplete; service verified stopped. Inspect before retrying.' >&2
+  else
+    printf '%s\n' 'Rollback incomplete; stop could not be verified. Use local recovery immediately.' >&2
+  fi
+  exit "$result"
+}
+trap hold_stopped ERR
+ln -s "$previous_release" /opt/initiativetracker/current.rollback
+mv -Tf /opt/initiativetracker/current.rollback /opt/initiativetracker/current
+test "$(readlink -e /opt/initiativetracker/current)" = "$previous_release"
+systemctl start initiativetracker.service
+curl --retry 30 --retry-connrefused --retry-delay 2 --max-time 5 \
+  --fail --silent --show-error http://127.0.0.1:5000/system/health
 readlink -f /opt/initiativetracker/current
-curl --fail --silent --show-error http://127.0.0.1:5000/system/health
+SH
 ```
 
 Expected: previous version path, healthy response showing that version, same hub
 identity and retained current data. This switches the symlink only; it does not
 extract into or overwrite a release directory. Retained releases have their own
 production config copy. Check it remains compatible with the external production
-source before a later update. If old binaries cannot read current data, stop them
-and use the schema-compatible recovery plan below.
+source before a later update. Any failed stop, symlink operation or target check
+exits before starting; failed start/health requests and verifies a stopped service
+(or reports that local recovery is required). Do not continue by pasting later
+lines. If data compatibility is uncertain, do not run this block;
+prepare a reviewed schema-dependent recovery plan first.
 
 ### Schema-dependent data restore
 
 Restoring an older checkpoint **discards subsequent play and trust changes**.
-Obtain the owner's agreement to that specific checkpoint/data loss. Preserve the
-failed data before restoring. A backup contains secrets: use private local storage
-and never attach it to a PR. Do not restore just a DB file while leaving unrelated
-WAL/SHM or replacing Data Protection keys independently.
+Execution requires **explicit owner approval for the specific backup, matching
+release, maintenance interruption and loss of all writes/trust changes since that
+checkpoint**. Verify the checkpoint's last migration against the retained release's
+source/release notes and its private configuration before running anything. A
+version label alone does not establish schema compatibility. Do not automatically
+restore a schema-changing release because an update failed, and do not run the
+binary-only block first to discover whether old binaries can read new data.
 
-Choose the consistent stopped-app backup made with the release guide. Verify
-its hash and archive readability, then stop the application. These are templates
-for an approved recovery, not commands executed during documentation:
+Use the consistent stopped-app **manual** backup format in the release guide.
+Its `previous-release.txt` must identify the exact retained release being restored;
+obtain the expected migration ID from the approved checkpoint receipt. Inspect the
+backed-up config privately and resolve any compatibility issue before execution.
+Retain the failed external config; this procedure does not blindly restore `/etc`.
+An updater-generated backup can have a different format: use its approved recipe
+instead of substituting it here.
+
+The following is one fail-closed maintenance template, not a command run during
+documentation. Replace all three placeholders, then run the complete block once.
+It preserves failed data/config under a new private parent, extracts into an empty
+staging tree, checks completion/integrity/migration, installs that data and the
+matching release, and only then starts the app. A failed preflight makes no
+service/data changes. After the initial stop, an error halts the block and requests/verifies a stopped service for diagnosis. If
+stopping cannot be verified, use local recovery immediately. The block does not
+retry, merge data or undo a schema change automatically.
 
 ```bash
+sudo bash <<'SH'
+set -eEuo pipefail
+umask 077
 backup_dir='/var/backups/initiativetracker/manual-CHOSEN_UTC_TIMESTAMP'
-sudo sha256sum -c "$backup_dir/backup.sha256"
-sudo tar -tzf "$backup_dir/data-and-config.tar.gz" >/dev/null
-sudo systemctl stop initiativetracker.service
-systemctl is-active initiativetracker.service
-```
-
-Expected: checksum `OK`, archive test exits 0, app inactive. Preserve the entire
-failed data directory inside a new root-only parent; refuse to overwrite it:
-
-```bash
-failed_dir="/var/backups/initiativetracker/failed-$(date -u +%Y%m%dT%H%M%SZ)"
-sudo test ! -e "$failed_dir" || exit 1
-sudo install -d -o root -g root -m 0700 "$failed_dir"
-sudo mv /var/lib/initiativetracker "$failed_dir/data"
-sudo tar --acls --xattrs -xzf "$backup_dir/data-and-config.tar.gz" -C / \
+expected_release='/opt/initiativetracker/releases/APPROVED_CHECKPOINT_VERSION-linux-arm64'
+expected_migration='APPROVED_CHECKPOINT_LAST_MIGRATION_ID'
+case "$backup_dir:$expected_release:$expected_migration" in
+  *CHOSEN_UTC_TIMESTAMP*|*APPROVED_CHECKPOINT*) echo 'Replace and review all placeholders'; exit 1;;
+esac
+case "$expected_release" in /opt/initiativetracker/releases/*-linux-arm64) ;; *) exit 1;; esac
+test "$(readlink -e "$expected_release")" = "$expected_release"
+test -x "$expected_release/InitiativeTracker.Web"
+test "$(cat "$backup_dir/previous-release.txt")" = "$expected_release"
+sha256sum -c "$backup_dir/backup.sha256"
+tar -tzf "$backup_dir/data-and-config.tar.gz" >/dev/null
+command -v sqlite3 >/dev/null
+test -d /var/lib/initiativetracker
+test ! -L /var/lib/initiativetracker
+test ! -e /opt/initiativetracker/current.rollback
+test ! -L /opt/initiativetracker/current.rollback
+systemctl stop initiativetracker.service
+test "$(systemctl show -p ActiveState --value initiativetracker.service)" = inactive
+test "$(systemctl show -p MainPID --value initiativetracker.service)" = 0
+hold_stopped() {
+  result=$?
+  trap - ERR
+  if systemctl stop initiativetracker.service &&
+     test "$(systemctl show -p ActiveState --value initiativetracker.service)" = inactive &&
+     test "$(systemctl show -p MainPID --value initiativetracker.service)" = 0; then
+    printf '%s\n' 'Restore incomplete; service verified stopped. Preserve recovery files and inspect.' >&2
+  else
+    printf '%s\n' 'Restore incomplete; stop could not be verified. Use local recovery immediately.' >&2
+  fi
+  exit "$result"
+}
+trap hold_stopped ERR
+recovery_dir=$(mktemp -d /var/backups/initiativetracker/recovery-XXXXXXXX)
+chmod 0700 "$recovery_dir"
+readlink -e /opt/initiativetracker/current > "$recovery_dir/failed-release.txt"
+cp -a /etc/initiativetracker "$recovery_dir/failed-config"
+systemctl cat initiativetracker.service > "$recovery_dir/failed-app-service.txt"
+mv -T /var/lib/initiativetracker "$recovery_dir/failed-data"
+test -d "$recovery_dir/failed-data"
+test ! -e /var/lib/initiativetracker
+test ! -L /var/lib/initiativetracker
+install -d -m 0700 "$recovery_dir/staging"
+tar --acls --xattrs -xzf "$backup_dir/data-and-config.tar.gz" -C "$recovery_dir/staging" \
   var/lib/initiativetracker
-sudo stat -c '%U:%G %a' /var/lib/initiativetracker
+restored_data="$recovery_dir/staging/var/lib/initiativetracker"
+test -d "$restored_data"
+test ! -L "$restored_data"
+test -f "$restored_data/initiative-tracker.db"
+test ! -L "$restored_data/initiative-tracker.db"
+test -d "$restored_data/DataProtection-Keys"
+test ! -L "$restored_data/DataProtection-Keys"
+test "$(stat -c '%U:%G %a' "$restored_data")" = 'initiativetracker:initiativetracker 750'
+test "$(sqlite3 -readonly "$restored_data/initiative-tracker.db" 'PRAGMA integrity_check;')" = ok
+restored_migration=$(sqlite3 -readonly "$restored_data/initiative-tracker.db" \
+  'SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 1;')
+test "$restored_migration" = "$expected_migration"
+mv -T "$restored_data" /var/lib/initiativetracker
+test ! -e "$restored_data"
+runuser -u initiativetracker -- test -r /var/lib/initiativetracker/initiative-tracker.db
+runuser -u initiativetracker -- test -w /var/lib/initiativetracker
+runuser -u initiativetracker -- test -r /var/lib/initiativetracker/DataProtection-Keys
+ln -s "$expected_release" /opt/initiativetracker/current.rollback
+mv -Tf /opt/initiativetracker/current.rollback /opt/initiativetracker/current
+test "$(readlink -e /opt/initiativetracker/current)" = "$expected_release"
+printf 'Verified restored checkpoint with migration %s; failed state retained at %s\n' \
+  "$restored_migration" "$recovery_dir"
+systemctl start initiativetracker.service
+curl --retry 30 --retry-connrefused --retry-delay 2 --max-time 5 \
+  --fail --silent --show-error http://127.0.0.1:5000/system/health
+SH
 ```
 
-Expected: restored data `initiativetracker:initiativetracker 750`, including matching
-DB/keys. Select the **matching previous release** with the symlink commands above
-before starting the service. Retain the failed external config and restore only
-reviewed matching config/overrides if required; do not blindly extract `/etc`
-over a working OS. This manual checkpoint format is different from any external
-updater's backup layout: inspect its approved restore recipe instead of assuming
-these paths fit an updater-generated backup.
+Expected: checksum `OK`, verified-checkpoint message with the approved migration
+and private recovery path, then healthy matching version. Restoration never
+extracts into the old live directory; failures before data preservation prevent
+extraction, and failures during staging prevent installation/start. If a move
+fails partway (for example across filesystems), retain both locations and resolve
+the partial copy manually; do not continue to later lines. Partial staging or a
+leftover `current.rollback` also requires inspection before retrying.
 
-Start once, inspect health/migrations, identity, characters, encounter and paired
-devices. Expected: healthy compatible version; zero pending migrations after
-startup; known checkpoint state. Some clients may need re-pairing if their trust
-was created after the checkpoint. Keep failed data for diagnosis. If integrity
-investigation is needed, run SQLite `PRAGMA integrity_check;` on a **private
-stopped copy**, not speculative repair commands against the live database.
+Check `/system/status`, zero pending migrations, version, hub identity, characters,
+encounter and paired devices against the approved receipt. A health response alone
+does not prove the correct gameplay checkpoint was restored. Stop the service and
+investigate any mismatch; do not run another restore automatically. Clients whose
+trust was created after the checkpoint may need re-pairing. Keep the failed data,
+release pointer, config and unit evidence private for diagnosis.
 
 ## First-install failure
 

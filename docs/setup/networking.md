@@ -202,7 +202,10 @@ printf '%s\n' 'ENABLE_BOOT_FALLBACK=yes' > "$gate_dir/boot-fallback.enabled"
 chown root:root "$gate_dir/"*.enabled
 chmod 0600 "$gate_dir/"*.enabled
 SH
-sudo stat -c '%U:%G %a %n' /etc/initiativetracker/network/*.enabled
+sudo stat -c '%U:%G %a %n' \
+  /etc/initiativetracker/network/live-switch.enabled \
+  /etc/initiativetracker/network/return-switch.enabled \
+  /etc/initiativetracker/network/boot-fallback.enabled
 ```
 
 Expected: three regular root-owned 0600 files with exactly those values. Gates
