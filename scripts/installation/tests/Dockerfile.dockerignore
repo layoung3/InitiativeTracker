@@ -1,0 +1,13 @@
+**
+!scripts/
+!scripts/installation/
+!scripts/installation/**
+!scripts/install*.sh
+!hub-updater/
+!hub-updater/**
+!hub-bootstrap/
+!hub-bootstrap/**
+!pi-network/
+!pi-network/**
+**/__pycache__
+**/*.pyc

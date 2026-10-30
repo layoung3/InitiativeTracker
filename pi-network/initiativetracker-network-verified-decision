@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.6G: verify N6.6F scan metadata and provide safe, read-only recommendations.
 
 No scans, network changes or state writes. A completed RF scan request means the

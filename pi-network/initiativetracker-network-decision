@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.6E: read-only integrated networking recommendation. Never rescans or switches Wi-Fi.
 
 Uses current NetworkManager discovery + N6.6D protected observations and N6.6C policy.

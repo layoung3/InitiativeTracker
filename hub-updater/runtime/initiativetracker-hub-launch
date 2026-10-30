@@ -1,0 +1,64 @@
+#!/bin/bash -p
+set -u
+
+# Fresh installs background this same resolved home launcher from Labwc. The
+# optional supervisor dispatch preserves the original no-argument launch path
+# used by existing hubs and by the supervisor's own child invocation.
+if [[ "${1:-}" == --supervise && $# -eq 2 ]]; then
+    exec /usr/bin/python3 -I "${HOME}/.local/lib/initiativetracker-hub/kiosk.py" "$2"
+elif [[ $# -ne 0 ]]; then
+    printf '%s\n' 'Usage: initiativetracker-hub-launch [--supervise /path/to/kiosk.json]' >&2
+    exit 64
+fi
+
+BASE_URL="http://127.0.0.1:5000"
+TARGET_URL="${BASE_URL}/setup"
+PROFILE_DIR="${HOME}/.config/initiativetracker-hub/chromium"
+UPDATE_CHECKER="/usr/local/bin/initiativetracker-check-update"
+
+mkdir -p \
+    "$PROFILE_DIR"
+
+wait_for_hub()
+{
+    local attempt
+    for ((attempt=1; attempt<=60; attempt++)); do
+      if curl \
+        --fail \
+        --silent \
+        --connect-timeout 2 \
+        --max-time 4 \
+        "${BASE_URL}/system/health" \
+        >/dev/null 2>&1; then
+        return 0
+      fi
+        sleep 2
+    done
+    zenity --error --timeout=15 --title='InitiativeTracker needs attention' \
+      --text='Hub health did not become ready. Check the application service locally. The kiosk will retry.' 2>/dev/null || true
+    return 1
+}
+
+wait_for_hub || exit 75
+
+if [[ -x "$UPDATE_CHECKER" ]]; then
+    "$UPDATE_CHECKER" ||
+        true
+fi
+
+# The updater may have restarted the application.
+wait_for_hub || exit 75
+
+exec /usr/bin/chromium \
+    --kiosk \
+    --start-maximized \
+    --noerrdialogs \
+    --disable-infobars \
+    --no-first-run \
+    --disable-session-crashed-bubble \
+    --disable-features=TranslateUI \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    --password-store=basic \
+    --user-data-dir="$PROFILE_DIR" \
+    "$TARGET_URL"

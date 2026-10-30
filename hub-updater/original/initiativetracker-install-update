@@ -1,0 +1,635 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="/etc/initiativetracker/updater.conf"
+
+APPLICATION_ROOT="/opt/initiativetracker"
+RELEASES_ROOT="${APPLICATION_ROOT}/releases"
+CURRENT_LINK="${APPLICATION_ROOT}/current"
+
+DATA_DIRECTORY="/var/lib/initiativetracker"
+BACKUP_ROOT="/var/backups/initiativetracker"
+CACHE_ROOT="/var/cache/initiativetracker-updater"
+
+PERSISTENT_APPSETTINGS="/etc/initiativetracker/appsettings.Production.json"
+SERVICE_NAME="initiativetracker.service"
+
+HEALTH_URL="http://127.0.0.1:5000/system/health"
+
+log()
+{
+    printf '[InitiativeTracker installer] %s\n' "$*"
+    logger \
+        -t initiativetracker-updater \
+        -- "$*" \
+        2>/dev/null ||
+    true
+}
+
+fail()
+{
+    log "ERROR: $*"
+    exit 1
+}
+
+fetch_source()
+{
+    local source="$1"
+    local destination="$2"
+
+    if [[ "$source" == https://* ]]; then
+        curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --connect-timeout 10 \
+            --max-time 120 \
+            "$source" \
+            --output "$destination"
+        return
+    fi
+
+    if [[ "$source" == http://* ]]; then
+        if [[ "${ALLOW_INSECURE_HTTP:-false}" != "true" ]]; then
+            fail "Plain HTTP update sources are disabled."
+        fi
+
+        curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --connect-timeout 10 \
+            --max-time 120 \
+            "$source" \
+            --output "$destination"
+        return
+    fi
+
+    if [[ "$source" == file://* ]]; then
+        cp -- "${source#file://}" "$destination"
+        return
+    fi
+
+    cp -- "$source" "$destination"
+}
+
+wait_for_health()
+{
+    local expected_version="${1:-}"
+    local attempts="${2:-60}"
+
+    local response_file
+    response_file="$(mktemp)"
+
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if curl \
+            --fail \
+            --silent \
+            --connect-timeout 2 \
+            --max-time 4 \
+            "$HEALTH_URL" \
+            --output "$response_file" \
+            2>/dev/null; then
+
+            if python3 - \
+                "$response_file" \
+                "$expected_version" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+expected = sys.argv[2]
+
+try:
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    sys.exit(1)
+
+if data.get("status") != "healthy":
+    sys.exit(1)
+
+if expected and str(data.get("version", "")) != expected:
+    sys.exit(1)
+
+sys.exit(0)
+PY
+            then
+                rm -f "$response_file"
+                return 0
+            fi
+        fi
+
+        sleep 2
+    done
+
+    rm -f "$response_file"
+    return 1
+}
+
+if [[ "$EUID" -ne 0 ]]; then
+    fail "This installer must run as root."
+fi
+
+if [[ $# -ne 0 ]]; then
+    fail "Installer does not accept command-line update sources."
+fi
+
+if [[ ! -f "$CONFIG_FILE" || -L "$CONFIG_FILE" ||
+      "$(stat -c '%u' "$CONFIG_FILE")" != "0" ||
+      "$(stat -c '%a' "$CONFIG_FILE")" != "644" ]]; then
+    fail "Updater configuration must be a root-owned regular file (0644)."
+fi
+
+# Root-controlled configuration, not user-provided sudo arguments.
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+MANIFEST_SOURCE="${MANIFEST_SOURCE:-}"
+[[ -n "$MANIFEST_SOURCE" ]] || fail "MANIFEST_SOURCE is empty."
+
+# The first test accepts only a root-owned local staging folder.
+# Future HTTPS releases require a separate signed-manifest security pass.
+STAGING_DIR="/var/cache/initiativetracker-updater/incoming"
+if [[ "$MANIFEST_SOURCE" != "$STAGING_DIR/"* ||
+      "$MANIFEST_SOURCE" != *.manifest.json ]]; then
+    fail "Only staged local manifests under $STAGING_DIR are permitted."
+fi
+if [[ -L "$MANIFEST_SOURCE" || ! -f "$MANIFEST_SOURCE" ||
+      "$(stat -c '%u' "$MANIFEST_SOURCE")" != "0" ]]; then
+    fail "Staged manifest must be a root-owned regular file."
+fi
+if [[ "$(stat -c '%u' "$STAGING_DIR")" != "0" ||
+      "$(stat -c '%a' "$STAGING_DIR")" != "755" ]]; then
+    fail "Staging directory must be root owned (0755)."
+fi
+
+ALLOW_INSECURE_HTTP="${ALLOW_INSECURE_HTTP:-false}"
+
+if [[ "$(uname -m)" != "aarch64" ]]; then
+    fail "This release installer currently supports ARM64 Linux only."
+fi
+
+command -v curl >/dev/null 2>&1 ||
+    fail "curl is required."
+
+command -v python3 >/dev/null 2>&1 ||
+    fail "python3 is required."
+
+command -v sha256sum >/dev/null 2>&1 ||
+    fail "sha256sum is required."
+
+command -v flock >/dev/null 2>&1 ||
+    fail "flock is required."
+
+install -d \
+    -m 0755 \
+    "$RELEASES_ROOT" \
+    "$BACKUP_ROOT" \
+    "$CACHE_ROOT"
+
+exec 9>"/run/lock/initiativetracker-updater.lock"
+
+if ! flock -n 9; then
+    fail "Another InitiativeTracker update is already running."
+fi
+
+work_directory="$(
+    mktemp \
+        -d \
+        "${CACHE_ROOT}/update.XXXXXX"
+)"
+
+cleanup()
+{
+    rm -rf "$work_directory"
+}
+
+trap cleanup EXIT
+
+manifest_path="${work_directory}/release-manifest.json"
+
+log "Downloading release manifest."
+
+fetch_source \
+    "$MANIFEST_SOURCE" \
+    "$manifest_path"
+
+
+mapfile -t manifest_values < <(
+    python3 - "$manifest_path" <<'PY'
+import json
+import os
+import re
+import sys
+
+path = sys.argv[1]
+
+try:
+    with open(path, "r", encoding="utf-8-sig") as handle:
+        data = json.load(handle)
+except Exception as exc:
+    print(f"Manifest could not be read: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+errors = []
+
+if data.get("formatVersion") != 1:
+    errors.append("formatVersion must be 1")
+
+if data.get("product") != "InitiativeTracker":
+    errors.append("product must be InitiativeTracker")
+
+if data.get("platform") != "linux-arm64":
+    errors.append("platform must be linux-arm64")
+
+if data.get("healthPath") != "/system/health":
+    errors.append("healthPath must be /system/health")
+
+version = str(data.get("version", "")).strip()
+
+semver = re.compile(
+    r"^(0|[1-9]\d*)\."
+    r"(0|[1-9]\d*)\."
+    r"(0|[1-9]\d*)"
+    r"(?:-[0-9A-Za-z.-]+)?"
+    r"(?:\+[0-9A-Za-z.-]+)?$"
+)
+
+if not semver.fullmatch(version):
+    errors.append("version is not valid semantic version syntax")
+
+package = data.get("package")
+
+if not isinstance(package, dict):
+    errors.append("package is missing")
+    package = {}
+
+file_name = str(package.get("fileName", "")).strip()
+if not re.fullmatch(r"InitiativeTracker-[0-9A-Za-z.+-]+-linux-arm64\.tar\.gz", file_name):
+    errors.append("unexpected package filename")
+
+if (
+    not file_name
+    or file_name != os.path.basename(file_name)
+    or ".." in file_name
+    or "/" in file_name
+    or "\\" in file_name
+):
+    errors.append("package fileName is unsafe")
+
+try:
+    size_bytes = int(package.get("sizeBytes", 0))
+except Exception:
+    size_bytes = 0
+
+if size_bytes <= 0:
+    errors.append("package sizeBytes must be greater than zero")
+
+sha256 = str(package.get("sha256", "")).strip().lower()
+
+if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+    errors.append("package sha256 must contain 64 hexadecimal characters")
+
+if errors:
+    for error in errors:
+        print(error, file=sys.stderr)
+
+    sys.exit(3)
+
+print(version)
+print(file_name)
+print(size_bytes)
+print(sha256)
+PY
+)
+
+if [[ ${#manifest_values[@]} -ne 4 ]]; then
+    fail "Release manifest validation failed."
+fi
+
+version="${manifest_values[0]}"
+package_file_name="${manifest_values[1]}"
+expected_size="${manifest_values[2]}"
+expected_sha256="${manifest_values[3]}"
+
+current_target="$(
+    readlink -f \
+        "$CURRENT_LINK" \
+        2>/dev/null ||
+    true
+)"
+
+if [[ -z "$current_target" ||
+      ! -x "${current_target}/InitiativeTracker.Web" ]]; then
+    fail "Current InitiativeTracker release could not be resolved."
+fi
+
+current_name="$(basename "$current_target")"
+current_version="${current_name%-linux-arm64}"
+
+if [[ "$version" == "$current_version" ]]; then
+    log "Version $version is already installed."
+    exit 0
+fi
+
+package_source="$(
+    python3 - \
+        "$MANIFEST_SOURCE" \
+        "$package_file_name" <<'PY'
+from pathlib import Path
+from urllib.parse import urljoin
+import sys
+
+source = sys.argv[1]
+file_name = sys.argv[2]
+
+if source.startswith(("https://", "http://")):
+    print(urljoin(source, file_name))
+elif source.startswith("file://"):
+    path = Path(source[7:])
+    print("file://" + str(path.parent / file_name))
+else:
+    path = Path(source)
+    print(str(path.parent / file_name))
+PY
+)"
+
+if [[ -L "${STAGING_DIR}/${package_file_name}" ||
+      ! -f "${STAGING_DIR}/${package_file_name}" ||
+      "$(stat -c '%u' "${STAGING_DIR}/${package_file_name}")" != "0" ]]; then
+    fail "Staged package must be a root-owned regular file."
+fi
+
+package_path="${work_directory}/${package_file_name}"
+
+log "Downloading release package ${package_file_name}."
+
+fetch_source \
+    "$package_source" \
+    "$package_path"
+
+
+actual_size="$(
+    stat \
+        -c '%s' \
+        "$package_path"
+)"
+
+if [[ "$actual_size" != "$expected_size" ]]; then
+    fail \
+        "Package size mismatch. Expected ${expected_size}, got ${actual_size}."
+fi
+
+actual_sha256="$(
+    sha256sum \
+        "$package_path" |
+    awk '{print tolower($1)}'
+)"
+
+if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+    fail "Package SHA-256 does not match the manifest."
+fi
+
+
+extracted_directory="${work_directory}/extracted"
+
+mkdir -p \
+    "$extracted_directory"
+
+log "Inspecting and extracting release package."
+
+python3 - \
+    "$package_path" \
+    "$extracted_directory" <<'PY'
+from pathlib import Path, PurePosixPath
+import os
+import sys
+import tarfile
+
+archive_path = Path(sys.argv[1])
+destination = Path(sys.argv[2]).resolve()
+
+with tarfile.open(archive_path, "r:gz") as archive:
+    members = archive.getmembers()
+
+    if not members:
+        raise SystemExit("Release archive is empty.")
+
+    found_executable = False
+
+    for member in members:
+        normalized = member.name.replace("\\", "/")
+
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+
+        if not normalized:
+            continue
+
+        path = PurePosixPath(normalized)
+
+        if path.is_absolute() or ".." in path.parts:
+            raise SystemExit(
+                f"Unsafe archive path: {member.name}"
+            )
+
+        if normalized == "InitiativeTracker.Web":
+            if not member.isfile():
+                raise SystemExit(
+                    "InitiativeTracker.Web is not a regular file."
+                )
+
+            found_executable = True
+
+    if not found_executable:
+        raise SystemExit(
+            "InitiativeTracker.Web was not found at the archive root."
+        )
+
+    # Python 3.12+ data filtering blocks extraction paths and link targets
+    # that escape the destination and rejects dangerous special files.
+    archive.extractall(
+        destination,
+        filter="data"
+    )
+
+executable = destination / "InitiativeTracker.Web"
+
+if not executable.is_file():
+    raise SystemExit(
+        "InitiativeTracker.Web was not extracted."
+    )
+PY
+
+
+release_directory="${RELEASES_ROOT}/${version}-linux-arm64"
+
+if [[ "$release_directory" == "$current_target" ]]; then
+    log "Version $version is already the active release."
+    exit 0
+fi
+
+if [[ -e "$release_directory" ]]; then
+    fail "Target release directory already exists; refusing to overwrite it."
+fi
+
+mv \
+    "$extracted_directory" \
+    "$release_directory"
+
+chown -R \
+    root:root \
+    "$release_directory"
+
+chmod \
+    0755 \
+    "${release_directory}/InitiativeTracker.Web"
+
+if [[ -f "$PERSISTENT_APPSETTINGS" ]]; then
+    install \
+        -o root \
+        -g root \
+        -m 0644 \
+        "$PERSISTENT_APPSETTINGS" \
+        "${release_directory}/appsettings.Production.json"
+else
+    fail \
+        "Persistent production configuration was not found at ${PERSISTENT_APPSETTINGS}."
+fi
+
+
+timestamp="$(
+    date -u \
+        +'%Y%m%dT%H%M%SZ'
+)"
+
+backup_path="${BACKUP_ROOT}/pre-update-${current_version}-to-${version}-${timestamp}.tar.gz"
+
+log \
+    "Stopping InitiativeTracker before database backup."
+
+systemctl stop \
+    "$SERVICE_NAME"
+
+if ! tar \
+    --numeric-owner \
+    -czf "$backup_path" \
+    -C "$DATA_DIRECTORY" \
+    .; then
+
+    systemctl start \
+        "$SERVICE_NAME" \
+        || true
+
+    fail "Persistent data backup failed."
+fi
+
+log \
+    "Persistent data backup created: ${backup_path}"
+
+new_link="${APPLICATION_ROOT}/current.new"
+
+rm -f \
+    "$new_link"
+
+ln -s \
+    "$release_directory" \
+    "$new_link"
+
+mv -Tf \
+    "$new_link" \
+    "$CURRENT_LINK"
+
+log \
+    "Activated InitiativeTracker ${version}."
+
+systemctl start \
+    "$SERVICE_NAME"
+
+
+if wait_for_health \
+        "$version" \
+        60; then
+
+    log \
+        "Update to InitiativeTracker ${version} passed the health check."
+
+    log \
+        "Previous release retained at ${current_target}."
+
+    log \
+        "Backup retained at ${backup_path}."
+
+    exit 0
+fi
+
+
+log \
+    "New release failed health validation. Starting rollback."
+
+systemctl stop \
+    "$SERVICE_NAME" \
+    || true
+
+rollback_link="${APPLICATION_ROOT}/current.rollback"
+
+rm -f \
+    "$rollback_link"
+
+ln -s \
+    "$current_target" \
+    "$rollback_link"
+
+mv -Tf \
+    "$rollback_link" \
+    "$CURRENT_LINK"
+
+
+failed_data_directory="${DATA_DIRECTORY}.failed-${version}-${timestamp}"
+
+if [[ -e "$failed_data_directory" ]]; then
+    rm -rf \
+        "$failed_data_directory"
+fi
+
+mv \
+    "$DATA_DIRECTORY" \
+    "$failed_data_directory"
+
+install \
+    -d \
+    -o initiativetracker \
+    -g initiativetracker \
+    -m 0750 \
+    "$DATA_DIRECTORY"
+
+tar \
+    -xzf "$backup_path" \
+    -C "$DATA_DIRECTORY"
+
+chown -R \
+    initiativetracker:initiativetracker \
+    "$DATA_DIRECTORY"
+
+systemctl start \
+    "$SERVICE_NAME"
+
+if wait_for_health \
+        "$current_version" \
+        60; then
+
+    log \
+        "Rollback succeeded. InitiativeTracker ${current_version} is healthy again."
+
+    log \
+        "Failed migrated data was preserved at ${failed_data_directory}."
+
+    exit 1
+fi
+
+log \
+    "CRITICAL: rollback was attempted, but the previous release did not pass health validation."
+
+exit 1

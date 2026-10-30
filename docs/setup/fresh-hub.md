@@ -2,12 +2,18 @@
 
 [Setup index](../../SetupReadme.md) · [Networking](networking.md) · [Acceptance](acceptance.md)
 
+For the new draft automation, start with [automated installation](automated-installation.md).
+It includes the recovered source snapshots, proposed provisioning recipe and
+targeted updater/launcher corrections. The manual steps below describe the
+original deployment baseline; their updater caveats still apply to existing
+devices running the originals. No existing device has been changed by this PR.
+
 These are **commissioning templates**, checked against source but not executed on
 a newly imaged Pi during this task. Run them only on the new intended hub. They
 are not an in-place repair or upgrade procedure. The app bootstrap exists;
-graphical-updater/launcher provisioning still requires the approved external
-components listed below. Do not declare keyboardless readiness until those are
-available and the acceptance checks pass.
+graphical-updater/launcher provisioning uses the recovered components listed
+below and the [reviewable recipe](../../hub-updater/README.md). Do not declare
+keyboardless readiness until fresh-device acceptance checks pass.
 
 The owner has verified an existing hub on **Debian 13 Trixie ARM64/aarch64**, with
 LightDM, graphical target and the 0.1.5 application active, healthy persistent data
@@ -227,11 +233,14 @@ The launcher waits indefinitely for app health, runs the graphical updater,
 waits for app health again, then `exec`s Chromium. It has **no browser crash-restart
 loop**. This is the N7-era installed mechanism;
 do not replace it with old LXDE autostart, an invented Chromium system service,
-or a launcher that races the updater. Audited original sources are preserved in
-[draft installer PR #3](https://github.com/layoung3/InitiativeTracker/pull/3),
-separately from its proposed derived runtime/provisioning. Neither source
-preservation nor fixture tests certify a newly imaged device. Obtain an approved
-recipe before completing this step. An unhealthy app can hold the original
+or a launcher that races the updater. Audited original sources are preserved
+under [`hub-updater/original`](../../hub-updater/original), separately from the
+proposed derived runtime/provisioning. Neither source preservation nor fixture
+tests certify a newly imaged device. The new [fresh-device recipe](automated-installation.md)
+installs derived working copies with bounded health waits and optional process
+supervision. Existing hubs have a [separate component-only procedure](../../hub-updater/EXISTING-HUB-UPGRADE.md)
+that preserves their direct Labwc integration. No proposed hardening is installed
+on the existing device by this PR. An unhealthy app can hold the **original**
 launcher before either the update prompt or Chromium without a deadline.
 
 The original launches `/setup` with profile
@@ -252,11 +261,11 @@ Required approved component inventory:
 Audit hashes for comparison are in [the verification record](evidence-and-gaps.md).
 The graphical checker needs Zenity in the desktop session and calls
 `sudo -n /usr/local/sbin/initiativetracker-install-update` with **zero arguments**.
-Provisioning must supply the reviewed narrow noninteractive privilege integration
-for that exact entry point; no broad passwordless sudo. Checker exit 0 can also
-mean an install failure was displayed: always verify release and health.
-The preserved source does not yet provide an approved complete OS-install recipe.
-Do not fabricate components or copy credentials from another machine.
+The new proposed recipe supplies a validated zero-argument-only sudo entry for
+that exact path; the deployed device's privilege recipe remains separate pending
+evidence. Original checker exit 0 can also mean an install failure was displayed;
+the derived working copy returns nonzero. Always verify release and health.
+Do not copy credentials from another machine.
 
 New installations must resolve the **selected desktop account's actual home**
 from the account database and generate that user's Labwc autostart entry with

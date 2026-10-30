@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.6A: read-only portable network policy and scenario evaluator.
 
 Does not modify network profiles, transition journals, or systemd units.

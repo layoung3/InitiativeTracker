@@ -1,5 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Run this installer with sudo."
@@ -33,7 +35,7 @@ apt-get install -y avahi-daemon curl python3
 echo "Validating release manifest..."
 
 readarray -t MANIFEST_VALUES < <(
-    python3 - "$MANIFEST_PATH" <<'PY'
+    /usr/bin/python3 -I - "$MANIFEST_PATH" <<'PY'
 import json
 import re
 import sys
@@ -227,6 +229,8 @@ echo "Waiting for InitiativeTracker health check..."
 
 HEALTHY=0
 
+# Fixed retry budget; the iteration value itself is intentionally unused.
+# shellcheck disable=SC2034
 for attempt in {1..60}; do
     if curl \
         --fail \

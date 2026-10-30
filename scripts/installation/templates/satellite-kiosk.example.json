@@ -1,0 +1,7 @@
+{
+  "role": "satellite",
+  "display_output": "",
+  "display_mode": "",
+  "hub_url": "http://HUB_HOSTNAME.local:5000",
+  "hub_id": "00000000-0000-0000-0000-000000000000"
+}

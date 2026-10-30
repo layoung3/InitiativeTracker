@@ -1,0 +1,16 @@
+{
+  "kind": "exact-installed-updater-source-handoff",
+  "source_snapshot": "authorized hub SCP copies, audited 2026-10-29/30",
+  "script_internal_version": null,
+  "sensitive_source_redactions": [],
+  "library_file_id": "libfile_d6fc917541e881919bb68c42441e780a",
+  "archive_filename": "InitiativeTracker-updater-source-handoff-17bfda06.zip",
+  "archive_sha256": "bc084ee00789d25c631eafa64e4f2f0b4a9268a4c8984c75350ada76a3693fe2",
+  "archive_bytes": 16494,
+  "transfer": "Library URL download failed through environment proxy. Reconstructed original files from complete source-handoff.json supplied by parent; decoded transport HTML entities and verified exact bytes/SHA-256.",
+  "files": [
+    {"name":"initiativetracker-install-update","bytes":13993,"sha256":"17bfda06c20f3d8b932d7f7f1bf341ed17107e32c602586f9680e463d9542c56","installed_location":"/usr/local/sbin/initiativetracker-install-update"},
+    {"name":"initiativetracker-check-update","bytes":7214,"sha256":"16e57846ace608c5e81d394107612d7d34100e82c06ef23e39b3aa409d607d4d","installed_location":"/usr/local/bin/initiativetracker-check-update"},
+    {"name":"initiativetracker-hub-launch","bytes":974,"sha256":"4bd743792f68b6041fb80e5c83cb377231bce743d5194115db146bbcb8b2c44a","installed_location":"${HUB_USER_HOME}/.local/lib/initiativetracker-hub/initiativetracker-hub-launch"}
+  ]
+}

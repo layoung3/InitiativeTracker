@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """N6.6F: manually invoked, rate-limited Wi-Fi scan gate. No connection changes.
 
 status/preflight never initiate RF scans. refresh requires explicit --execute.

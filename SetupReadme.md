@@ -7,18 +7,22 @@ on the existing hub. See [the evidence record](docs/setup/evidence-and-gaps.md)
 for verification limits. This guide was
 checked against `master` commit `353a1c78b0eb9150d6587a6c442c7dca76aaf5e4`.
 
-**A release package is not a complete device image.** The application bootstrap
-and network components are tracked here. The original graphical updater and hub
-launcher are now preserved in [draft installer PR #3](https://github.com/layoung3/InitiativeTracker/pull/3),
-alongside proposed provisioning and derived safety changes. That draft is not an
-installed upgrade or hardware acceptance result. A fresh hub cannot yet be
-certified as reproducible from this documentation alone. Follow the documented
-checkpoints and finish hardware acceptance before calling it ready.
+**A release package is not a complete device image.** This branch adds an
+[automated fresh-device installer](docs/setup/automated-installation.md), including
+the recovered original graphical updater sources and separately derived runtime
+safety changes. It is a draft implementation validated with disposable fixtures
+and a Debian container, pending physical fresh-Pi acceptance; it is not an
+installed upgrade or hardware acceptance result. Do not run a fresh installer on
+an existing working hub or satellite. Existing-hub component maintenance has a
+[separate backed-up approval-gated procedure](hub-updater/EXISTING-HUB-UPGRADE.md).
+Complete hardware acceptance before handover.
 
 ## Choose your route
 
 | Task | Guide |
 | --- | --- |
+| Preview/install a fresh hub or satellite automatically | [Automated installation and rollback checks](docs/setup/automated-installation.md) |
+| Review a backed-up component-only upgrade for an existing hub | [Separate approval-gated maintenance procedure](hub-updater/EXISTING-HUB-UPGRADE.md) |
 | Update an already configured hub | [Canonical hub release procedure](docs/setup/hub-release.md) |
 | Image a new Pi and install the hub | [Fresh hub installation](docs/setup/fresh-hub.md) |
 | Install hub networking and understand fallback | [Hub networking](docs/setup/networking.md) |

@@ -2,6 +2,13 @@
 
 [Setup index](../../SetupReadme.md) · [Acceptance checklist](acceptance.md)
 
+This is the **reviewed documentation baseline record**, retained for provenance.
+The follow-up installer branch adds recovered exact updater sources, a proposed
+fresh-device provisioning recipe, and disposable tests. Its new outcomes and
+remaining physical/deployed-metadata gaps are recorded separately in
+[installer validation](installer-validation.md); historical "missing"/"not performed"
+statements below describe the original documentation assignment.
+
 ## Scope and evidence levels
 
 Documentation review date: **2026-10-30**. Repository:

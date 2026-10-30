@@ -239,6 +239,11 @@ directory mode 0700 that the app service cannot read. A complete fix needs a
 reviewed, narrowly scoped backup/archive-permission change without changing
 release readability; this documentation does not implement it.
 
+The draft [automated fresh-device installer](automated-installation.md) installs
+a derived updater with scoped private backup permissions and failure-handling
+corrections. The preceding warnings describe the original deployed updater.
+No existing device is changed by adding that source/recipe to this repository.
+
 ## 6. Install through the graphical updater
 
 With a person at the touchscreen and the previous release/backup retained, reboot
