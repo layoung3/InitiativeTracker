@@ -21,10 +21,14 @@ Evidence labels throughout this documentation mean:
 | Previously observed / reported | Supplied historical deployment or read-only audit evidence, not repeated by this documentation task |
 | Template / pending | Concrete new-device instructions or acceptance steps needing execution/confirmation |
 
-The owner reports **0.1.5 deployed**. The desktop audit supplied for this assignment
-independently verifies the **local package**, not current live health, migration
-state or release cutover. An older record showing 0.1.4 active before cutover does
-not override the owner's later deployment report.
+The owner supplied a successful cutover receipt from another chat at
+**2026-10-30T01:25:29.8001487+00:00**: service active, current symlink resolving to
+`/opt/initiativetracker/releases/0.1.5-linux-arm64`, and `/system/health` reporting
+InitiativeTracker 0.1.5 healthy with database connected, migrations current and
+storage ready. This is owner-provided historical device evidence, not a new live
+inspection by this task. The desktop audit independently verifies the local
+package. The earlier 0.1.4 record predates this cutover receipt; neither receipt
+establishes physical offline fallback, touchscreen or satellite acceptance.
 
 ## Source-to-procedure map
 
@@ -74,15 +78,24 @@ The working layout was previously audited as:
 - Production source `/etc/initiativetracker/appsettings.Production.json` copied
   into each new release by the external installer. Earlier 0.1.4 source/active
   config hashes matched; this does not prove today's config equivalence.
-- Bare local `MANIFEST_SOURCE` under `/var/cache/initiativetracker-updater/incoming`;
-  graphical updater supports 0.1.5. No replacement updater was required for that
-  app upgrade; network resources are separate from the package.
+- Bare local `MANIFEST_SOURCE` under `/var/cache/initiativetracker-updater/incoming`,
+  with filename matching `*.manifest.json`; the Stage name `release-manifest.json`
+  must be renamed for that incoming copy. Package remains beside the manifest.
+  Graphical updater supports 0.1.5; no replacement updater was required for that
+  app upgrade. Network resources are separate from the package.
 - LightDM/graphical target, Labwc autostart, desktop-user launcher (974 bytes):
-  app health → graphical updater → app health → Chromium Setup.
+  unbounded app-health wait → graphical updater → unbounded app-health wait →
+  `exec` Chromium Setup, without a browser restart loop. Checker uses Zenity and
+  zero-argument `sudo -n` installer invocation; checker exit 0 can include failure.
 - Installer stops app before full-data backup, then switches releases; health
   failure restores old release **and data**. Other failures may bypass rollback.
-  Backup permissions inherit process umask; restrictive backup mode is a guide
-  recommendation, not an installed guarantee.
+  Backup root is created mode 0755 and archive permissions inherit process umask.
+  Its backup privacy remains unresolved. A global umask 077 workaround can make
+  root-owned release directories 0700 and break service access; the guide scopes
+  restrictive modes to the separate manual checkpoint only.
+- Installer always copies production config into the release root-owned 0644.
+  Source mode 0640 does not protect that copy: configuration must remain non-secret
+  until a separate approved secret-configuration design exists.
 - External Wi-Fi worked after reboot with the corrected boot controller; the
   supplied check saw no new errors in 56 records. Physical offline fallback and
   satellite following were not verified. Lock contention logs HOLD/no action.
@@ -95,6 +108,8 @@ this repo):
 17bfda06c20f3d8b932d7f7f1bf341ed17107e32c602586f9680e463d9542c56
 /usr/local/bin/initiativetracker-check-update
 16e57846ace608c5e81d394107612d7d34100e82c06ef23e39b3aa409d607d4d
+desktop-user initiativetracker-hub-launch
+4bd743792f68b6041fb80e5c83cb377231bce743d5194115db146bbcb8b2c44a
 corrected installed initiativetracker-boot-fallback
 da1f8ee834c49cb2563ac0c77789ab837fc4ed2d7d4defd8b1a9e1bdc94ce859
 ```
@@ -102,11 +117,19 @@ da1f8ee834c49cb2563ac0c77789ab837fc4ed2d7d4defd8b1a9e1bdc94ce859
 The tracked boot-fallback script at the inspected baseline has that same SHA-256;
 this task verified the repository file hash, not a new installed-device copy.
 
-The audited updater/launcher bytes are not available in this cloud checkout.
-Their exact GUI dependency installation, privilege integration, complete config
-schema, prompt behavior, browser arguments/profile and restart behavior cannot be
-reconstructed solely from these hashes. Preserve the proven mechanism, and
-retrieve an approved sanitized distribution/recipe rather than improvise one.
+The owner preserved the unchanged installer, checker and launcher in
+`InitiativeTracker-updater-source-handoff-17bfda06.zip`. Independent review of that
+handoff verified all three hashes and supplied the suffix, invocation, permission
+and launcher findings above. Local source-byte inspection in this documentation
+workspace remains pending because the Library handoff could not be downloaded;
+these findings are credited to the independent exact-source review. No OS script
+was executed here.
+
+Preserved source is not yet a reproducible first-device provisioning recipe.
+Approved distribution, complete GUI/native dependencies, precise narrow privilege
+integration, config installation and keyboardless recovery/acceptance still need
+to be assembled and reviewed. Preserve the proven mechanism rather than improvise
+an updater to fill that gap.
 
 ## Missing automation and proposed installer architecture
 
@@ -114,10 +137,10 @@ No functional installer work is included in this documentation branch.
 
 | Missing piece | Proposed follow-up / completion criterion |
 | --- | --- |
-| Approved graphical updater distribution | Track sanitized reviewed installer/checker, launcher, GUI dependencies and exact narrow privilege integration; document invocation/config, exit/cancel behavior, source/hashes and backup layout. Preserve current healthy-release workflow. |
-| Hub desktop/display provisioning | Install Labwc autostart and health/updater/browser sequence for a selected desktop user; record exact Waveshare SKU/wiring/mode/touch mapping, fullscreen, blanking and browser restart policy. Validate on 1280×800 hardware. |
+| Approved graphical updater distribution | Source is preserved/audited; still package its approved install recipe, Zenity/native dependencies, zero-argument noninteractive privilege integration, config and backup layout. Preserve the current healthy-release workflow and `.manifest.json` incoming-name requirement. |
+| Hub desktop/display provisioning | Install Labwc autostart and health/updater/browser sequence for a selected desktop user; record exact Waveshare SKU/wiring/mode/touch mapping, fullscreen and blanking. Current launcher has unbounded health waits and no browser restart loop; add a separately reviewed recovery policy and validate hardware. |
 | Complete first-install orchestrator | Compose existing release validation/bootstrap, external production config source, native dependencies, network files/units and approved desktop/updater provisioning. Detect OS/architecture/interface and refuse existing production installs unless explicitly supported. |
-| Transactional preflight and recovery | Validate before mutating, check disk/power/dependencies, record source/package provenance, private backups/modes, atomic release switch, full error-path rollback and explicit schema/data-loss policy. Test failures without production data. |
+| Transactional preflight and recovery | Validate before mutating, check disk/power/dependencies, record provenance, explicitly private backup files without breaking release readability, full error-path rollback and explicit schema/data-loss policy. Fix unconditional 0644 production-config copies before supporting secrets there. Test failures without production data. |
 | Network commissioning tool | Stage unique AP/secret, configure saved profile eligibility/priority and unique compatible profile IDs (current previous-name validation is restrictive), install helpers/socket/independent timers and exact gates only after recovery checks. Keep installation, dry-run validation and opt-in activation distinct. Preserve existing profiles/secrets. |
 | Satellite installer/launcher | Persistent dedicated browser profile and stable-origin/GUID configuration, desktop autostart, bounded health waiting, process/renderer recovery, duplicate-process guard and private rotating logs. The guide template needs hardware validation and hardening. |
 | Satellite network following (N8) | Define actual hub-reachability checks (~2 min requested intent), safe manual fallback/confirm flow and hub identity handling. Saved-profile priority alone is insufficient. No current implementation/verification. |
@@ -135,8 +158,8 @@ into a generic image or Git repository.
 Checks completed for the documentation:
 
 - 10 Markdown files reviewed; 71 internal file links/section targets resolve.
-- 30 fenced shell blocks and six nested shell scripts pass `bash -n`.
-- Four Python snippets parse; the transfer-check example accepts a matching
+- 31 fenced shell blocks and six nested shell scripts pass `bash -n`.
+- Five Python snippets parse; the transfer-check example accepts a matching
   synthetic pair and rejects both corruption and a traversal filename (three checks
   using disposable temporary files).
 - 18 disposable recovery-script cases pass: successful binary/data restoration;
@@ -145,6 +168,8 @@ Checks completed for the documentation:
   symlink operations and health. Service, SQLite, health and ownership checks are
   stubbed; ACL flags are omitted on the temporary test filesystem. These verify
   shell failure sequencing and preservation, not live restore correctness.
+- The reproducible incoming-manifest name check below passes for the versioned
+  incoming name and rejects a disposable copy using the original generic name.
 - Referenced source paths, PowerShell parameters, units, gates, endpoints,
   profile semantics and the boot-controller hash were cross-checked with source.
 - Documentation-only diff, placeholders and secret handling reviewed;
@@ -155,3 +180,29 @@ against the scripts rather than executed. No .NET rebuild, packaging, live Pi
 check, network activation or physical acceptance is claimed. Historical N7 test
 results remain in the N7 notes and are not new runs. The PR records the final
 branch/commit and validation summary.
+
+### Reproduce the incoming-manifest name regression check
+
+Run from repository root on a workstation with Python 3. This validates the
+documented rename against the installed installer's reviewed `*.manifest.json`
+requirement; it does not execute the installer or inspect a device:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import fnmatch
+import re
+guide = Path('docs/setup/hub-release.md').read_text()
+source = re.search(r'^MANIFEST_SOURCE=(\S+)$', guide, re.M).group(1)
+destination = re.search(r'0644 release-manifest\.json \\\n\s+(/\S+)', guide).group(1)
+assert source.startswith('/var/cache/initiativetracker-updater/incoming/')
+assert fnmatch.fnmatchcase(Path(source).name, '*.manifest.json')
+assert not fnmatch.fnmatchcase('release-manifest.json', '*.manifest.json')
+assert source == destination
+print('INCOMING MANIFEST NAME CHECK PASSED')
+PY
+```
+
+Expected: `INCOMING MANIFEST NAME CHECK PASSED`. Replacing the documented incoming
+filename with Stage's generic filename must fail this check; do not weaken the
+installer to make that filename work.

@@ -49,9 +49,11 @@ notes. Do not record passwords, PINs, pairing tokens, QR payloads or database co
   → `404`. Local Setup still loads.
 - [ ] **DM access:** from the chosen network open advertised URL/port, authenticate
   using the private local Setup instructions → DM controls and `/dm/network` work.
-- [ ] **Browser crash:** while updater idle, close only kiosk Chromium → approved
-  launcher returns to working Setup with retained profile. If it does not, record
-  failure; browser crash recovery is not established by the app's Restart setting.
+- [ ] **Browser crash recovery gap:** the audited hub launcher has no Chromium
+  restart loop. After a separately reviewed recovery policy is installed, close
+  only kiosk Chromium while updater idle → working Setup returns with retained
+  profile. Until then mark this requirement missing; the app's Restart setting
+  does not supply it.
 
 ## Hub network cases
 

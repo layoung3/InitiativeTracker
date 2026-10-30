@@ -195,8 +195,10 @@ overwriting it. The current release initially uses its bootstrap copy. Any futur
 site-specific changes must be made consistently to the source and active copy
 in a maintenance window (and verified after restart); an `/etc` edit alone does
 not change a running process. Do not print config contents in a shared transcript.
-Keep any sensitive fields private with service-readable permissions; the bootstrap
-template is 0644 and must not be mistaken for a safe location for added secrets.
+Keep this config **non-secret**. The existing updater installs its release copy
+root-owned **0644**, even when the `/etc` source is 0640; protecting the source
+alone does not make future copies private. The bootstrap copy is also 0644.
+Secret configuration needs a separately approved design, not added fields here.
 
 ## 7. Install network components
 
@@ -216,13 +218,16 @@ session with autologin to the selected desktop user, and that user's
 ~/.local/lib/initiativetracker-hub/initiativetracker-hub-launch
 ```
 
-The launcher waits for app health, runs the graphical updater, waits for app
-health again, then launches Chromium. This is the N7-era installed mechanism;
+The launcher waits indefinitely for app health, runs the graphical updater,
+waits for app health again, then `exec`s Chromium. It has **no browser crash-restart
+loop**. This is the N7-era installed mechanism;
 do not replace it with old LXDE autostart, an invented Chromium system service,
-or a launcher that races the updater. The precise launcher contents, browser
-flags/profile, update prompt privilege integration and its installation procedure
-are **not tracked** in this repository. Obtain the audited approved files and
-installation recipe before this step can be completed reproducibly.
+or a launcher that races the updater. Audited installer/checker/launcher source
+has been preserved by the owner and independently reviewed, but those components
+and a reproducible provisioning recipe are **not tracked** in this repository.
+Obtain the approved files and installation recipe before this step can be
+completed reproducibly. An unhealthy app can hold the launcher before either
+the update prompt or Chromium without a deadline.
 
 Required approved component inventory:
 
@@ -232,9 +237,14 @@ Required approved component inventory:
 - The desktop user's `initiativetracker-hub-launch` and Labwc autostart integration
 - Any narrowly scoped privilege policy used by that updater (not broad passwordless sudo)
 
-Prior audit hashes for comparison are in [the verification record](evidence-and-gaps.md).
-They are provenance clues, not a downloadable installer or proof all current files
-match. Do not fabricate these components or copy credentials from another machine.
+Audit hashes for comparison are in [the verification record](evidence-and-gaps.md).
+The graphical checker needs Zenity in the desktop session and calls
+`sudo -n /usr/local/sbin/initiativetracker-install-update` with **zero arguments**.
+Provisioning must supply the reviewed narrow noninteractive privilege integration
+for that exact entry point; no broad passwordless sudo. Checker exit 0 can also
+mean an install failure was displayed: always verify release and health.
+The preserved source does not yet provide an approved complete OS-install recipe.
+Do not fabricate components or copy credentials from another machine.
 
 On a fresh desktop use Raspberry Pi Configuration / `raspi-config` to choose
 **desktop autologin for your selected user**, with a Labwc session. Verify locally:
@@ -271,11 +281,11 @@ chrome, no hidden Setup controls and a usable local escape route. A webpage's
 fullscreen button can require a user gesture; the approved kiosk launcher owns
 boot fullscreen.
 
-**Crash recovery is an acceptance item, not a proven launcher feature:** after
-the approved updater is idle, close only the kiosk Chromium and check it returns
-with the same profile/Setup access. If it does not, the missing launcher needs a
-reviewed restart policy before keyboardless sign-off. Do not restart LightDM during
-an update. Application systemd restart handles app crashes, not browser crashes.
+**Unattended browser recovery is missing in the audited launcher:** it ends by
+`exec`ing Chromium, so it does not relaunch Chromium after exit. A reviewed restart
+policy and keyboardless acceptance are still required; do not describe that as
+already installed. Do not restart LightDM during an update. Application systemd
+restart handles app crashes, not browser crashes.
 
 ## 9. Initial use and handover
 

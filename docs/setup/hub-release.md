@@ -139,7 +139,7 @@ sudo install -o root -g root -m 0644 \
   InitiativeTracker-0.1.5-linux-arm64.tar.gz \
   /var/cache/initiativetracker-updater/incoming/
 sudo install -o root -g root -m 0644 release-manifest.json \
-  /var/cache/initiativetracker-updater/incoming/release-manifest.json
+  /var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.5-linux-arm64.manifest.json
 sudo sha256sum /var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.5-linux-arm64.tar.gz
 sudoedit /etc/initiativetracker/updater.conf
 ```
@@ -147,11 +147,16 @@ sudoedit /etc/initiativetracker/updater.conf
 Set the existing variable without discarding the file's other settings:
 
 ```ini
-MANIFEST_SOURCE=/var/cache/initiativetracker-updater/incoming/release-manifest.json
+MANIFEST_SOURCE=/var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.5-linux-arm64.manifest.json
 ```
 
-**This is a bare local path, never `file://...`.** Verify only that setting, without
-printing the rest of production configuration:
+**This is a bare local path, never `file://...`.** The installed installer requires
+the source filename to match `*.manifest.json`. Stage's `release-manifest.json`
+does **not** match that suffix: retain the Stage/transfer name locally, then rename
+the incoming copy as above. Keep the package beside that manifest with exactly
+the manifest's `package.fileName`. For another release replace the version in
+both the incoming filename and setting; never relabel the package's contents.
+Verify only that setting, without printing the rest of production configuration:
 
 ```bash
 sudo grep '^MANIFEST_SOURCE=' /etc/initiativetracker/updater.conf
@@ -213,9 +218,15 @@ Expected: healthy again; directory `root:root 700`, archive `root:root 600`;
 backup includes the entire data directory (SQLite including any WAL/SHM, keys,
 identity and trust), config and service overrides. If backup fails, restart the
 old application and resolve it before continuing. Copy the private backup to
-protected offline storage. Existing updater backups inherit its process umask;
-`umask 077` above is a recommendation for this manual backup, **not** a claim that
-the deployed updater already enforces it. Verify actual updater backup modes.
+protected offline storage. The installed updater creates its backup root mode
+0755, while its archive inherits the process umask: its automatic backup privacy
+is an unresolved limitation. The private directory and scoped `umask 077` above
+protect this **manual checkpoint only**, not the updater's separate backup.
+Verify those separate backup modes locally. **Do not set a global `umask 077` in
+updater.conf:** the existing installer can then create a root-owned release
+directory mode 0700 that the app service cannot read. A complete fix needs a
+reviewed, narrowly scoped backup/archive-permission change without changing
+release readability; this documentation does not implement it.
 
 ## 6. Install through the graphical updater
 
@@ -230,11 +241,21 @@ with the same version as the active release may correctly produce no update; use
 a separately approved newer release for an install acceptance test. Do not invent
 an `--install` flag or manually overwrite `current` to make the prompt appear.
 
-Expected: updater completes, application restarts, then the local Setup page opens
-in kiosk Chromium. Cancellation should retain the working release; inspect health
-and symlink rather than assuming success. The installed updater copies
-`/etc/initiativetracker/appsettings.Production.json` into a new release. Preserve
-that production source and the existing `network-commands.conf` service drop-in.
+Expected after a successful install: application restarts, then local Setup opens
+in kiosk Chromium. The checker uses Zenity and invokes the installer via
+`sudo -n /usr/local/sbin/initiativetracker-install-update` with **zero arguments**.
+Its exit status can be 0 even when installation failed; it is not an installation
+receipt. Verify health and symlink below after success, failure or cancellation.
+The launcher's health waits have no timeout; an unhealthy app can prevent the
+updater or Chromium appearing indefinitely.
+
+The installer copies `/etc/initiativetracker/appsettings.Production.json` into
+each new release as **root-owned mode 0644**, regardless of the source file's
+0640 permissions. Keep this production config **non-secret**: source permissions
+alone do not protect the release copy. Secret configuration needs a separately
+approved design; do not add passwords/tokens here. Preserve the existing
+`network-commands.conf` service drop-in. None of these OS components is replaced
+by an application update.
 
 ## 7. Verify the result
 
