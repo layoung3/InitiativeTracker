@@ -9,6 +9,11 @@ graphical-updater/launcher provisioning still requires the approved external
 components listed below. Do not declare keyboardless readiness until those are
 available and the acceptance checks pass.
 
+The owner has verified an existing hub on **Debian 13 Trixie ARM64/aarch64**, with
+LightDM, graphical target and the 0.1.5 application active, healthy persistent data
+and unchanged identity. This supports the deployed baseline; it is not evidence
+that this fresh-image procedure or draft automation passed on new hardware.
+
 ## 1. Hardware and imaging
 
 Recommended hub: Raspberry Pi 5, cooling/case, reliable microSD or supported SSD,
@@ -222,12 +227,19 @@ The launcher waits indefinitely for app health, runs the graphical updater,
 waits for app health again, then `exec`s Chromium. It has **no browser crash-restart
 loop**. This is the N7-era installed mechanism;
 do not replace it with old LXDE autostart, an invented Chromium system service,
-or a launcher that races the updater. Audited installer/checker/launcher source
-has been preserved by the owner and independently reviewed, but those components
-and a reproducible provisioning recipe are **not tracked** in this repository.
-Obtain the approved files and installation recipe before this step can be
-completed reproducibly. An unhealthy app can hold the launcher before either
-the update prompt or Chromium without a deadline.
+or a launcher that races the updater. Audited original sources are preserved in
+[draft installer PR #3](https://github.com/layoung3/InitiativeTracker/pull/3),
+separately from its proposed derived runtime/provisioning. Neither source
+preservation nor fixture tests certify a newly imaged device. Obtain an approved
+recipe before completing this step. An unhealthy app can hold the original
+launcher before either the update prompt or Chromium without a deadline.
+
+The original launches `/setup` with profile
+`<DESKTOP_HOME>/.config/initiativetracker-hub/chromium`, kiosk/start-maximized
+flags, first-run/crash-dialog suppression, TranslateUI and pinch/overscroll
+options, and `--password-store=basic`. Preserve the chosen profile; it contains
+browser trust and must stay private. These are inspected original-source flags,
+not evidence of a new display configuration or a browser recovery supervisor.
 
 Required approved component inventory:
 
@@ -245,6 +257,33 @@ for that exact entry point; no broad passwordless sudo. Checker exit 0 can also
 mean an install failure was displayed: always verify release and health.
 The preserved source does not yet provide an approved complete OS-install recipe.
 Do not fabricate components or copy credentials from another machine.
+
+New installations must resolve the **selected desktop account's actual home**
+from the account database and generate that user's Labwc autostart entry with
+the resolved launcher path, backgrounded with `&`. Do not assume `/home/<name>`
+or use root's `$HOME`. The owner observed a marked user-autostart block with this
+background invocation; the launcher was desktop-user owned, mode 0755, 974 bytes.
+Read-only checks, after replacing `DESKTOP_USER`:
+
+```bash
+desktop_user='DESKTOP_USER'
+desktop_home=$(getent passwd "$desktop_user" | cut -d: -f6)
+test -n "$desktop_home" && test -d "$desktop_home" || exit 1
+test "$desktop_user" != root || exit 1
+launcher="$desktop_home/.local/lib/initiativetracker-hub/initiativetracker-hub-launch"
+sudo -u "$desktop_user" test -x "$launcher"
+sudo -u "$desktop_user" grep -F "$launcher" "$desktop_home/.config/labwc/autostart"
+sudo stat -c '%U:%G %a %s %n' "$launcher"
+pgrep -u "$desktop_user" -af chromium
+```
+
+Expected on the original configured hub: autostart line for that resolved path
+ending with `&`; desktop account ownership, mode 755 and 974 bytes; Chromium using
+the expected persistent profile. The original launcher `exec`s Chromium: an empty
+`pgrep` for `initiativetracker-hub-launch` after startup is **not a failure**.
+Check Chromium, local health and the actual screen. A proposed supervised runtime
+can differ; verify its own reviewed recipe rather than applying original byte-size
+or process-name expectations to it.
 
 On a fresh desktop use Raspberry Pi Configuration / `raspi-config` to choose
 **desktop autologin for your selected user**, with a Labwc session. Verify locally:

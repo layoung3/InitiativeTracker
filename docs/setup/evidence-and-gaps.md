@@ -30,6 +30,29 @@ inspection by this task. The desktop audit independently verifies the local
 package. The earlier 0.1.4 record predates this cutover receipt; neither receipt
 establishes physical offline fallback, touchscreen or satellite acceptance.
 
+## Latest owner-performed existing-device verification
+
+On **2026-10-30**, the owner performed further read-only checks on the working
+hub and supplied these observations. This task did not connect to that device or
+run these checks. Network names, account-specific absolute home paths and the hub
+UUID are omitted from reusable examples.
+
+| Area | Owner-observed existing-device state |
+| --- | --- |
+| OS / architecture | Debian GNU/Linux 13 Trixie; ARM64 / `aarch64` |
+| Desktop | `graphical.target`; LightDM active; marked Labwc user-autostart block invokes that user's resolved launcher path with `&` |
+| Application | Service active; `current` resolves to `0.1.5-linux-arm64` |
+| Health / identity | Healthy 0.1.5; database connected, migrations current, storage ready; identity unchanged |
+| Network components | Boot fallback enabled; bridge socket active; independent recovery and return timers active |
+| Profiles | Saved external networks present; `InitiativeTracker-Recovery` AP autoconnect disabled |
+| Launcher metadata | Selected desktop-user ownership/group, mode 0755, 974 bytes, under that user's `.local/lib/initiativetracker-hub/` |
+
+These observations do not certify a fresh installation, offline boot/AP/DHCP
+behavior, confirmation-expiry recovery, touchscreen/QR usability, satellite trust
+or synchronization, data restoration, or proposed updater hardening. The original
+installed updater behavior below remains the baseline; new runtime safety changes
+are proposed separately in [draft PR #3](https://github.com/layoung3/InitiativeTracker/pull/3).
+
 ## Source-to-procedure map
 
 | Area | Tracked evidence | What it establishes / limit |
@@ -100,8 +123,8 @@ The working layout was previously audited as:
   supplied check saw no new errors in 56 records. Physical offline fallback and
   satellite following were not verified. Lock contention logs HOLD/no action.
 
-Prior audited installed-file hashes (comparison references, not files supplied by
-this repo):
+Original installed-source reference hashes, also rehashed from PR #3's unchanged
+repository snapshots in this task (not its derived runtime copies):
 
 ```text
 /usr/local/sbin/initiativetracker-install-update
@@ -117,19 +140,38 @@ da1f8ee834c49cb2563ac0c77789ab837fc4ed2d7d4defd8b1a9e1bdc94ce859
 The tracked boot-fallback script at the inspected baseline has that same SHA-256;
 this task verified the repository file hash, not a new installed-device copy.
 
-The owner preserved the unchanged installer, checker and launcher in
-`InitiativeTracker-updater-source-handoff-17bfda06.zip`. Independent review of that
-handoff verified all three hashes and supplied the suffix, invocation, permission
-and launcher findings above. Local source-byte inspection in this documentation
-workspace remains pending because the Library handoff could not be downloaded;
-these findings are credited to the independent exact-source review. No OS script
-was executed here.
+The owner's latest installer/checker digest strings match those original-source
+references. The latest launcher digest transcription was **74 hexadecimal
+characters**, not a valid 64-character SHA-256, and conflicts with the preserved
+original. It is rejected as a live-hash receipt; the original launcher hash above
+does **not** silently certify today's installed launcher. Its current exact hash
+still needs a corrected owner-supplied read-only receipt. Reported ownership,
+mode and byte length alone cannot settle that discrepancy.
 
-Preserved source is not yet a reproducible first-device provisioning recipe.
-Approved distribution, complete GUI/native dependencies, precise narrow privilege
-integration, config installation and keyboardless recovery/acceptance still need
-to be assembled and reviewed. Preserve the proven mechanism rather than improvise
-an updater to fill that gap.
+The owner preserved the unchanged sources in
+`InitiativeTracker-updater-source-handoff-17bfda06.zip`; independent review first
+verified all three hashes. Direct Library download failed in this workspace.
+Source-byte verification is now resolved through the unchanged
+[original snapshots in PR #3](https://github.com/layoung3/InitiativeTracker/tree/ebee1d181a718ba64d6fbb0dd4512ba423025b44/hub-updater/original):
+read-only `git show` at `ebee1d181a718ba64d6fbb0dd4512ba423025b44` produced
+13,993 installer bytes, 7,214 checker bytes and 974 launcher bytes, all matching
+the three reference SHA-256 hashes above. The original launcher was read directly
+and its `exec`, profile and browser arguments checked. No OS script was executed
+and the ZIP itself was not newly downloaded/hashed here.
+
+The original launcher's process is replaced by Chromium after `exec`; an empty
+launcher `pgrep` is normal at that point. Inspect Chromium, the resolved user's
+profile and the actual screen. New installs must derive the selected desktop
+account's real home and generate its autostart; do not hardcode a personal path.
+
+PR #3 now proposes fresh-device provisioning and derived updater corrections;
+its [available fresh-install guide](https://github.com/layoung3/InitiativeTracker/blob/ebee1d181a718ba64d6fbb0dd4512ba423025b44/docs/setup/automated-installation.md)
+is not an existing-hub hardening procedure or physical acceptance result. The
+separate backed-up, approval-gated existing-hub maintenance recipe is being
+prepared there; no fresh installer or proposed runtime file should be applied to
+the working hub under this documentation assignment. Approval of docs or source
+review does not authorize that live change. The originals remain the observed
+baseline, with the limitations above.
 
 ## Missing automation and proposed installer architecture
 
@@ -137,7 +179,7 @@ No functional installer work is included in this documentation branch.
 
 | Missing piece | Proposed follow-up / completion criterion |
 | --- | --- |
-| Approved graphical updater distribution | Source is preserved/audited; still package its approved install recipe, Zenity/native dependencies, zero-argument noninteractive privilege integration, config and backup layout. Preserve the current healthy-release workflow and `.manifest.json` incoming-name requirement. |
+| Approved graphical updater distribution | Original-source snapshots are preserved and rehashed; PR #3 proposes provisioning and derived runtime copies. Review its dependencies, zero-argument privilege integration and backup/config handling, and obtain separate live-maintenance approval. Preserve the healthy-release workflow and `.manifest.json` incoming-name requirement; original installed behavior is not hardened by a PR. |
 | Hub desktop/display provisioning | Install Labwc autostart and health/updater/browser sequence for a selected desktop user; record exact Waveshare SKU/wiring/mode/touch mapping, fullscreen and blanking. Current launcher has unbounded health waits and no browser restart loop; add a separately reviewed recovery policy and validate hardware. |
 | Complete first-install orchestrator | Compose existing release validation/bootstrap, external production config source, native dependencies, network files/units and approved desktop/updater provisioning. Detect OS/architecture/interface and refuse existing production installs unless explicitly supported. |
 | Transactional preflight and recovery | Validate before mutating, check disk/power/dependencies, record provenance, explicitly private backup files without breaking release readability, full error-path rollback and explicit schema/data-loss policy. Fix unconditional 0644 production-config copies before supporting secrets there. Test failures without production data. |
@@ -157,8 +199,8 @@ into a generic image or Git repository.
 
 Checks completed for the documentation:
 
-- 10 Markdown files reviewed; 71 internal file links/section targets resolve.
-- 31 fenced shell blocks and six nested shell scripts pass `bash -n`.
+- 10 Markdown files reviewed; 73 internal file links/section targets resolve.
+- 32 fenced shell blocks and six nested shell scripts pass `bash -n`.
 - Five Python snippets parse; the transfer-check example accepts a matching
   synthetic pair and rejects both corruption and a traversal filename (three checks
   using disposable temporary files).
@@ -172,6 +214,10 @@ Checks completed for the documentation:
   incoming name and rejects a disposable copy using the original generic name.
 - Referenced source paths, PowerShell parameters, units, gates, endpoints,
   profile semantics and the boot-controller hash were cross-checked with source.
+- Three original updater/checker/launcher snapshots rehashed at the cited PR #3
+  commit: byte lengths and all reference SHA-256 values match. The malformed
+  74-character live-launcher transcription remains explicitly unverified; no
+  personal desktop home, hub UUID or network name was added to examples.
 - Documentation-only diff, placeholders and secret handling reviewed;
   `git diff --check` passes.
 

@@ -7,6 +7,13 @@ at the baseline commit. They have not been run against a live Pi in this task.
 Do not apply them over an existing commissioned hub's files, gates or units.
 Application releases do not install or update these OS components.
 
+Owner-performed read-only verification on 2026-10-30 found boot fallback enabled,
+the bridge socket active, recovery/return timers active, saved external profiles
+present and `InitiativeTracker-Recovery` autoconnect disabled on the existing hub.
+Personal network names are intentionally omitted. These observations confirm
+installed configuration/status, not physical offline boot or transition-expiry
+acceptance. The fresh-device checks below remain required.
+
 ## Behavior you can rely on in source
 
 NetworkManager first gets an opportunity to autoconnect saved external networks.
