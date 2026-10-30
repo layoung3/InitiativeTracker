@@ -1,16 +1,21 @@
 # InitiativeTracker setup and operations
 
 Start here to assemble a Raspberry Pi hub and satellite, or to update an existing
-hub. The deployed baseline reported by the owner is **0.1.5**. This guide was
+hub. The owner-observed deployed baseline is **0.1.5** on Debian 13 Trixie ARM64,
+with the application and LightDM active and health/database/storage checks passing
+on the existing hub. See [the evidence record](docs/setup/evidence-and-gaps.md)
+for verification limits. This guide was
 checked against `master` commit `353a1c78b0eb9150d6587a6c442c7dca76aaf5e4`.
 
 **A release package is not a complete device image.** This branch adds an
 [automated fresh-device installer](docs/setup/automated-installation.md), including
-the recovered graphical updater sources and an explicit provisioning recipe.
-It is a draft implementation validated with disposable fixtures and a Debian
-container, pending physical fresh-Pi acceptance. Do not run it on an existing
-working hub or satellite. Follow the manual guides below when commissioning
-without automation, and complete hardware acceptance before handover.
+the recovered original graphical updater sources and separately derived runtime
+safety changes. It is a draft implementation validated with disposable fixtures
+and a Debian container, pending physical fresh-Pi acceptance; it is not an
+installed upgrade or hardware acceptance result. Do not run a fresh installer on
+an existing working hub or satellite. Existing-hub component maintenance has a
+[separate backed-up approval-gated procedure](hub-updater/EXISTING-HUB-UPGRADE.md).
+Complete hardware acceptance before handover.
 
 ## Choose your route
 
@@ -29,6 +34,12 @@ without automation, and complete hardware acceptance before handover.
 If your release is already built, start at **Validate and stage** in the release
 guide. Do not rebuild merely to follow this documentation. Never use the
 first-install bootstrap as an updater or copy files over the live application.
+
+Updating the **application** and hardening the existing hub's **OS updater** are
+separate operations. The latter needs a backed-up, approval-gated maintenance
+procedure being prepared in PR #3. Follow only available reviewed documentation;
+do not run a fresh-device installer or copy proposed runtime files onto a working
+hub. The original installed behavior and its limitations remain documented here.
 
 ## What runs where
 

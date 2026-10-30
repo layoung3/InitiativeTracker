@@ -9,6 +9,17 @@ behavior below comes from prior installed-OS audit evidence, not a fresh run.
 This documentation task performs no build or deployment. If already built, use
 the existing reviewed archive and begin at section 2.
 
+The owner rechecked the existing Debian 13 ARM64 hub on 2026-10-30: service active,
+`current` selecting 0.1.5, healthy database/current migrations/ready storage and
+unchanged identity. This is an existing-device baseline receipt, not a fresh
+installation or new-release test. The installed original updater is **not**
+certified as hardened. Proposed existing-hub hardening belongs to a separate
+backed-up, approval-gated procedure in [draft PR #3](https://github.com/layoung3/InitiativeTracker/pull/3);
+do not use its fresh installers or copy its runtime files onto this hub as part
+of an application release. The available
+[draft fresh-install guide](https://github.com/layoung3/InitiativeTracker/blob/ebee1d181a718ba64d6fbb0dd4512ba423025b44/docs/setup/automated-installation.md)
+is explicitly for new commissioning devices, not that existing-hub procedure.
+
 ## 1. Select source/version and build only when needed
 
 Use a clean workstation checkout. Save local work before changing branches.

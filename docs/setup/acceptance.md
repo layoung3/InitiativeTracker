@@ -9,6 +9,13 @@ This task did not execute these hardware tests. The user's reported 0.1.5 deploy
 and previous successful external-Wi-Fi reboot are evidence, not a complete
 fresh-device acceptance result.
 
+The owner's 2026-10-30 read-only checks also establish the existing device's
+Debian 13 ARM64/aarch64 desktop, active application/LightDM, healthy 0.1.5,
+unchanged identity and selected networking unit/profile states. They do not tick
+the fresh-install, offline fallback, touchscreen, satellite or restore boxes
+below. See [the evidence record](evidence-and-gaps.md) for separate owner-observed
+and repository-source provenance, including the corrected launcher checksum receipt.
+
 Keep a private record: device/model, storage, PSU, screen revision, OS image/date,
 Debian base, reviewed commit, package/manifest hashes, installed OS-component
 hashes, test date, operator, actual timing and result. Share only sanitized pass/fail
@@ -38,6 +45,9 @@ notes. Do not record passwords, PINs, pairing tokens, QR payloads or database co
   keyboard, power up → autologin, health wait, graphical checker, health wait,
   Chromium Setup in that sequence. Record elapsed time and any manual action.
   Required approved updater/launcher components must already be installed.
+  The original launcher's process disappears when it execs Chromium; inspect
+  Chromium with the selected user's persistent profile and the actual screen,
+  rather than treating an empty launcher `pgrep` as a failed boot.
 - [ ] **1280×800/touch:** desktop display settings (or `wlr-randr` in the local
   graphical session) show intended mode/orientation. Touch all corners, scroll,
   tap buttons and verify fullscreen. No obscured controls or unexpected blanking.
