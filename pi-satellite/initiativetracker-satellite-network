@@ -180,21 +180,44 @@ def active_safe():
         return None
 
 
+def lease_profiles(lease):
+    profiles = {lease['profile']}
+    candidate = lease.get('candidate')
+    if candidate is not None:
+        profiles.add(guid(candidate))
+    elif 'candidate' not in lease:
+        # Recover an interrupted pre-tracking prototype lease as well.
+        profiles.add(str(uuid.uuid5(uuid.UUID(lease['profile']), 'candidate')))
+    return profiles
+
+
 def close_lease(state):
     lease = state.get('provisioning')
     if lease is None:
         return
     lease['phase'] = 'restoring'
     save(state)  # This durable intent survives failure and restart before restoration.
+    owned = lease_profiles(lease)
     previous = lease['previous']
-    try:
-        if previous is not None:
-            up(previous)
-    except (RuntimeError, subprocess.TimeoutExpired):
-        remember_restoration(state, previous)
-    if active_optional() == lease['profile']:
-        nm('connection', 'down', 'uuid', lease['profile'])
+    if previous in owned:
+        # Old prototype leases reused one candidate UUID. Do not reactivate an
+        # overwritten temporary profile as if it were an approved prior network.
+        state['restoration'] = {'profile': previous, 'blocked': True,
+                                'reason': 'previous profile conflicts with temporary lease ownership'}
+    else:
+        try:
+            if previous is not None:
+                up(previous)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            remember_restoration(state, previous)
+    save(state)  # Retain failed/blocked restoration before trying teardown.
+    current = active_optional()
+    if current in owned:
+        nm('connection', 'down', 'uuid', current)
+    if active_optional() in owned:
+        raise RuntimeError('temporary network teardown not confirmed')
     state['provisioning'] = None
+    state['last_trial'] = None  # End this bounded AP cycle; the next attempt resumes hub recovery.
     save(state)
 
 
@@ -349,7 +372,7 @@ def execute(request):
         nm('connection', 'modify', 'uuid', profile, '802-11-wireless.mode', 'ap', 'ipv4.method', 'shared',
            'ipv4.addresses', '10.85.0.1/24', 'ipv6.method', 'disabled')
         now = time.time()
-        state['provisioning'] = {'previous': active_optional(), 'phase': 'active', 'profile': profile, 'created': now,
+        state['provisioning'] = {'id': str(uuid.uuid4()), 'candidate': None, 'previous': active_optional(), 'phase': 'active', 'profile': profile, 'created': now,
                                  'deadline': now + 600, 'boot': boot(), 'mono_deadline': time.monotonic() + 600}
         save(state)
         up(profile)
@@ -365,7 +388,9 @@ def execute(request):
     if action == 'candidate-network' and set(request) == {'action', 'profile'}:
         if not state.get('provisioning') or state['provisioning'].get('phase', 'active') != 'active' or expired(state['provisioning']) or pending(state):
             raise ValueError('open a bounded local setup session first')
-        identity = str(uuid.uuid5(uuid.UUID(state['provisioning']['profile']), 'candidate'))
+        identity = str(uuid.uuid5(uuid.UUID(state['provisioning'].get('id', state['provisioning']['profile'])), 'candidate'))
+        state['provisioning']['candidate'] = identity
+        save(state)  # Ownership is durable before any profile or radio effects.
         stage_profile(identity, request['profile'])
         if identity not in state['owned']:
             state['owned'].append(identity)
@@ -420,7 +445,7 @@ def tick():
                 state['transition']['switched'] = True
             save(state)
         restoration = state.get('restoration')
-        if restoration and time.time() >= restoration['next'] and not pending(state) and active_optional() is None:
+        if restoration and not restoration.get('blocked') and time.time() >= restoration['next'] and not pending(state) and active_optional() is None:
             try:
                 up(restoration['profile'])
                 state['restoration'] = None

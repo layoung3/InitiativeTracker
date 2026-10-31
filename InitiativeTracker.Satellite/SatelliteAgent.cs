@@ -323,7 +323,7 @@ public sealed class SatelliteAgent : IAsyncDisposable
                 var status = await Poll(binding, timeout.Token);
                 var wasOffline = state.Failures > 0;
                 firstFailureTimestamp = null;
-                Save(state with { UnavailableSince = null, Failures = 0, RecoveryAttempts = 0 });
+                Save(state with { UnavailableSince = null, Failures = 0, RecoveryAttempts = 0, NextRecoveryUtc = null });
                 var brokerStatus = await Broker(new { action = "status" }, timeout.Token);
                 var rootState = brokerStatus.GetProperty("state");
                 var rootTransition = rootState.GetProperty("transition");

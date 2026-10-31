@@ -24,8 +24,16 @@ def nm(*args):
     if args[:3] == ('-g', 'GENERAL.CON-UUID', 'device'):
         result = network['active'] or '--'
     elif 'up' in args:
-        network['active'] = args[args.index('uuid')+1]
+        target = args[args.index('uuid')+1]
+        if target in network.get('fail_up', []):
+            network_path.write_text(json.dumps(network))
+            raise RuntimeError('synthetic profile activation failure')
+        network['active'] = target
     elif 'down' in args:
+        target = args[args.index('uuid')+1]
+        if target in network.get('fail_down', []):
+            network_path.write_text(json.dumps(network))
+            raise RuntimeError('synthetic profile teardown failure')
         network['active'] = None
     network_path.write_text(json.dumps(network))
     return result
@@ -35,6 +43,12 @@ broker.nm = nm
 request = json.load(sys.stdin)
 try:
     if request['action'] == '__fixture-tick':
+        broker.tick()
+        response = {'ok': True, 'state': broker.load(), 'network': network}
+    elif request['action'] == '__fixture-expire-lease':
+        state = broker.load()
+        state['provisioning']['mono_deadline'] = time.monotonic()-1
+        broker.save(state)
         broker.tick()
         response = {'ok': True, 'state': broker.load(), 'network': network}
     elif request['action'] == '__fixture-expire':
