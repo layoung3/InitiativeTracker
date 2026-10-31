@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: python3 -m unittest discover -s pi-network/tests
       - run: docker build -f scripts/installation/tests/Dockerfile -t initiativetracker-installer-tests .
       - run: docker run --rm --network none initiativetracker-installer-tests

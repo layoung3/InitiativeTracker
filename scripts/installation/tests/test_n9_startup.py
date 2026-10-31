@@ -17,6 +17,13 @@ spec.loader.exec_module(kiosk)
 
 
 class N9StartupTests(unittest.TestCase):
+    def setUp(self):
+        # main() deliberately makes kiosk state private. Its in-process fixture
+        # must restore this process-global setting before later installer tests.
+        original_umask = os.umask(0o022)
+        os.umask(original_umask)
+        self.addCleanup(os.umask, original_umask)
+
     def test_waiting_profile_is_separate_and_local_for_alternate_home(self):
         home = Path('/srv/tables/desktop user')
         wait = kiosk.waiting_command(home)
