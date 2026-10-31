@@ -31,7 +31,7 @@ public sealed record BrowserTlsSettings(bool Enabled, string Host, int Port, str
 }
 
 /// <summary>Public browser trust only. Never used as an agent enrollment pin or DNS credential store.</summary>
-public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger<BrowserCertificateStore> logger) : IDisposable
+public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger<BrowserCertificateStore> logger) : IDisposable, ITrustedBrowserOrigin
 {
     private readonly object gate = new();
     private readonly List<CertificateGeneration> generations = [];
@@ -41,6 +41,10 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
     public string? Generation { get { lock (gate) return current?.Id; } }
     public bool Ready { get { lock (gate) return current is not null && Validate(current.Certificate, current.Chain, settings.Host); } }
     public BrowserTlsSettings Settings => settings;
+    public bool Enabled => settings.Enabled;
+    public string Origin => new UriBuilder("https", settings.Host, settings.Port).Uri.GetLeftPart(UriPartial.Authority);
+    public bool Physical(HttpContext context) => TrustedRequest(context) && context.Connection.RemoteIpAddress is { } remote && IPAddress.IsLoopback(remote) &&
+        context.Connection.LocalIpAddress is { } local && IPAddress.IsLoopback(local);
 
     public static bool Validate(X509Certificate2 certificate, X509Certificate2Collection intermediates, string host,
         X509Certificate2? testRoot = null, DateTime? testTime = null)
@@ -185,6 +189,7 @@ public static class BrowserTls
         var settings = BrowserTlsSettings.Read(builder.Configuration, builder.Environment.ContentRootPath);
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton<BrowserCertificateStore>();
+        builder.Services.AddSingleton<ITrustedBrowserOrigin>(sp => sp.GetRequiredService<BrowserCertificateStore>());
         if (!settings.Enabled) return;
         builder.Services.AddHostedService<BrowserCertificateReloader>();
         builder.WebHost.ConfigureKestrel((context, options) =>
@@ -215,12 +220,15 @@ public static class BrowserTls
     public static async Task Guard(HttpContext context, RequestDelegate next)
     {
         var store = context.RequestServices.GetRequiredService<BrowserCertificateStore>();
-        if (store.Settings.Enabled && context.Connection.LocalPort == store.Settings.Port && !store.TrustedRequest(context))
+        var origin = context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>();
+        if (context.Request.Path.StartsWithSegments("/secure-access") && !origin.Enabled) { context.Response.StatusCode = 404; return; }
+        if (context.Request.Path.StartsWithSegments("/secure-access") && !origin.TrustedRequest(context)) { context.Response.StatusCode = 426; return; }
+        if (store.Settings.Enabled && context.Connection.LocalPort == store.Settings.Port && !origin.TrustedRequest(context))
         { context.Response.StatusCode = 421; context.Response.Headers.CacheControl = "no-store"; return; }
         // The newly configured public hostname never serves an HTTP fallback, including login forms.
         // Existing .local/IP gameplay origins retain their current migration behavior.
         if (store.Settings.Enabled && (Sensitive(context.Request) ||
-            string.Equals(context.Request.Host.Host, store.Settings.Host, StringComparison.OrdinalIgnoreCase)) && !store.TrustedRequest(context))
+            string.Equals(context.Request.Host.Host, store.Settings.Host, StringComparison.OrdinalIgnoreCase)) && !origin.TrustedRequest(context))
         { context.Response.StatusCode = 426; context.Response.Headers.CacheControl = "no-store"; return; }
         await next(context);
     }

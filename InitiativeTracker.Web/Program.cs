@@ -291,6 +291,7 @@ builder.Services
             };
     });
 
+SecureAccess.Configure(builder, dataDirectory);
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
@@ -325,6 +326,7 @@ app.Use(BrowserTls.Guard);
 app.UseRouting();
 
 app.UseAuthentication();
+app.Use(SecureAccess.Guard);
 app.UseAuthorization();
 
 app.MapStaticAssets();

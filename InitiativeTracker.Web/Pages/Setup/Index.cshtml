@@ -1,4 +1,4 @@
-@page "/setup"
+﻿@page "/setup"
 @model InitiativeTracker.Web.Pages.Setup.IndexModel
 @{
     ViewData["Title"] = "Tracker Setup";
@@ -54,3 +54,10 @@
         <a href="/dm/network" class="btn btn-outline-primary">Open Network Status</a>
     </div></section>
 </div>
+
+@inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
+@if (SecureOrigin.Enabled) {
+    <section class="card p-3 my-3"><h2>Secure authorization</h2>
+    <p>Open the trusted HTTPS authorization screen on this hub. Codes are displayed only there, after local loopback resolution is configured.</p>
+    <a class="btn btn-primary" href="@(SecureOrigin.Origin + "/secure-access/physical")">Open secure physical screen</a></section>
+}
