@@ -39,6 +39,9 @@ if args == ['--version']:
     raise SystemExit(0)
 root = pathlib.Path(__file__).parent
 (root / 'argv.json').write_text(json.dumps(args))
+# Model ConfigArgParse semantics: defaults are read in addition to explicit --config.
+if (root / 'ambient.ini').exists():
+    (root / 'ambient-hook-executed').write_text('fixture only')
 challenge = root / 'fixture-challenge'
 challenge.write_text('synthetic DNS challenge')
 try:
@@ -214,6 +217,27 @@ finally:
         renewal.write_text('pre_hook = arbitrary-command\n')
         with self.assertRaises(a.f.Rejected):
             self.execute('renew', apply=True)
+
+    def test_ambient_default_config_is_rejected_even_with_explicit_empty_config(self):
+        ambient = self.root / 'ambient.ini'
+        ambient.write_text('pre-hook = fixture-only\n')
+        (self.root / 'adapter.ini').write_text('')
+        # The backend fixture models the pinned parser's additive defaults behavior.
+        a.f.run(a.arguments(self.value, 'issue'), capture=False)
+        self.assertTrue((self.root / 'ambient-hook-executed').exists())
+        (self.root / 'ambient-hook-executed').unlink()
+        with patch.object(a, 'ambient_config_paths', return_value=[ambient]):
+            with self.assertRaises(a.f.Rejected):
+                self.execute('issue', apply=True)
+        self.assertFalse((self.root / 'ambient-hook-executed').exists())
+
+    def test_ambient_symlink_is_also_rejected_without_reading_contents(self):
+        ambient = self.root / 'ambient.ini'
+        ambient.symlink_to(self.root / 'missing')
+        with patch.object(a, 'ambient_config_paths', return_value=[ambient]):
+            with self.assertRaises(a.f.Rejected):
+                self.execute('issue', apply=True)
+        self.assertFalse((self.root / 'argv.json').exists())
 
     def test_unused_noisy_output_is_discarded_and_capture_is_bounded(self):
         command = ['/usr/bin/python3', '-c', 'import sys; sys.stdout.write("x" * 2000000); sys.stderr.write("s" * 2000000)']

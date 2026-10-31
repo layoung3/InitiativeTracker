@@ -1,0 +1,31 @@
+# Proposed secure-feature authentication scope — not yet implemented
+
+The parent requested review before material authentication expansion. This proposal is implementable on the independent master-based branch without merging or changing N8/N9, installing packages, touching a Pi or running production migrations. The existing transport gate is not sufficient provenance and this document does not claim N9 private functionality is integration-ready.
+
+## Verified source boundary
+
+Frozen N9 `1e86dc520f9aa5e228b5639f1e31e9f7f19e0caa` signs DM/player/display principals into the same `InitiativeTracker.Auth` scheme. `/appearance` uses those role claims and `MediaPolicy`; `/media` uses those same principals plus current session, ownership, active device and public encounter projection checks. Join/remembered-profile/recovery flows accept legacy device/profile/recovery bearers. A new HTTPS hostname does not stop manual replay. Re-entering an old HTTP-exposed PIN or token cannot independently establish stronger authority.
+
+Frozen N8 `93e93d37ffa5dfdc809434751f6b641087d7913c` has a distinct SecureDm scheme and separately requires a fresh physical-screen proof for network authority. Preserve that extra proof: a new media ticket must never confer N8 provisioning authority or replace pinned agent identity.
+
+## Recommended fresh-authorization model
+
+1. **DM:** retain existing gameplay login, then consume a fresh, short-lived, one-use physical-screen challenge over the actual trusted HTTPS origin. Neither a legacy cookie nor the old DM PIN alone can mint the secure-feature ticket. Show the challenge only on the hub's physical loopback Setup surface with strict literal localhost/loopback Host/IP checks, no forwarded-header authority, no remote response caching/framing, and no secret in server-visible URLs. This follows the existing N8 physical-approval pattern while keeping media/network purposes distinct.
+2. **Player:** a trusted HTTPS browser creates a fresh enrollment secret and pending challenge. Its legacy identity is only a proposed profile association. A DM who already has secure-feature authority must explicitly approve that profile/browser association, comparing the pending challenge with the actual player's screen. Only then mint the player ticket bound to the exact current profile/device/session identity. Possession of an old device token, recovery key or authentication cookie never automatically approves enrollment.
+3. **Display:** use the same explicit secure-DM/physical approval of a fresh browser challenge bound to the existing registered display. Do not promote an old display cookie or N8 agent pin into a browser media ticket. Continue applying N9's public encounter projection and device revocation checks; a display ticket does not allow profile-private material or mutations. Existing HTTP displays retain gameplay/default assets until an individually approved HTTPS enrollment.
+
+This adds a separate enrollment step for private features. The narrow scope decision is whether to use this physical-DM bootstrap plus secure-DM-approved player/display association, rather than another fresh authorization method such as passkeys/accounts. The existing user requirements authorize stronger private-feature security, but do not choose this enrollment UX. No new authentication ceremony should be silently imposed before the parent's scope review.
+
+## Concrete code feasible after scope approval
+
+- A dedicated `SecureFeature` authentication scheme and `__Host-` Secure/HttpOnly/SameSite cookie, separate DataProtection purpose and exact configured origin claim. Keep the legacy gameplay principal/scheme unchanged.
+- Short-lived, bounded, atomic one-use challenges and pending enrollments. A private persistent grant/revocation file outside releases can preserve approved secure sessions across app restarts without adding an EF migration; pending challenges can expire in memory. No credentials in logs, URLs or releases.
+- Mint tickets only after fresh physical proof or a separately secure-DM-approved pending challenge. Bind to role, profile/display/device identifiers, current game session and revocation generation. Do not issue merely because a request is HTTPS or an old credential validates.
+- An after-authentication gate for all `/appearance` requests and private `/media` requests. Require the trusted real TLS origin **and** an independently authenticated secure ticket matching the existing gameplay identity. Preserve the early transport rejection before model binding and retain all N9 ownership, role, antiforgery, rate/size limits, decoder/storage checks and public visibility rules. Public application logo/default assets remain intentionally public.
+- Dedicated trusted-HTTPS enrollment/revocation endpoints and minimal physical Setup / secure-DM approval controls. Keep all legacy combat/join/pairing behavior intact; never promote this feature ticket into N8's network administration scheme.
+
+## Disposable frozen-N9 integration test
+
+Archive the exact frozen N9 commit into a temporary directory with `git archive`, without creating a merge, cherry-pick, branch update or PR-head change. Copy only the candidate shared HTTPS/auth modules and a deterministic Program integration harness into this disposable archive. Use isolated temporary database, media, DataProtection keys and synthetic CA/process trust; never production state. The already approved N9 Skia package references remain those of the frozen source, not a new dependency choice.
+
+Run actual N9 Razor handlers, MediaPolicy and storage code in the fixture: replay a cookie minted through HTTP login and remembered-device/recovery credentials at HTTPS and verify private reads/settings/uploads are denied; complete fresh approved secure enrollment and verify legitimate DM/player/display behavior succeeds. Verify cross-profile/role mixing, hidden combatants, revocation, stale sessions, wrong origins/ports, spoofed proxy headers, expiry, one-use/concurrent proof consumption, CSRF and cookie attributes. Also verify legacy gameplay and pairing still work without a secure-feature ticket. Label synthetic trust and disposable overlays explicitly; do not call this a production branch merge or public-browser acceptance test.

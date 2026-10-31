@@ -72,18 +72,24 @@ def run(args, *, data=None, timeout=60, capture=True, max_output=262144):
     if data is not None and len(data) > 1024:
         raise Rejected('External command input exceeds limit')
     process = None
+    group_cleaned = False
     def stop():
-        if process is None:
+        nonlocal group_cleaned
+        if process is None or group_cleaned:
             return
+        # The leader is not reaped until group cleanup. Its zombie PID anchors the
+        # process-group identifier, preventing reuse by an unrelated process.
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+        time.sleep(.25)
         try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
+        except ProcessLookupError:
+            pass
+        process.wait()
+        group_cleaned = True
     try:
         process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL, env=env, start_new_session=True)
@@ -109,7 +115,17 @@ def run(args, *, data=None, timeout=60, capture=True, max_output=262144):
                             raise Rejected('External command output exceeds limit')
                         else:
                             output.extend(chunk)
-        process.wait(timeout=max(.001, deadline - time.monotonic()))
+        # Observe exit without reaping so descendants cannot outlive a completed run.
+        while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG) is None:
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(args, timeout)
+            time.sleep(.01)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        group_cleaned = True
         if process.returncode:
             raise Rejected('External validation or renewal command failed')
         return bytes(output)

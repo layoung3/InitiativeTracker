@@ -135,6 +135,36 @@ class FoundationTests(unittest.TestCase):
             f.run(['/usr/bin/python3', '-c', 'import time; print("synthetic-secret", flush=True); time.sleep(30)'], timeout=.05)
         self.assertNotIn('synthetic-secret', str(error.exception))
 
+    def test_timeout_kills_term_resistant_descendant_after_leader_exits(self):
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            pidfile = Path(tmp) / 'child.pid'
+            code = ('import os,signal,time,pathlib\n'
+                    'child=os.fork()\n'
+                    'if child==0:\n'
+                    ' signal.signal(signal.SIGTERM,signal.SIG_IGN)\n'
+                    f' pathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()))\n'
+                    ' time.sleep(30)\n'
+                    'else:\n'
+                    ' time.sleep(30)\n')
+            sentinel = subprocess.Popen(['/usr/bin/python3', '-c', 'import time; time.sleep(30)'], start_new_session=True)
+            try:
+                with self.assertRaisesRegex(f.Rejected, 'timed out'):
+                    f.run(['/usr/bin/python3', '-c', code], timeout=1)
+                self.assertTrue(pidfile.exists())
+                pid = int(pidfile.read_text())
+                for _ in range(50):
+                    status = Path(f'/proc/{pid}/stat')
+                    if not status.exists() or status.read_text().split()[2] == 'Z':
+                        break
+                    time.sleep(.01)
+                else:
+                    self.fail('TERM-resistant descendant survived group cleanup')
+                self.assertIsNone(sentinel.poll(), 'An unrelated process group was signalled')
+            finally:
+                sentinel.terminate()
+                sentinel.wait(timeout=3)
+
     def test_world_readable_private_file_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'key'

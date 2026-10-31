@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import pwd
 import stat
 import uuid
 from urllib.parse import urlsplit
@@ -139,21 +140,37 @@ def export(value, *, _validator=f.validate_certificate):
         generation.rmdir()
         raise
 
+def ambient_config_paths():
+    # Exact Linux defaults for pinned Certbot 5.9.0. The subprocess environment has
+    # neither HOME nor XDG_CONFIG_HOME, so expanduser uses the effective user's pwd home.
+    home = Path(pwd.getpwuid(os.geteuid()).pw_dir)
+    return [Path('/etc/letsencrypt/cli.ini'), home / '.config' / 'letsencrypt' / 'cli.ini']
+
+def reject_ambient_config():
+    # ConfigArgParse reads defaults in addition to explicit --config. Reject any
+    # ambient file/link before even invoking --version; never delete or alter it.
+    for path in ambient_config_paths():
+        if os.path.lexists(path):
+            raise f.Rejected('Ambient Certbot configuration requires an isolated issuer environment')
+
+
 def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_certificate):
     argv = arguments(value, action)
     host, acme, root, _, timeout = settings(value)
     if not apply:
         return {'changed': False, 'reason': 'dry-run-no-network', 'action': action}
+    reject_ambient_config()
     control_path(root, directory=True, private=True)
     control_path(acme['credentials_file'], private=True)
     control_path(acme['executable'], executable=True)
     lock_fd = os.open(root / '.adapter-lock', os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(lock_fd, 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        # An explicitly empty config avoids ambient cli.ini options/hooks. Renewal state remains
-        # private and the backend owns DNS challenge creation, propagation and cleanup.
+        # Ambient defaults were rejected separately: explicit --config alone is not isolation.
+        # Private state and directory hooks remain separately constrained.
         fd = os.open(root / 'adapter.ini', os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
         os.close(fd)
+        reject_ambient_config()
         version = _runner([str(acme['executable']), '--version'], max_output=4096).decode().strip()
         if version != 'certbot ' + acme['expected_version']:
             raise f.Rejected('Certbot version differs from the reviewed version')
@@ -168,6 +185,7 @@ def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_
                 raise f.Rejected('Renewal configuration exceeds limit')
             if re.search(r'(?im)^\s*(?:pre_hook|post_hook|deploy_hook)\s*=\s*[^\s#]', renewal.read_text()):
                 raise f.Rejected('Renewal hooks require a separate adapter review')
+        reject_ambient_config()
         _runner(argv, timeout=timeout, capture=False)
         snapshot = export(value, _validator=_validator)
         receipt = {'snapshot': snapshot.name, 'hostname': host}

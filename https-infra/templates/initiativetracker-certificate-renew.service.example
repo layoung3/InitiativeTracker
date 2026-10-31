@@ -5,6 +5,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=oneshot
+KillMode=control-group
 User=root
 Group=initiativetracker-tls
 UMask=0077
