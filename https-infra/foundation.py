@@ -94,6 +94,12 @@ def validate_certificate(host, fullchain, key, *, _test_ca=None):
         names = re.findall(r'DNS:([^,\s]+)', san)
         if names != [host] or 'IP Address:' in san:
             raise Rejected('Use a single exact DNS SAN; no wildcard or CN fallback')
+        eku = run(['/usr/bin/openssl', 'x509', '-in', str(leaf), '-noout', '-ext', 'extendedKeyUsage']).decode()
+        if 'TLS Web Server Authentication' not in eku:
+            raise Rejected('An explicit server-authentication EKU is required')
+        constraints = run(['/usr/bin/openssl', 'x509', '-in', str(leaf), '-noout', '-ext', 'basicConstraints']).decode()
+        if 'CA:TRUE' in constraints:
+            raise Rejected('A CA certificate cannot be a browser leaf')
         # Require at least 24 hours remaining at activation; runtime checks actual validity.
         run(['/usr/bin/openssl', 'x509', '-in', str(leaf), '-checkend', '86400', '-noout'])
         cert_pub = run(['/usr/bin/openssl', 'x509', '-in', str(leaf), '-pubkey', '-noout'])
@@ -146,6 +152,8 @@ def read_active(root):
         return None
     private_path(path)
     value = json.loads(path.read_text())
+    if value.get('disabled') is True:
+        return None
     if not re.fullmatch('[a-f0-9]{32}', value['generation']):
         raise Rejected('Invalid generation')
     return value
@@ -233,7 +241,8 @@ def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=N
                     except Exception:
                         raise Rejected('Rollback recorded; application recovery is unconfirmed') from None
                 else:
-                    (root / 'active.json').unlink(missing_ok=True)
+                    write_active(root, {'disabled': True})
+                    raise Rejected('Initial activation failed; disable requested, recovery is unconfirmed') from None
                 raise Rejected('Activation failed; previous manifest restored') from None
             return {'validated': True, 'changed': True, 'generation': generation}
         except Exception:
@@ -296,8 +305,12 @@ def main():
         else:
             print(json.dumps(renew(settings, apply=args.apply)))
         return 0
-    except (Rejected, OSError, ValueError, KeyError):
-        # Static message: parser/provider/OpenSSL exceptions may contain credentials or file contents.
+    except Rejected as error:
+        # Rejected messages are static, controlled strings; never subprocess or parser output.
+        print(json.dumps({'ready': False, 'reason': str(error)}))
+        return 1
+    except (OSError, ValueError, KeyError):
+        # Parser/provider/OpenSSL exceptions may contain credentials or file contents.
         print(json.dumps({'ready': False, 'reason': 'preflight-or-operation-rejected'}))
         return 1
 

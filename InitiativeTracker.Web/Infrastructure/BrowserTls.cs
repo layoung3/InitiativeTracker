@@ -36,6 +36,7 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
     private readonly object gate = new();
     private readonly List<CertificateGeneration> generations = [];
     private CertificateGeneration? current;
+    private bool reportedReloadFailure;
     public DateTime? ExpiresAtUtc { get { lock (gate) return current?.Certificate.NotAfter.ToUniversalTime(); } }
     public string? Generation { get { lock (gate) return current?.Id; } }
     public bool Ready { get { lock (gate) return current is not null && Validate(current.Certificate, current.Chain, settings.Host); } }
@@ -46,6 +47,9 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
     {
         if (!BrowserTlsSettings.ValidHostname(host) || !certificate.HasPrivateKey ||
             !certificate.MatchesHostname(host, allowWildcards: false, allowCommonName: false)) return false;
+        var eku = certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().SingleOrDefault();
+        if (eku is null || !eku.EnhancedKeyUsages.Cast<Oid>().Any(oid => oid.Value == "1.3.6.1.5.5.7.3.1")) return false;
+        if (certificate.Extensions.OfType<X509BasicConstraintsExtension>().Any(c => c.CertificateAuthority)) return false;
         var san = certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().SingleOrDefault();
         if (san is null || !san.EnumerateDnsNames().SequenceEqual([host]) || san.EnumerateIPAddresses().Any()) return false;
         using var chain = new X509Chain();
@@ -75,12 +79,14 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
                 CheckPath(manifest, false);
                 if (new FileInfo(manifest).Length > 256) throw new InvalidOperationException();
                 using var document = JsonDocument.Parse(File.ReadAllText(manifest));
+                if (document.RootElement.TryGetProperty("disabled", out var disabled) && disabled.ValueKind == JsonValueKind.True)
+                { current = null; reportedReloadFailure = false; return; }
                 var id = document.RootElement.GetProperty("generation").GetString() ?? "";
                 if (!Regex.IsMatch(id, "^[a-f0-9]{32}$")) throw new InvalidOperationException();
-                if (current?.Id == id) return;
+                if (current?.Id == id) { reportedReloadFailure = false; return; }
                 // Retain certificate handles for in-flight TLS handshakes until shutdown. Bound memory.
                 var cached = generations.FirstOrDefault(x => x.Id == id);
-                if (cached is not null && Validate(cached.Certificate, cached.Chain, settings.Host)) { current = cached; return; }
+                if (cached is not null && Validate(cached.Certificate, cached.Chain, settings.Host)) { current = cached; reportedReloadFailure = false; return; }
                 if (generations.Count >= 16) throw new InvalidOperationException();
                 var folder = Path.Combine(settings.Store, id);
                 CheckPath(folder, true);
@@ -88,21 +94,28 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
                 CheckPath(bundle, false);
                 if (new FileInfo(bundle).Length > 262144) throw new InvalidOperationException();
                 var collection = X509CertificateLoader.LoadPkcs12CollectionFromFile(bundle, "", X509KeyStorageFlags.EphemeralKeySet);
-                var certificate = collection.Cast<X509Certificate2>().SingleOrDefault(c => c.HasPrivateKey);
-                var chain = new X509Certificate2Collection(collection.Cast<X509Certificate2>().Where(c => !ReferenceEquals(c, certificate)).ToArray());
-                if (certificate is null || !Validate(certificate, chain, settings.Host))
+                var adopted = false;
+                try
                 {
-                    foreach (var item in collection) item.Dispose();
-                    throw new InvalidOperationException();
+                    var keys = collection.Cast<X509Certificate2>().Where(c => c.HasPrivateKey).ToArray();
+                    if (keys.Length != 1) throw new InvalidOperationException();
+                    var certificate = keys[0];
+                    var chain = new X509Certificate2Collection(collection.Cast<X509Certificate2>().Where(c => !ReferenceEquals(c, certificate)).ToArray());
+                    if (!Validate(certificate, chain, settings.Host)) throw new InvalidOperationException();
+                    var next = new CertificateGeneration(id, certificate, chain, SslStreamCertificateContext.Create(certificate, chain, offline: true));
+                    generations.Add(next);
+                    current = next;
+                    adopted = true;
+                    reportedReloadFailure = false;
                 }
-                var next = new CertificateGeneration(id, certificate, chain, SslStreamCertificateContext.Create(certificate, chain, offline: true));
-                generations.Add(next);
-                current = next;
+                finally { if (!adopted) foreach (var certificate in collection) certificate.Dispose(); }
+
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or CryptographicException or InvalidOperationException or JsonException or KeyNotFoundException)
             {
                 // Do not log exception text, paths, keys, provider output or certificate contents.
-                logger.LogWarning("Browser certificate reload rejected; retaining any valid previous generation.");
+                if (!reportedReloadFailure) logger.LogWarning("Browser certificate reload rejected; retaining any valid previous generation.");
+                reportedReloadFailure = true;
             }
         }
     }
