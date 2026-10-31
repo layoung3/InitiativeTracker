@@ -59,10 +59,21 @@ public static class DeviceAuthenticationService
                     playerDeviceCredentialId.Value.ToString()));
         }
 
+        var scheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        if (role == "DM")
+        {
+            var policy = httpContext.RequestServices.GetRequiredService<DmAuthenticationPolicy>();
+            if (!policy.PinSubmissionAllowed(httpContext)) throw new InvalidOperationException("Trusted browser HTTPS is required for DM authentication.");
+            if (policy.TrustedHttps(httpContext))
+            {
+                scheme = DmAuthenticationPolicy.SecureScheme;
+                claims.Add(new Claim(DmAuthenticationPolicy.LoginIdClaim, Guid.NewGuid().ToString()));
+            }
+        }
         var identity =
             new ClaimsIdentity(
                 claims,
-                CookieAuthenticationDefaults.AuthenticationScheme);
+                scheme);
 
         var principal =
             new ClaimsPrincipal(identity);
@@ -81,7 +92,7 @@ public static class DeviceAuthenticationService
         }
 
         await httpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
+            scheme,
             principal,
             properties);
     }

@@ -33,9 +33,12 @@
         </div></section>
         <section class="card"><div class="card-body">
             <h2>DM access</h2>
-            <img src="/setup/dm-qr" alt="Open DM login" class="setup-qr" />
+            @if (Model.DmLoginUrl.Length > 0)
+            { <img src="/setup/dm-qr" alt="Open DM login" class="setup-qr" /> }
             <p>PIN <strong class="font-monospace">@Model.Session.DmPin</strong></p>
-            <a href="/dm/login" class="btn btn-outline-primary">DM Login</a>
+            @if (Model.DmLoginUrl.Length > 0)
+            { <a href="@Model.DmLoginUrl" class="btn btn-outline-primary">DM Login</a> }
+            else { <p>Fresh DM login is blocked until trusted browser HTTPS is configured. Existing gameplay sessions remain available.</p> }
         </div></section>
         <section class="card"><div class="card-body">
             <h2>Connect a display</h2>
@@ -45,14 +48,19 @@
         </div></section>
     </div>
     <section class="card setup-network"><div class="card-body">
-        <img src="@Model.NetworkQrDataUri" alt="Open network status on your phone" class="setup-network-qr" />
+        @if (Model.NetworkQrDataUri.Length > 0)
+        { <img src="@Model.NetworkQrDataUri" alt="Open network status on your phone" class="setup-network-qr" /> }
         <div><h2>Network status and Wi-Fi setup</h2>
             @if (Model.NetworkAuthorityCode is not null)
             { <p>Secure network-control code (five minutes): <strong class="font-monospace">@Model.NetworkAuthorityCode</strong></p> }
             <p><strong>@Model.Network?.Connection</strong> · @(Model.Network?.Ipv4 ?? "No Wi-Fi address")</p>
-            <p>On the same network, scan to review status or join external Wi-Fi. DM login required.</p>
+            @if (Model.CoordinationEnabled)
+            { <p>N8 administration requires a fresh trusted-HTTPS DM login and this independent physical network-control code. A legacy gameplay cookie is insufficient.</p> }
+            else { <p>On the same network, scan to review status or join external Wi-Fi. DM login required.</p> }
             <p class="small text-break mb-0">@Model.NetworkPageUrl</p>
         </div>
-        <a href="/dm/network" class="btn btn-outline-primary">Open Network Status</a>
+        @if (Model.NetworkPageUrl.Length > 0)
+        { <a href="@Model.NetworkPageUrl" class="btn btn-outline-primary">Open Network Status</a> }
+        else { <p>Secure network administration is blocked until browser HTTPS is ready.</p> }
     </div></section>
 </div>

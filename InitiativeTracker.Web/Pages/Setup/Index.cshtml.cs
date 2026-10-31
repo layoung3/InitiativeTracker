@@ -18,14 +18,16 @@ public class IndexModel : PageModel
     private readonly NetworkCommandBridge _networkBridge;
     private readonly NetworkStatusService _networkStatus;
     private readonly NetworkAdminAuthority _networkAuthority;
+    private readonly DmAuthenticationPolicy _authentication;
     public string? NetworkAuthorityCode { get; private set; }
+    public bool CoordinationEnabled => _authentication.CoordinationEnabled;
     public NetworkStatusService.Snapshot? Network { get; private set; }
 
 
     public IndexModel(
         GameSessionService gameSession,
         TrackerUrlService trackerUrl,
-        NetworkCommandBridge networkBridge, NetworkStatusService networkStatus, NetworkAdminAuthority networkAuthority)
+        NetworkCommandBridge networkBridge, NetworkStatusService networkStatus, NetworkAdminAuthority networkAuthority, DmAuthenticationPolicy authentication)
     {
         _gameSession =
             gameSession;
@@ -35,6 +37,7 @@ public class IndexModel : PageModel
         _networkBridge = networkBridge;
         _networkStatus = networkStatus;
         _networkAuthority = networkAuthority;
+        _authentication = authentication;
     }
 
 
@@ -62,19 +65,13 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
-        var remoteIp =
-            HttpContext.Connection
-                .RemoteIpAddress;
-
-        if (remoteIp is null ||
-            !IPAddress.IsLoopback(
-                remoteIp))
+        if (!_authentication.PhysicalScreen(HttpContext))
         {
             return NotFound();
         }
 
 
-        if (CoordinationEndpoints.Local(HttpContext)) NetworkAuthorityCode = _networkAuthority.PhysicalCode();
+        NetworkAuthorityCode = _networkAuthority.PhysicalCode();
         Network = await _networkStatus.GetAsync(cancellationToken);
 
         var baseUrl =
@@ -84,8 +81,9 @@ public class IndexModel : PageModel
                 .TrimEnd('/');
 
 
-        DmLoginUrl =
-            $"{baseUrl}/dm/login";
+        DmLoginUrl = _authentication.RequiresTrustedPin
+            ? _authentication.BrowserOrigin is { } browser ? browser + "/dm/login" : ""
+            : $"{baseUrl}/dm/login";
 
 
         DisplayPairingUrl =
@@ -119,12 +117,17 @@ public class IndexModel : PageModel
             Convert.ToBase64String(
                 Encoding.UTF8.GetBytes(svg));
 
-        NetworkPageUrl = $"{baseUrl}/dm/network";
+        NetworkPageUrl = _authentication.CoordinationEnabled
+            ? _authentication.BrowserOrigin is { } networkBrowser ? networkBrowser + "/dm/network" : ""
+            : $"{baseUrl}/dm/network";
+        if (NetworkPageUrl.Length > 0)
+        {
         using var networkQrData = QRCodeGenerator.GenerateQrCode(
             NetworkPageUrl, QRCodeGenerator.ECCLevel.Q);
         using var networkQr = new SvgQRCode(networkQrData);
         NetworkQrDataUri = "data:image/svg+xml;base64," +
             Convert.ToBase64String(Encoding.UTF8.GetBytes(networkQr.GetGraphic(8)));
+        }
 
         // Only the physical kiosk (/setup over loopback) may request the
         // hotspot secret. Never embed it on remote-accessible DM/player pages.

@@ -189,7 +189,7 @@ public sealed class DeviceCoordinationTests : IDisposable
         Assert.Equal(0,network.Schedules);
     }
     [Fact]
-    public async Task ValidLegacyDmCookieAtTrustedHttpsStillRequiresPhysicalNetworkProof()
+    public async Task ValidLegacyDmCookieAtHttpsCannotEnterSecureNetworkSession()
     {
         using var trusted=app.WithWebHostBuilder(builder=>builder.ConfigureServices(services=>
         {services.RemoveAll<IProvisioningHttps>();services.AddSingleton<IProvisioningHttps>(new TestBrowserTls());}));
@@ -201,18 +201,13 @@ public sealed class DeviceCoordinationTests : IDisposable
         var cookie=options.Cookie.Name+"="+options.TicketDataFormat.Protect(new AuthenticationTicket(principal,new AuthenticationProperties(),scheme));
         client.DefaultRequestHeaders.Add("Cookie",cookie);
         var page=await client.GetAsync("/dm/network");var html=await page.Content.ReadAsStringAsync();
-        Assert.Equal(System.Net.HttpStatusCode.OK,page.StatusCode);
-        var token=System.Net.WebUtility.HtmlDecode(Regex.Match(html,"name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value);
-        var blocked=await client.PostAsync("/dm/network?handler=Postpone",new FormUrlEncodedContent(new Dictionary<string,string>{{"__RequestVerificationToken",token}}));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect,page.StatusCode);
+        Assert.Equal("/dm/login",page.Headers.Location?.OriginalString);
+        var blocked=await client.PostAsync("/dm/network?handler=Postpone",new StringContent(""));
         Assert.Equal(System.Net.HttpStatusCode.Forbidden,blocked.StatusCode);
         var proof=trusted.Services.GetRequiredService<NetworkAdminAuthority>().PhysicalCode();Assert.DoesNotContain(proof,html);
-        var unlocked=await client.PostAsync("/dm/network?handler=UnlockNetwork",new FormUrlEncodedContent(new Dictionary<string,string>{{"__RequestVerificationToken",token},{"NetworkAuthorityCode",proof}}));
-        Assert.Equal(System.Net.HttpStatusCode.Redirect,unlocked.StatusCode);
-        var authorityCookie=unlocked.Headers.GetValues("Set-Cookie").Single(x=>x.StartsWith(NetworkAdminAuthority.CookieName+"="));
-        Assert.Contains("secure",authorityCookie,StringComparison.OrdinalIgnoreCase);
-        client.DefaultRequestHeaders.Remove("Cookie");client.DefaultRequestHeaders.Add("Cookie",cookie+"; "+authorityCookie.Split(';')[0]);
-        var allowed=await client.PostAsync("/dm/network?handler=Postpone",new FormUrlEncodedContent(new Dictionary<string,string>{{"__RequestVerificationToken",token}}));
-        Assert.Equal(System.Net.HttpStatusCode.OK,allowed.StatusCode);
+        var unlocked=await client.PostAsync("/dm/network?handler=UnlockNetwork",new FormUrlEncodedContent(new Dictionary<string,string>{{"NetworkAuthorityCode",proof}}));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden,unlocked.StatusCode);
     }
     private sealed class TestBrowserTls:IProvisioningHttps
     {

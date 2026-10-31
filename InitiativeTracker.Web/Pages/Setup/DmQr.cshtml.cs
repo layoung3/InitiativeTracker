@@ -10,36 +10,36 @@ public class DmQrModel : PageModel
 {
     private readonly TrackerUrlService
         _trackerUrl;
+    private readonly DmAuthenticationPolicy _authentication;
 
 
     public DmQrModel(
-        TrackerUrlService trackerUrl)
+        TrackerUrlService trackerUrl, DmAuthenticationPolicy authentication)
     {
         _trackerUrl =
             trackerUrl;
+        _authentication = authentication;
     }
 
 
     public IActionResult OnGet()
     {
-        var remoteIp =
-            HttpContext.Connection
-                .RemoteIpAddress;
-
-        if (remoteIp is null ||
-            !IPAddress.IsLoopback(
-                remoteIp))
+        if (!_authentication.PhysicalScreen(HttpContext))
         {
             return NotFound();
         }
 
 
-        var dmLoginUrl =
-            _trackerUrl
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        var dmLoginUrl = _authentication.RequiresTrustedPin
+            ? _authentication.BrowserOrigin is { } origin ? origin + "/dm/login" : null
+            : _trackerUrl
                 .GetBaseUrl(
                     Request)
                 .TrimEnd('/') +
             "/dm/login";
+        if (dmLoginUrl is null) return StatusCode(403);
 
 
         using var generator =

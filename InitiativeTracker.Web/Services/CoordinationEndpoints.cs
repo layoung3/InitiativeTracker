@@ -9,17 +9,17 @@ public static class CoordinationEndpoints
 {
     public static X509Certificate2? Configure(WebApplicationBuilder builder, string directory)
     {
-        if (!builder.Configuration.GetValue<bool>("Coordination:Enabled")) return null;
-        var certificate = DeviceProtocol.Certificate(Path.Combine(directory, "coordination", "hub.pfx"), "InitiativeTracker Hub", true);
+        var enabled = builder.Configuration.GetValue<bool>("Coordination:Enabled");
+        var certificate = enabled ? DeviceProtocol.Certificate(Path.Combine(directory, "coordination", "hub.pfx"), "InitiativeTracker Hub", true) : null;
         var browserTls = new PublicCertificateHttps(builder.Configuration["BrowserTls:Host"], builder.Configuration["BrowserTls:Certificate"], builder.Configuration["BrowserTls:Password"]);
         builder.Services.AddSingleton<IProvisioningHttps>(browserTls);
         var port = builder.Configuration.GetValue<int?>("Coordination:Port") ?? 5443;
-        builder.WebHost.ConfigureKestrel(options =>
+        if (enabled || browserTls.Ready) builder.WebHost.ConfigureKestrel(options =>
         {
             if (!builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any())
                 options.ListenAnyIP(builder.Configuration.GetValue<int?>("Tracker:LanPort") ?? 5000);
             if (browserTls.Ready) options.ListenAnyIP(builder.Configuration.GetValue<int?>("BrowserTls:Port") ?? 5445, listen => listen.UseHttps(tls => { tls.ServerCertificate = browserTls.Certificate; tls.ServerCertificateChain = browserTls.Chain; }));
-            options.ListenAnyIP(port, listen => listen.UseHttps(tls =>
+            if (certificate is not null) options.ListenAnyIP(port, listen => listen.UseHttps(tls =>
             {
                 tls.ServerCertificate = certificate;
                 tls.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13;

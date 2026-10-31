@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace InitiativeTracker.Web.Pages.Dm;
 
-[Authorize(Roles = "DM")]
-public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, IProvisioningHttps browserTls, DeviceRegistryService displays, NetworkAdminAuthority authority) : PageModel
+[Authorize(Policy = DmAuthenticationPolicy.NetworkPolicy)]
+public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, DeviceRegistryService displays, NetworkAdminAuthority authority) : PageModel
 {
     public bool NetworkAuthority => authority.Allows(HttpContext);
     public string? PhysicalAuthorityCode => LocalCredentials ? authority.PhysicalCode() : null;
@@ -21,8 +21,8 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
         return Redirect("/dm/network");
     }
     public bool CoordinationEnabled => coordination.Enabled;
-    public bool LocalCredentials => CoordinationEndpoints.Local(HttpContext);
-    public bool CanSubmitSecrets => Request.IsHttps && browserTls.Ready && Request.Host.Host == browserTls.Host;
+    public bool LocalCredentials => authority.PhysicalScreen(HttpContext);
+    public bool CanSubmitSecrets => authority.TrustedHttps(HttpContext);
     public DeviceCoordinationService.Journal Coordination => coordination.Snapshot;
     [NonHandler]
     public bool Online(Guid id) => coordination.Online(id);
