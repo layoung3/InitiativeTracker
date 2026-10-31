@@ -21,6 +21,7 @@ N9 is **incomplete and not release-ready**. Branch `n9-branding-customization` s
 | Chromium suites | **12 passed** | Eight existing combat/UI tests plus three new responsive branding/default-media fixtures and automatic pairing-error recovery. These are synthetic fixtures, not a claim that uploads exist. |
 | Actual Kestrel page checks | **9 viewport/page checks passed** | Setup, Join, Pair at 390×800, 844×800, 1280×800. Screenshots inspected internally from a disposable database. Current artwork is absent; these establish text-branding layout only. |
 | Shell parse / git whitespace | Passed | `bash -n` launcher and `git diff --check`. Full ShellCheck remains CI. |
+| Self-contained Linux ARM64 publish | Passed | Actual `dotnet publish -r linux-arm64 --self-contained true`; executable identified as ELF AArch64. No ARM64 execution or final package-manifest validation claimed locally. |
 
 Docker build fetched the pinned base image but failed during APT because `deb.debian.org` could not resolve inside the build. No privileged-container pass is claimed locally. The existing installer workflow must provide that evidence on the exact final head. A new N9 workflow runs Release .NET, network and Chromium tests plus the existing ARM64 release Build/Test scripts. CI links/results must be added after the final approved feature head exists.
 
