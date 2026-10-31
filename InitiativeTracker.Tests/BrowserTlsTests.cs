@@ -107,6 +107,31 @@ public sealed class BrowserTlsTests
     }
 
     [Fact]
+    public void RuntimeCertificatePathsRejectBroadPermissionsAndLinks()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var root = Path.Combine(Path.GetTempPath(), "https-paths-" + Guid.NewGuid());
+        Directory.CreateDirectory(root);
+        File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var bundle = Path.Combine(root, "bundle.pfx");
+        try
+        {
+            File.WriteAllText(bundle, "fixture");
+            File.SetUnixFileMode(bundle, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
+            BrowserCertificateStore.CheckPath(bundle, false);
+            File.SetUnixFileMode(bundle, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
+            Assert.Throws<InvalidOperationException>(() => BrowserCertificateStore.CheckPath(bundle, false));
+            File.SetUnixFileMode(bundle, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            var link = Path.Combine(root, "active.json");
+            File.CreateSymbolicLink(link, bundle);
+            Assert.Throws<InvalidOperationException>(() => BrowserCertificateStore.CheckPath(link, false));
+            File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupWrite);
+            Assert.Throws<InvalidOperationException>(() => BrowserCertificateStore.CheckPath(bundle, false));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task HttpAndSpoofedForwardedHeadersCannotUnlockSensitiveOperations()
     {
         var directory = Path.Combine(Path.GetTempPath(), "https-web-" + Guid.NewGuid());

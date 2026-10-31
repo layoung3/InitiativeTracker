@@ -116,6 +116,11 @@ class FoundationTests(unittest.TestCase):
             f.run(['/usr/bin/openssl', 'not-a-command-super-secret'])
         self.assertNotIn('super-secret', str(error.exception))
 
+    def test_timed_out_backend_is_terminated_without_output_leakage(self):
+        with self.assertRaisesRegex(f.Rejected, 'timed out') as error:
+            f.run(['/usr/bin/python3', '-c', 'import time; print("synthetic-secret", flush=True); time.sleep(30)'], timeout=.05)
+        self.assertNotIn('synthetic-secret', str(error.exception))
+
     def test_world_readable_private_file_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'key'
