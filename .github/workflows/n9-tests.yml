@@ -73,7 +73,7 @@ jobs:
       - name: Published composite Kestrel TLS and restart checks
         run: |
           dotnet publish "$RUNNER_TEMP/n9-integrated-source/InitiativeTracker.Web" -c Release -o "$RUNNER_TEMP/n9-integrated-publish"
-          python3 "$RUNNER_TEMP/n9-integrated-source/https-infra/tests/published_tls_smoke.py" --publish "$RUNNER_TEMP/n9-integrated-publish"
+          python3 scripts/tests/n9-published-https.py --fixture "$RUNNER_TEMP/n9-integrated-source" --publish "$RUNNER_TEMP/n9-integrated-publish"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
