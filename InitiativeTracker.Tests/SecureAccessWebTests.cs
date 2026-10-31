@@ -521,4 +521,42 @@ public sealed class SecureAccessWebTests
         host.Delete();
     }
 
+    [Fact]
+    public async Task SecureExpiryAndFailedIssuanceCannotRenewThroughLegacyAuthority()
+    {
+        using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
+        host.Clock.Advance(TimeSpan.FromHours(12) + TimeSpan.FromSeconds(1));
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        Assert.DoesNotContain("Authorized as DM", await (await dm.Send("/secure-access")).Content.ReadAsStringAsync());
+        using var fresh = host.Client();
+        await fresh.Post("BeginDm", ("recovery", "true")); var code = await fresh.PhysicalCode();
+        host.Failure.Enabled = true;
+        var failed = await fresh.Post("Redeem", ("Code", code));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
+        Assert.False(fresh.Cookies.ContainsKey(SecureAccess.Cookie));
+        Assert.Null(host.Access.ForBrowser(fresh.Browser));
+        host.Failure.Enabled = false;
+        Assert.Equal(HttpStatusCode.Forbidden, (await fresh.Post("Redeem", ("Code", code))).StatusCode);
+        await fresh.Bootstrap();
+        Assert.Equal(HttpStatusCode.OK, (await fresh.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        host.Delete();
+    }
+
+    [Fact]
+    public async Task SensitiveIdentityChangesRequireBothCsrfAndExactOriginBeforeInvalidation()
+    {
+        using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
+        var owner = AddPlayer(host); using var player = host.Client(); player.Legacy("Player", owner.Profile, owner.Player, owner.Credential); await Enroll(player, dm);
+        string? original; using (var db = host.Factory.CreateDbContext()) original = db.PlayerProfiles.Single(p => p.Id == owner.Profile).RecoveryKeyHash;
+        var token = await dm.Token("/dm/players");
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/dm/players?handler=ResetRecoveryKey", new FormUrlEncodedContent(new Dictionary<string, string>
+        { ["profileId"] = owner.Profile.ToString(), ["__RequestVerificationToken"] = token }), origin: false)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await dm.Send("/dm/players?handler=ResetRecoveryKey", new FormUrlEncodedContent(new Dictionary<string, string>
+        { ["profileId"] = owner.Profile.ToString() }))).StatusCode);
+        using (var db = host.Factory.CreateDbContext()) Assert.Equal(original, db.PlayerProfiles.Single(p => p.Id == owner.Profile).RecoveryKeyHash);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+        host.Delete();
+    }
+
 }
