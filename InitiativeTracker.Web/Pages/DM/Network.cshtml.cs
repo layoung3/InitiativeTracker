@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace InitiativeTracker.Web.Pages.Dm;
 
 [Authorize(Roles = "DM")]
-public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, IProvisioningHttps browserTls) : PageModel
+public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, IProvisioningHttps browserTls, DeviceRegistryService displays) : PageModel
 {
     public bool CoordinationEnabled => coordination.Enabled;
     public bool LocalCredentials => CoordinationEndpoints.Local(HttpContext);
@@ -20,6 +20,8 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
     [BindProperty] public Guid TransitionId { get; set; }
     [BindProperty] public string TargetKind { get; set; } = "wifi";
     [BindProperty] public Guid[] LeaveBehind { get; set; } = [];
+    public IReadOnlyList<InitiativeTracker.Web.Data.RegisteredDevice> PairedDisplays => displays.GetTrustedDisplays();
+    [BindProperty] public Guid? AgentDisplayId { get; set; }
     [BindProperty] public Guid AgentId { get; set; }
     [BindProperty] public string VerifiedPin { get; set; } = "";
     public Task<IActionResult> OnPostPrepareAsync(CancellationToken ct) => Coordinate(() => coordination.PrepareAsync(TargetKind, TargetKind == "wifi" ? SavedUuid : null, ct), ct);
@@ -29,7 +31,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
     public Task<IActionResult> OnPostApproveAgentAsync(CancellationToken ct) => Coordinate(() =>
     {
         if (!LocalCredentials) throw new InvalidOperationException("Approve from the physical hub screen");
-        coordination.Approve(AgentId, VerifiedPin, DateTimeOffset.UtcNow); return Task.CompletedTask;
+        coordination.Approve(AgentId, VerifiedPin, DateTimeOffset.UtcNow, AgentDisplayId); return Task.CompletedTask;
     }, ct);
     public Task<IActionResult> OnPostRevokeAgentAsync(CancellationToken ct) => Coordinate(() => { coordination.Revoke(AgentId); return Task.CompletedTask; }, ct);
     private async Task<IActionResult> Coordinate(Func<Task> operation, CancellationToken ct)

@@ -56,13 +56,18 @@
             @foreach (var agent in Model.Coordination.Enrollments)
             {
                 <p><strong>@agent.Name</strong> · @(agent.Revoked ? "Revoked" : agent.Approved ? (Model.Online(agent.DeviceId) ? "Online" : "Offline") : "Awaiting approval")</p>
-                @if (!agent.Approved && !agent.Revoked && Model.LocalCredentials)
+                @if (!agent.Revoked && Model.LocalCredentials)
                 {
                     <form method="post" asp-page-handler="ApproveAgent" class="mb-3">
                         <input type="hidden" name="AgentId" value="@agent.DeviceId" />
                         <label>Enter the full certificate SHA-256 from this satellite's physical screen</label>
                         <input name="VerifiedPin" class="form-control" required minlength="64" maxlength="64" autocomplete="off" />
-                        <button class="btn btn-primary">Approve this network agent</button>
+                        <label>Corresponding paired display (inventory link only)</label>
+                        <select name="AgentDisplayId" class="form-select"><option value="">No display / standalone device</option>
+                            @foreach (var display in Model.PairedDisplays)
+                            { <option value="@display.Id" selected="@(agent.DisplayId == display.Id)">@display.Name</option> }
+                        </select>
+                        <button class="btn btn-primary">Approve or link this network agent</button>
                     </form>
                 }
                 @if (agent.Approved)
@@ -93,7 +98,7 @@
                         <input type="hidden" name="TransitionId" value="@transition.Id" />
                         @foreach (var device in transition.Devices)
                         {
-                            var name = Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name;
+                            var name = device.Name ?? device.DeviceId.ToString();
                             <div><label><input type="checkbox" name="LeaveBehind" value="@device.DeviceId" /> Leave @name behind</label>
                                 — @(device.Failure ?? (device.Ready ? "Ready" : "Not ready")) · @(Model.Online(device.DeviceId) ? "Online" : "Offline")</div>
                         }
@@ -106,7 +111,7 @@
                     <p>Recovery deadline @transition.DeadlineUtc. Join the destination network and confirm hub connectivity. Each satellite must reconnect and finalize separately.</p>
                     <ul>@foreach (var device in transition.Devices)
                     {
-                        <li>@Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name: @(device.Failure ?? (transition.LeftBehind.Contains(device.DeviceId) ? "Left behind by DM" : device.Finalized ? "Finalized" : device.Reconnected ? "Reconnected" : device.CommitReceived ? "Committed" : "Commit not acknowledged"))</li>
+                        <li>@(device.Name ?? device.DeviceId.ToString()): @(device.Failure ?? (transition.LeftBehind.Contains(device.DeviceId) ? "Left behind by DM" : device.Finalized ? "Finalized" : device.Reconnected ? "Reconnected" : device.CommitReceived ? "Committed" : "Commit not acknowledged"))</li>
                     }</ul>
                     @if (transition.Stage == InitiativeTracker.Core.Coordination.TransitionStage.Committed)
                     {

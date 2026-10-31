@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.EntityFrameworkCore;
+using InitiativeTracker.Web.Data;
 
 namespace InitiativeTracker.Tests;
 
@@ -91,6 +93,37 @@ public sealed class DeviceCoordinationTests : IDisposable
         Assert.Throws<InvalidOperationException>(()=>Service.Commit(t.Id,[],now));
         Assert.Throws<InvalidOperationException>(()=>Service.Receipt(cert,Receipt(device,t,"ready"),now));
         Service.Commit(t.Id,[device.DeviceId],now);
+    }
+    private Guid LegacyDisplay()
+    {
+        using var db=app.Services.GetRequiredService<IDbContextFactory<InitiativeTrackerDbContext>>().CreateDbContext();
+        var display=new RegisteredDevice {Name="Existing paired display",IsTrusted=true,DeviceType="Display",PairedAtUtc=DateTime.UtcNow};
+        db.RegisteredDevices.Add(display); db.SaveChanges(); return display.Id;
+    }
+    [Fact]
+    public async Task ExistingDisplayWithoutAgentRequiresExplicitLeaveBehindChoice()
+    {
+        var display=LegacyDisplay(); var t=await Prepare();
+        var legacy=Assert.Single(t.Devices); Assert.Equal(display,legacy.DeviceId); Assert.False(legacy.Ready);
+        Assert.Equal("Existing paired display",legacy.Name);
+        Assert.Throws<InvalidOperationException>(()=>Service.Commit(t.Id,[],now));
+        Service.Commit(t.Id,[display],now); Assert.Contains(display,Service.Snapshot.Transition!.LeftBehind);
+    }
+    [Fact]
+    public async Task ExplicitPhysicalInventoryLinkPreservesDisplayPairingWithoutPromotingItsCookie()
+    {
+        var display=LegacyDisplay(); var (device,cert)=Enroll(); using var certificate=cert;
+        Service.Approve(device.DeviceId,device.CertificatePin,now,display);
+        var t=await Prepare(); Assert.Equal(device.DeviceId,Assert.Single(t.Devices).DeviceId);
+        Service.Status(cert); Service.Receipt(cert,Receipt(device,t,"ready"),now);
+        Service.Commit(t.Id,[],now);
+        Assert.True(app.Services.GetRequiredService<DeviceRegistryService>().IsTrustedDisplay(display));
+    }
+    [Fact]
+    public async Task DisplayPairedAfterPreparationCannotBeSilentlyOmittedAtCommit()
+    {
+        var t=await Prepare(); LegacyDisplay();
+        Assert.Throws<InvalidOperationException>(()=>Service.Commit(t.Id,[],now));
     }
     [Fact]
     public async Task RestartPreservesDeadlineRevisionAndProtectedProfiles()

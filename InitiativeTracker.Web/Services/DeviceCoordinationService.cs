@@ -19,13 +19,14 @@ public sealed class DeviceCoordinationService
     private readonly IDataProtector protector;
     private readonly HubIdentityService hub;
     private readonly ICoordinationNetwork network;
+    private readonly DeviceRegistryService displays;
     private Journal state;
     private readonly Dictionary<Guid, DateTimeOffset> seen = [];
     public bool Enabled { get; }
     public DeviceCoordinationService(IConfiguration configuration, IWebHostEnvironment environment, IDataProtectionProvider protection,
-        HubIdentityService hub, ICoordinationNetwork network)
+        HubIdentityService hub, ICoordinationNetwork network, DeviceRegistryService displays)
     {
-        this.hub = hub; this.network = network;
+        this.hub = hub; this.network = network; this.displays = displays;
         Enabled = configuration.GetValue<bool>("Coordination:Enabled");
         var directory = CoordinationEndpoints.DataDirectory(configuration, environment);
         path = Path.Combine(directory, "coordination", "hub.json");
@@ -59,14 +60,16 @@ public sealed class DeviceCoordinationService
             Save(state with { Enrollments = [.. retained, enrollment] }); return enrollment;
         }
     }
-    public void Approve(Guid id, string physicallyVerifiedPin, DateTimeOffset now)
+    public void Approve(Guid id, string physicallyVerifiedPin, DateTimeOffset now, Guid? displayId = null)
     {
         lock (gate)
         {
-            var device = state.Enrollments.Single(x => x.DeviceId == id && !x.Approved && !x.Revoked);
-            if (device.RequestedUtc <= now.AddMinutes(-5) || device.CertificatePin != physicallyVerifiedPin.ToUpperInvariant())
+            var device = state.Enrollments.Single(x => x.DeviceId == id && !x.Revoked);
+            if (!device.Approved && device.RequestedUtc <= now.AddMinutes(-5) || device.CertificatePin != physicallyVerifiedPin.ToUpperInvariant())
                 throw new InvalidOperationException("Expired request or certificate mismatch");
-            Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == id ? x with { Approved = true } : x).ToArray() });
+            if (displayId is not null && (!displays.IsTrustedDisplay(displayId.Value) || state.Enrollments.Any(x => x.Approved && x.DeviceId != id && x.DisplayId == displayId)))
+                throw new InvalidOperationException("Choose an existing display without another approved network agent");
+            Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == id ? x with { Approved = true, DisplayId = displayId } : x).ToArray() });
         }
     }
     public void Revoke(Guid id)
@@ -104,6 +107,9 @@ public sealed class DeviceCoordinationService
             return new(DeviceProtocol.Version, hub.HubId, device.Generation, plan, hub.MdnsHostName);
         }
     }
+    private DeviceProgress[] Inventory() => state.Enrollments.Where(x => x.Approved).Select(x => new DeviceProgress(x.DeviceId, x.Generation, Name: x.Name))
+                    .Concat(displays.GetTrustedDisplays().Where(d => !state.Enrollments.Any(e => e.Approved && e.DisplayId == d.Id))
+                        .Select(d => new DeviceProgress(d.Id, Guid.Empty, Failure: "No enrolled network agent", Name: d.Name))).ToArray();
     public async Task PrepareAsync(string kind, string? uuid, CancellationToken ct)
     {
         if (!Enabled || kind is not ("wifi" or "hotspot") || (kind == "wifi" && !Guid.TryParseExact(uuid, "D", out _)))
@@ -115,7 +121,7 @@ public sealed class DeviceCoordinationService
             if (TransitionRules.Pending(state.Transition)) throw new InvalidOperationException("Transition already pending");
             var revision = checked(state.Revision + 1);
             var transition = new Transition(Guid.NewGuid(), revision, hub.HubId, kind, uuid, DateTimeOffset.UtcNow.AddMinutes(2),
-                TransitionStage.Preparing, null, null, state.Enrollments.Where(x => x.Approved).Select(x => new DeviceProgress(x.DeviceId, x.Generation)).ToArray(), []);
+                TransitionStage.Preparing, null, null, Inventory(), []);
             Save(state with { Revision = revision, Transition = transition,
                 ProtectedProfiles = protector.Protect(System.Text.Json.JsonSerializer.Serialize(new[] { profiles.Target, profiles.Recovery })) });
         }
@@ -145,6 +151,8 @@ public sealed class DeviceCoordinationService
         {
             var t = state.Transition ?? throw new InvalidOperationException("No transition");
             if (t.Id != id || t.Stage != TransitionStage.Preparing || now >= t.PrepareExpiresUtc) throw new InvalidOperationException("Preparation expired");
+            if (Inventory().Select(d => d.DeviceId).Except(t.Devices.Select(d => d.DeviceId)).Any())
+                throw new InvalidOperationException("Device inventory changed; postpone and prepare again before committing");
             var unready = t.Devices.Where(x => !x.Ready || !Online(x.DeviceId) || !state.Enrollments.Any(e => e.Approved && e.DeviceId == x.DeviceId && e.Generation == x.Generation)).Select(x => x.DeviceId).ToArray();
             if (leaveBehind.Except(t.Devices.Select(x => x.DeviceId)).Any() || unready.Except(leaveBehind).Any())
                 throw new InvalidOperationException("Explicitly identify every unavailable device to leave behind, or postpone");
