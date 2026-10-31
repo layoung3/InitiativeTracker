@@ -144,7 +144,7 @@ public sealed class SecureCommitTests
     public async Task BindingMixedPrincipalAndAlteredExpectedGrantNeverReachCommit(string mismatch)
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
-        var grant = host.Access.Grants().Single(); var expected = mismatch == "expected" ? grant with { Generation = grant.Generation + 1 } : grant;
+        var grant = host.Access.Grants().Single(); var expected = mismatch == "expected" ? grant with { Expires = grant.Expires.AddMinutes(1) } : grant;
         var legacy = SecureAccessService.Principal(mismatch == "principal" ? grant.Identity with { Role = "Display" } : grant.Identity, CookieAuthenticationDefaults.AuthenticationScheme);
         Assert.Throws<SecureAccessDenied>(() => host.Access.CommitAuthorized(expected,
             mismatch == "browser" ? "different-browser" : grant.Browser,
