@@ -31,6 +31,7 @@ def main():
         for name in ['SecureAccessWebTests.cs', 'SecureGrantDurabilityTests.cs']:
             shutil.copy2(ROOT / 'InitiativeTracker.Tests' / name, fixture / 'InitiativeTracker.Tests' / name)
         shutil.copy2(ROOT / 'https-infra/tests/overlay/SecureN9OverlayTests.cs.template', fixture / 'InitiativeTracker.Tests/SecureN9OverlayTests.cs')
+        shutil.copy2(ROOT / 'hub-updater/runtime/initiativetracker-install-update', fixture / 'hub-updater/runtime/initiativetracker-install-update')
         program = fixture / 'InitiativeTracker.Web/Program.cs'
         text = program.read_text(encoding='utf-8-sig')
         replacements = {

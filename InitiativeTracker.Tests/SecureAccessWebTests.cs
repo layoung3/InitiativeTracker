@@ -614,4 +614,48 @@ public sealed class SecureAccessWebTests
         Directory.Delete(directory, true);
     }
 
+    [Fact]
+    public async Task ActualUpdaterRollbackFenceRejectsRestoredRevokedTicketAndPreservesGameplayData()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "secure-updater-rollback-" + Guid.NewGuid());
+        Dictionary<string, string> staleCookies;
+        using (var first = new Host(directory))
+        {
+            using var dm = first.Client(); await dm.Bootstrap();
+            var owner = AddPlayer(first);
+            var state = Path.Combine(directory, "secure-access", "state.bin");
+            var backup = File.ReadAllBytes(state); staleCookies = new(dm.Cookies);
+            var id = first.Access.Grants().Single().Id;
+            await dm.Post("Revoke", ("id", id.ToString()));
+            Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+            File.WriteAllBytes(state, backup); // Deliberately model updater whole-data restore.
+            var keys = Directory.GetFiles(Path.Combine(directory, "DataProtection-Keys")).ToDictionary(p => p, File.ReadAllBytes);
+            var media = Path.Combine(directory, "media"); Directory.CreateDirectory(media); File.WriteAllBytes(Path.Combine(media, "portrait.png"), [1, 2, 3]);
+            var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
+            var source = File.ReadAllText(Path.Combine(root, "hub-updater/runtime/initiativetracker-install-update"));
+            var python = source.Split("# BEGIN SECURE ROLLBACK FENCE\n")[1].Split("# END SECURE ROLLBACK FENCE")[0];
+            var info = new System.Diagnostics.ProcessStartInfo("/usr/bin/python3") { RedirectStandardInput = true, RedirectStandardError = true, RedirectStandardOutput = true };
+            info.ArgumentList.Add("-I"); info.ArgumentList.Add("-"); info.ArgumentList.Add(directory);
+            using var process = System.Diagnostics.Process.Start(info)!;
+            await process.StandardInput.WriteAsync(python); process.StandardInput.Close();
+            await process.WaitForExitAsync();
+            Assert.Equal(0, process.ExitCode);
+            Assert.True(File.Exists(Path.Combine(directory, "secure-access", "mutation.pending")));
+            Assert.Equal(backup, File.ReadAllBytes(state));
+            foreach (var key in keys) Assert.Equal(key.Value, File.ReadAllBytes(key.Key));
+            Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(Path.Combine(media, "portrait.png")));
+            using (var db = first.Factory.CreateDbContext()) Assert.True(db.PlayerProfiles.Any(p => p.Id == owner.Profile));
+            Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await dm.Send("/system/health")).StatusCode);
+        }
+        using (var restarted = new Host(directory))
+        {
+            using var replay = restarted.Client(); foreach (var cookie in staleCookies) replay.Cookies[cookie.Key] = cookie.Value;
+            Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
+            await replay.Bootstrap();
+            Assert.Equal(HttpStatusCode.OK, (await replay.Send("/media/fixture")).StatusCode);
+        }
+        Directory.Delete(directory, true);
+    }
+
 }

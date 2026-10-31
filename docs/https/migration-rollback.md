@@ -1,5 +1,7 @@
 # Staged migration and rollback from HTTP-only 0.1.5
 
+For the coordinated HTTPS + N9 0.1.6 sequence, use the [consolidated integration/release plan](0.1.6-integration-release-plan.md). It includes the mandatory guarded automatic-rollback prerequisite and secure-state invalidation before any restored app starts.
+
 All production stages below need separate explicit approval. This PR is a draft software checkpoint, not deployment authority. Keep N8 PR #4 and N9 PR #5 unchanged and unmerged. Do not run app startup against production data as a preflight: master itself invokes EF migrations on startup.
 
 ## Stage 0: owner choices and review
