@@ -1,0 +1,44 @@
+@page "/secure-access"
+@model InitiativeTracker.Web.Pages.SecureAccess.IndexModel
+@{ Layout = null; }
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Secure access</title>
+<style>body{font:1rem system-ui;background:#111827;color:#eee;margin:2rem auto;padding:1rem;max-width:48rem}input,button{font:inherit;padding:.7rem;margin:.3rem;max-width:90%}a{color:#8cf}form{margin:1rem 0}section{padding:1rem;border:1px solid #567;margin:1rem 0;overflow-wrap:anywhere}</style></head><body>
+<h1>Secure access</h1>
+<p>Existing gameplay login and pairing continue separately. Private images and sensitive management require fresh authorization.</p>
+@if (Model.Grant is { } grant) {
+<section><h2>Authorized as @grant.Identity.Role</h2><p>Expires @grant.Expires.ToString("u"). Browser access is restricted to this hub and game session.</p>
+<form method="post" asp-page-handler="Revoke"><input type="hidden" name="id" value="@grant.Id"><button>Revoke this secure session</button></form></section>
+}
+@if (!Model.Initialized) { <p>Secure approval state is not initialized or is unavailable. A fresh physical recovery can create a new approval state; existing gameplay data is retained.</p> }
+<section><h2>DM authorization or recovery</h2>
+<p>Request a code, then open <strong>/secure-access/physical</strong> on the hub's physical screen using its trusted HTTPS address resolved locally to loopback. Match the browser reference. Type the code here; no code is placed in a URL or QR image.</p>
+<form method="post" asp-page-handler="BeginDm"><label><input type="checkbox" name="recovery" value="true"> Initialize or recover: revoke all previous secure approvals</label><button>Request physical DM proof</button></form>
+@if (Model.Pending is { } pending && pending.Purpose.StartsWith("dm-")) {
+<p data-browser-reference="@pending.Reference">Browser reference: <strong>@pending.Reference</strong>. Request expires @pending.Expires.ToString("u").</p>
+<form method="post" asp-page-handler="Redeem"><label>Code from hub screen <input type="password" name="Code" autocomplete="off" maxlength="32" required></label><button>Authorize this browser</button></form>
+}
+</section>
+@if (User.IsInRole("Player") || User.IsInRole("Display")) {
+<section><h2>Request approval for this player or display</h2><p>Sign in through the hub's normal HTTPS join/pairing flow first. Ask a securely authorized DM to compare your browser reference and approve the exact identity shown.</p>
+<form method="post" asp-page-handler="BeginMember"><button>Request secure approval</button></form>
+@if (Model.Pending is { } memberPending && memberPending.Purpose.StartsWith("enroll-")) {
+<p>Browser reference <strong>@memberPending.Reference</strong>; identity @memberPending.Identity.Profile @memberPending.Identity.Display.</p>
+<p>@(memberPending.Approver.HasValue ? "DM approved. Complete authorization in this browser." : "Waiting for secure DM approval.")</p>
+<form method="post" asp-page-handler="Finish"><button>Complete approved enrollment</button></form>
+}
+</section>
+}
+@if (Model.Pending is not null) { <form method="post" asp-page-handler="Cancel"><button>Cancel requests and revoke this browser's secure sessions</button></form> }
+@if (Model.Grant?.Identity.Role == "DM") {
+<section><h2>Approve players and display browsers</h2><p>Verify the requesting person's screen and exact profile/display identity. A familiar name or old pairing token is not sufficient. This approval never enrolls a satellite agent or grants network administration.</p>
+@foreach (var request in Model.Requests) {
+<form method="post" asp-page-handler="Approve"><input type="hidden" name="id" value="@request.Id"><span>@request.Reference · @request.Identity.Role · @request.Identity.Profile @request.Identity.Display</span><button>Approve exact request</button></form>
+}
+<h2>Revoke secure sessions</h2>
+@foreach (var item in Model.Grants) {
+<form method="post" asp-page-handler="Revoke"><input type="hidden" name="id" value="@item.Id"><span>@item.Identity.Role · @item.Identity.Profile @item.Identity.Display · @item.Expires.ToString("u")</span><button>Revoke</button></form>
+}
+</section>
+}
+<p><a href="/secure-access">Refresh status</a> · <a href="/">Gameplay</a></p>
+</body></html>

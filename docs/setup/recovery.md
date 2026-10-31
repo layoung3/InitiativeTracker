@@ -84,6 +84,8 @@ transitions. The dry-run supervisor and decision planners do not execute recover
 
 ## Application rollback
 
+If secure HTTPS grants have existed, **do not run the following restore templates unchanged**: restored approval state must be fenced before any app starts. Use the [0.1.6 consolidated plan](../https/0.1.6-integration-release-plan.md#failure-and-exact-rollback-decisions), including its mandatory secure-state step and guarded updater prerequisite. Preserving Data Protection keys preserves gameplay identity; it must not restore stale sensitive authority.
+
 The graphical installer's previously audited health-failure path restores old
 release **and data**. It may not catch all other command failures. First inspect
 the active target and healthy version. If automatic rollback succeeded, avoid
