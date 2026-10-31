@@ -42,6 +42,7 @@ var coordinationCertificate = CoordinationEndpoints.Configure(builder, dataDirec
 if (coordinationCertificate is null) builder.Services.AddSingleton<InitiativeTracker.Core.Coordination.IProvisioningHttps>(new InitiativeTracker.Core.Coordination.PublicCertificateHttps(null, null));
 builder.Services.AddSingleton<ICoordinationNetwork, CoordinationNetworkBridge>();
 builder.Services.AddSingleton<DeviceCoordinationService>();
+builder.Services.AddSingleton<NetworkAdminAuthority>();
 builder.Services.AddHostedService<DeviceCoordinationWorker>();
 
 var dataProtectionDirectory =
@@ -340,6 +341,13 @@ app.Use(async (context, next) =>
     { context.Response.StatusCode = 403; return; }
     if (coordinationCertificate is not null && context.Connection.LocalPort == coordinationPort && !devicePath)
     { context.Response.StatusCode = 404; return; }
+    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST")
+    {
+        var authority = context.RequestServices.GetRequiredService<NetworkAdminAuthority>();
+        var unlock = string.Equals(context.Request.Query["handler"], "UnlockNetwork", StringComparison.OrdinalIgnoreCase);
+        if (unlock ? !authority.TrustedHttps(context) : !authority.Allows(context))
+        { context.Response.StatusCode = 403; return; }
+    }
     if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && !CoordinationEndpoints.Local(context))
     {
         var handler = context.Request.Query["handler"].ToString().ToUpperInvariant();

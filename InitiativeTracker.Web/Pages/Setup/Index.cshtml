@@ -47,6 +47,8 @@
     <section class="card setup-network"><div class="card-body">
         <img src="@Model.NetworkQrDataUri" alt="Open network status on your phone" class="setup-network-qr" />
         <div><h2>Network status and Wi-Fi setup</h2>
+            @if (Model.NetworkAuthorityCode is not null)
+            { <p>Secure network-control code (five minutes): <strong class="font-monospace">@Model.NetworkAuthorityCode</strong></p> }
             <p><strong>@Model.Network?.Connection</strong> · @(Model.Network?.Ipv4 ?? "No Wi-Fi address")</p>
             <p>On the same network, scan to review status or join external Wi-Fi. DM login required.</p>
             <p class="small text-break mb-0">@Model.NetworkPageUrl</p>

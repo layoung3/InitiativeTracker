@@ -23,8 +23,8 @@ def parse_request(data):
     action, value = obj['action'], obj['uuid']
     if action == 'coordination-confirm' and isinstance(value, str) and UUID.fullmatch(value):
         return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'confirm', value]
-    if action == 'coordination-profiles' and (value is None or isinstance(value, str) and UUID.fullmatch(value)):
-        return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'profiles'] + ([value] if value else [])
+    if action in ('coordination-profiles', 'coordination-recovery-profile') and (value is None or isinstance(value, str) and UUID.fullmatch(value)):
+        return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'profiles' if action == 'coordination-recovery-profile' else 'prepare-profiles'] + ([value] if value else [])
     if action == 'coordination-schedule' and isinstance(value, dict):
         return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'schedule']
     if action == 'hotspot-join-qr' and value is None:
@@ -87,7 +87,7 @@ def handle(conn):
     if args[0] == 'hotspot-join-qr':
         return {'ok': True, 'wifiQr': private_hotspot_payload()}
     if args[0].endswith('initiativetracker-device-coordination'):
-        if args[1] == 'profiles':
+        if args[1] in ('profiles', 'prepare-profiles'):
             result = subprocess.run(args, capture_output=True, text=True, timeout=20)
             if result.returncode: return {'ok': False}
             return {'ok': True, **json.loads(result.stdout)}

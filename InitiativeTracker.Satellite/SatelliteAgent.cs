@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace InitiativeTracker.Satellite;
 
-public sealed record Candidate(string Url, string Pin, Guid HubId, Guid Generation, string DisplayUrl, string Name, DateTimeOffset ExpiresUtc);
+public sealed record Candidate(string Url, string Pin, Guid HubId, Guid Generation, string DisplayUrl, string Name, DateTimeOffset ExpiresUtc, Guid IntentId);
 public sealed record AgentState(Guid DeviceId, DeviceBinding? Binding, Candidate? Candidate, long LastRevision, Transition? Transition,
     DateTimeOffset? UnavailableSince, int Failures, DateTimeOffset? NextRecoveryUtc, int RecoveryAttempts, string OwnerHash);
 
@@ -88,13 +88,10 @@ public sealed class SatelliteAgent : IAsyncDisposable
         try
         {
             url = Origin(url); pin = pin.ToUpperInvariant();
-            using var client = Client(pin);
-            var response = await client.PostAsJsonAsync(url + "/api/coordination/enroll", new EnrollmentRequest(state.DeviceId, name, DeviceProtocol.Version, DeviceProtocol.Capabilities), ct);
-            response.EnsureSuccessStatusCode();
-            var enrollment = await response.Content.ReadFromJsonAsync<Enrollment>(ct) ?? throw new IOException("Invalid enrollment");
-            if (enrollment.CertificatePin != Pin || enrollment.DeviceId != state.DeviceId) throw new IOException("Enrollment identity mismatch");
-            Save(state with { Candidate = new(url, pin, Guid.Empty, enrollment.Generation,
-                new UriBuilder(url) { Scheme = "http", Port = configuration.GetValue<int?>("Satellite:DisplayPort") ?? 5000, Path = "/display", Query = "satellite=1" }.Uri.ToString(), name, time.GetUtcNow().AddMinutes(10)) });
+            if (state.Binding?.HubPin == pin) throw new InvalidOperationException("This hub is already paired; use recovery or explicitly forget it before requesting a new association.");
+            Save(state with { Candidate = new(url, pin, Guid.Empty, Guid.Empty,
+                new UriBuilder(url) { Scheme = "http", Port = configuration.GetValue<int?>("Satellite:DisplayPort") ?? 5000, Path = "/display", Query = "satellite=1" }.Uri.ToString(), name, time.GetUtcNow().AddMinutes(10), Guid.NewGuid()) });
+            await AdvanceCandidate(ct);
             Message = "Request sent. Approve this satellite certificate at the destination hub's physical DM screen, then finish pairing here.";
         }
         finally { gate.Release(); }
@@ -131,11 +128,12 @@ public sealed class SatelliteAgent : IAsyncDisposable
         try
         {
             url = Origin(url); pin = pin.ToUpperInvariant();
+            if (state.Binding?.HubPin == pin) throw new InvalidOperationException("This hub is already paired; use recovery or explicitly forget it before requesting a new association.");
             if (pin.Length != 64 || !pin.All(char.IsAsciiHexDigit) || string.IsNullOrWhiteSpace(name) || name.Length > 64)
                 throw new InvalidOperationException("Invalid destination identity");
             await Broker(new { action = "open-provisioning" }, ct);
             var display = new UriBuilder(url) { Scheme = "http", Port = configuration.GetValue<int?>("Satellite:DisplayPort") ?? 5000, Path = "/display", Query = "satellite=1" }.Uri.ToString();
-            Save(state with { Candidate = new(url, pin, Guid.Empty, Guid.Empty, display, name, time.GetUtcNow().AddMinutes(10)) });
+            Save(state with { Candidate = new(url, pin, Guid.Empty, Guid.Empty, display, name, time.GetUtcNow().AddMinutes(10), Guid.NewGuid()) });
             if (!string.IsNullOrWhiteSpace(ssid)) await ConfigureNetwork(ssid, password ?? "", ct);
             Message = "Reassignment authorized for the specified hub fingerprint only. Approve the satellite fingerprint in that hub's DM interface; setup then finishes automatically.";
         }
@@ -144,7 +142,7 @@ public sealed class SatelliteAgent : IAsyncDisposable
     private async Task AdvanceCandidate(CancellationToken ct)
     {
         var candidate = state.Candidate!;
-        if (time.GetUtcNow() >= candidate.ExpiresUtc)
+        if (candidate.IntentId == Guid.Empty || time.GetUtcNow() >= candidate.ExpiresUtc)
         {
             Save(state with { Candidate = null });
             await Broker(new { action = "close-provisioning" }, ct);
@@ -152,10 +150,10 @@ public sealed class SatelliteAgent : IAsyncDisposable
         }
         using var client = Client(candidate.Pin);
         var response = await client.PostAsJsonAsync(candidate.Url + "/api/coordination/enroll",
-            new EnrollmentRequest(state.DeviceId, candidate.Name, DeviceProtocol.Version, DeviceProtocol.Capabilities), ct);
+            new EnrollmentRequest(state.DeviceId, candidate.Name, DeviceProtocol.Version, DeviceProtocol.Capabilities, candidate.IntentId), ct);
         response.EnsureSuccessStatusCode();
         var enrollment = await response.Content.ReadFromJsonAsync<Enrollment>(ct) ?? throw new IOException("Invalid enrollment");
-        if (enrollment.DeviceId != state.DeviceId || enrollment.CertificatePin != Pin) throw new IOException("Device identity mismatch");
+        if (enrollment.DeviceId != state.DeviceId || enrollment.CertificatePin != Pin || enrollment.IntentId != candidate.IntentId) throw new IOException("Device identity mismatch");
         Save(state with { Candidate = candidate with { Generation = enrollment.Generation } });
         if (enrollment.Approved) await FinishPairingCore(ct);
     }
@@ -213,7 +211,7 @@ public sealed class SatelliteAgent : IAsyncDisposable
         var root = await Broker(new { action = "status" }, ct);
         var localState = root.GetProperty("state");
         if (localState.GetProperty("recovery").ValueKind == JsonValueKind.String && root.GetProperty("active").GetString() == localState.GetProperty("recovery").GetString())
-            url = new UriBuilder(binding.HubUrl) { Host = "10.84.0.1" }.Uri.GetLeftPart(UriPartial.Authority);
+            url = new UriBuilder(binding.HubUrl) { Host = configuration["Satellite:RecoveryHubHost"] ?? "10.84.0.1" }.Uri.GetLeftPart(UriPartial.Authority);
         if (connection is null || connectedTo != url)
         {
             await Disconnect();
@@ -344,13 +342,14 @@ public sealed class SatelliteAgent : IAsyncDisposable
                 Message = "Paired hub unavailable; association retained. Recovery is automatic; Setup requires owner authorization.";
                 if (state.Failures >= 6 && time.GetElapsedTime(firstFailureTimestamp.Value) >= TimeSpan.FromSeconds(120) && (state.NextRecoveryUtc is null || now >= state.NextRecoveryUtc))
                 {
-                    // Commit cooldown before requesting a durable root-supervised attempt. Never spin after crashes.
-                    Save(state with { NextRecoveryUtc = now.AddMinutes(Math.Min(15, 3 * Math.Pow(2, Math.Min(state.RecoveryAttempts, 3)))), RecoveryAttempts = state.RecoveryAttempts + 1 });
-                    try { await Broker(new { action = "recover-profile" }, ct); } catch (IOException) { }
-                    if (state.RecoveryAttempts >= 2 && !string.IsNullOrWhiteSpace(configuration["Satellite:PhoneCertificate"]))
-                    {
-                        try { await Broker(new { action = "open-provisioning" }, ct); } catch (IOException) { }
-                    }
+                    var radio = (await Broker(new { action = "status" }, ct)).GetProperty("state");
+                    var transition = radio.GetProperty("transition");
+                    var pending = transition.ValueKind != JsonValueKind.Null && transition.GetProperty("phase").GetString() is "prepared" or "committed" or "recovering";
+                    if (pending || radio.TryGetProperty("provisioning", out var setup) && setup.ValueKind != JsonValueKind.Null) return;
+                    // Each stage finishes before the next authority is granted. AP setup never races an armed trial.
+                    var offerSetup = state.RecoveryAttempts >= 1 && !string.IsNullOrWhiteSpace(configuration["Satellite:PhoneCertificate"]);
+                    Save(state with { NextRecoveryUtc = now.AddMinutes(offerSetup ? 15 : Math.Min(15, 3 * Math.Pow(2, Math.Min(state.RecoveryAttempts, 3)))), RecoveryAttempts = state.RecoveryAttempts + 1 });
+                    await Broker(new { action = offerSetup ? "open-provisioning" : "recover-profile" }, ct);
                     Show("http://127.0.0.1:5081/");
                 }
             }

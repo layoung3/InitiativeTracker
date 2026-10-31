@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -39,6 +40,24 @@ def profile(identifier):
     if not 1 <= len(ssid.encode()) <= 32 or not 8 <= len(password.encode()) <= 63 or any(ord(c) < 32 for c in ssid + password):
         raise ValueError('unsupported profile credentials')
     return {'ssid': ssid, 'password': password, 'keyManagement': key_management}
+
+
+def preflight(target):
+    current = command('/usr/bin/nmcli', '-g', 'GENERAL.CONNECTION', 'device', 'show', 'wlan0')
+    if current in ('', '--', 'unknown') or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', current):
+        raise ValueError('unsupported previous profile; commission safe active ID before preparation')
+    if target == HOTSPOT and current == HOTSPOT:
+        raise ValueError('destination already active')
+    if target != HOTSPOT:
+        previous = command('/usr/bin/nmcli', '-g', 'GENERAL.CON-UUID', 'device', 'show', 'wlan0')
+        guid(previous)
+        if previous == target:raise ValueError('destination already active')
+    for timer in ('initiativetracker-network-recovery.timer', 'initiativetracker-network-return.timer'):
+        if command('/usr/bin/systemctl', 'is-active', timer) != 'active':raise ValueError('independent timer inactive')
+    status = command(LIB + ('initiativetracker-network-control' if target == HOTSPOT else 'initiativetracker-network-return'), 'status')
+    fields = dict(line.split('=', 1) for line in status.splitlines() if '=' in line)
+    if fields.get('N64C_LIVE_ENABLED' if target == HOTSPOT else 'RETURN_SWITCH_ENABLED') != 'true':
+        raise ValueError('live switch gate disabled')
 
 
 def validate(request, now):
@@ -165,10 +184,11 @@ def main():
     if os.geteuid() != 0 or ROOT.is_symlink() or not ROOT.is_dir():
         raise PermissionError('protected root context required')
     action = sys.argv[1]
-    if action == 'profiles':
+    if action in ('profiles', 'prepare-profiles'):
         target = sys.argv[2] if len(sys.argv) == 3 else HOTSPOT
         if target != HOTSPOT:
             guid(target)
+        if action == 'prepare-profiles':preflight(target)
         print(json.dumps({'target': profile(target), 'recovery': profile(HOTSPOT)}))
     elif action == 'schedule':
         raw = sys.stdin.buffer.read(2049)

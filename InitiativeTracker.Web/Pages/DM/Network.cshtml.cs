@@ -8,12 +8,23 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace InitiativeTracker.Web.Pages.Dm;
 
 [Authorize(Roles = "DM")]
-public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, IProvisioningHttps browserTls, DeviceRegistryService displays) : PageModel
+public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, IProvisioningHttps browserTls, DeviceRegistryService displays, NetworkAdminAuthority authority) : PageModel
 {
+    public bool NetworkAuthority => authority.Allows(HttpContext);
+    public string? PhysicalAuthorityCode => LocalCredentials ? authority.PhysicalCode() : null;
+    [BindProperty] public string NetworkAuthorityCode { get; set; } = "";
+    public IActionResult OnPostUnlockNetwork()
+    {
+        var cookie = authority.Unlock(HttpContext, NetworkAuthorityCode);
+        if (cookie is null) return StatusCode(403);
+        Response.Cookies.Append(NetworkAdminAuthority.CookieName,cookie,new CookieOptions {Secure=true,HttpOnly=true,SameSite=SameSiteMode.Strict,Path="/",MaxAge=TimeSpan.FromMinutes(15)});
+        return Redirect("/dm/network");
+    }
     public bool CoordinationEnabled => coordination.Enabled;
     public bool LocalCredentials => CoordinationEndpoints.Local(HttpContext);
     public bool CanSubmitSecrets => Request.IsHttps && browserTls.Ready && Request.Host.Host == browserTls.Host;
     public DeviceCoordinationService.Journal Coordination => coordination.Snapshot;
+    [NonHandler]
     public bool Online(Guid id) => coordination.Online(id);
     public string? HubPin => LocalCredentials && CoordinationEnabled
         ? DeviceProtocol.Fingerprint(DeviceProtocol.Certificate(Path.Combine(CoordinationEndpoints.DataDirectory(configuration, environment), "coordination", "hub.pfx"), "InitiativeTracker Hub", true)) : null;
@@ -22,6 +33,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
     [BindProperty] public Guid[] LeaveBehind { get; set; } = [];
     public IReadOnlyList<InitiativeTracker.Web.Data.RegisteredDevice> PairedDisplays => displays.GetTrustedDisplays();
     [BindProperty] public Guid? AgentDisplayId { get; set; }
+    [BindProperty] public Guid AgentIntentId { get; set; }
     [BindProperty] public Guid AgentId { get; set; }
     [BindProperty] public string VerifiedPin { get; set; } = "";
     public Task<IActionResult> OnPostPrepareAsync(CancellationToken ct) => Coordinate(() => coordination.PrepareAsync(TargetKind, TargetKind == "wifi" ? SavedUuid : null, ct), ct);
@@ -31,7 +43,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
     public Task<IActionResult> OnPostApproveAgentAsync(CancellationToken ct) => Coordinate(() =>
     {
         if (!LocalCredentials) throw new InvalidOperationException("Approve from the physical hub screen");
-        coordination.Approve(AgentId, VerifiedPin, DateTimeOffset.UtcNow, AgentDisplayId); return Task.CompletedTask;
+        coordination.Approve(AgentId, VerifiedPin, DateTimeOffset.UtcNow, AgentDisplayId, AgentIntentId); return Task.CompletedTask;
     }, ct);
     public Task<IActionResult> OnPostRevokeAgentAsync(CancellationToken ct) => Coordinate(() => { coordination.Revoke(AgentId); return Task.CompletedTask; }, ct);
     private async Task<IActionResult> Coordinate(Func<Task> operation, CancellationToken ct)

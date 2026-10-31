@@ -17,13 +17,15 @@ public class IndexModel : PageModel
         _trackerUrl;
     private readonly NetworkCommandBridge _networkBridge;
     private readonly NetworkStatusService _networkStatus;
+    private readonly NetworkAdminAuthority _networkAuthority;
+    public string? NetworkAuthorityCode { get; private set; }
     public NetworkStatusService.Snapshot? Network { get; private set; }
 
 
     public IndexModel(
         GameSessionService gameSession,
         TrackerUrlService trackerUrl,
-        NetworkCommandBridge networkBridge, NetworkStatusService networkStatus)
+        NetworkCommandBridge networkBridge, NetworkStatusService networkStatus, NetworkAdminAuthority networkAuthority)
     {
         _gameSession =
             gameSession;
@@ -32,6 +34,7 @@ public class IndexModel : PageModel
             trackerUrl;
         _networkBridge = networkBridge;
         _networkStatus = networkStatus;
+        _networkAuthority = networkAuthority;
     }
 
 
@@ -71,6 +74,7 @@ public class IndexModel : PageModel
         }
 
 
+        if (CoordinationEndpoints.Local(HttpContext)) NetworkAuthorityCode = _networkAuthority.PhysicalCode();
         Network = await _networkStatus.GetAsync(cancellationToken);
 
         var baseUrl =

@@ -42,6 +42,8 @@ class SatelliteNetworkTests(unittest.TestCase):
         self.calls.append(args)
         if args[:3] == ('-g', 'GENERAL.CON-UUID', 'device'):
             return self.active
+        if 'down' in args:
+            self.active = '--'
         if 'up' in args:
             target = args[args.index('uuid') + 1]
             if target in self.failed_profiles:
@@ -188,6 +190,81 @@ class SatelliteNetworkTests(unittest.TestCase):
         m.tick()
         self.assertEqual(self.active, previous)
         self.assertEqual(m.load()['generation'], self.generation)
+
+    def test_disconnected_adapter_recovery_and_failed_identity_trial_restore_disconnected(self):
+        self.active = '--'
+        self.run_action('recover-profile')
+        state = m.load()
+        self.assertIsNone(state['transition']['previous'])
+        self.assertFalse(state['transition']['switched'])
+        m.tick()
+        self.assertEqual(self.active, state['recovery'])
+        state = m.load()
+        state['transition']['mono_deadline'] = time.monotonic()-1
+        m.save(state)
+        m.tick()
+        self.assertIsNone(m.active_optional())
+        self.assertEqual(m.load()['transition']['phase'], 'recovered')
+
+    def test_unverified_automatic_hotspot_trial_returns_to_previous_profile(self):
+        previous = self.active
+        self.run_action('recover-profile')
+        m.tick()
+        self.assertEqual(self.active, m.load()['recovery'])
+        state = m.load()
+        state['transition']['mono_deadline'] = time.monotonic()-1
+        m.save(state)
+        m.tick()
+        self.assertEqual(self.active, previous)
+        self.assertEqual(m.load()['transition']['phase'], 'recovered')
+
+    def test_prepare_cannot_overlap_provisioning_and_legacy_overlap_cannot_interrupt_commit(self):
+        self.run_action('open-provisioning')
+        with self.assertRaises(ValueError):
+            self.prepare()
+        self.run_action('close-provisioning')
+        self.prepare()
+        self.commit(switchAt=time.time()-1, deadline=time.time()+99)
+        state = m.load()
+        target = state['transition']['target']
+        state['provisioning'] = {'previous': str(uuid.uuid4()), 'profile': str(uuid.uuid4()),
+                                 'created': time.time()-1000, 'deadline': time.time()-1,
+                                 'boot': m.boot(), 'mono_deadline': time.monotonic()-1}
+        m.save(state)
+        m.tick()
+        self.assertEqual(self.active, target)
+        self.assertIsNone(m.load()['provisioning'])
+        self.assertIsNotNone(m.load()['restoration'])
+
+    def test_successful_target_is_reactivated_on_boot_and_requires_new_identity_finalization(self):
+        self.prepare()
+        self.commit(switchAt=time.time()-1, deadline=time.time()+99)
+        m.tick()
+        self.run_action('finalize', id=self.identity)
+        target = self.active
+        self.active = '--'
+        with patch.object(m, 'boot', return_value='next-device-boot'):
+            m.tick()
+        state = m.load()
+        self.assertEqual(self.active, target)
+        self.assertTrue(state['transition']['automatic'])
+        self.assertEqual(state['transition']['kind'], 'boot')
+        self.assertEqual(state['transition']['phase'], 'committed')
+
+    def test_failed_ap_restoration_retains_durable_retry_intent_across_restart(self):
+        previous = self.active
+        self.run_action('open-provisioning')
+        with patch.object(m, 'up', side_effect=RuntimeError('synthetic restore failure')):
+            self.run_action('close-provisioning')
+        state = m.load()
+        self.assertIsNone(state['provisioning'])
+        self.assertEqual(state['restoration']['profile'], previous)
+        self.assertIsNone(m.active_optional())
+        state['restoration']['next'] = time.time()-1
+        m.save(state)
+        m.tick()
+        self.assertEqual(self.active, previous)
+        self.assertIsNone(m.load()['restoration'])
 
     def test_forget_does_not_remove_the_provisioning_ap_deadline(self):
         self.run_action('open-provisioning')

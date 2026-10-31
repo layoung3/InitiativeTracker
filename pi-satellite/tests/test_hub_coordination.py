@@ -87,6 +87,21 @@ class HubCoordinationTests(unittest.TestCase):
                 m.schedule(self.request)
         self.assertFalse((self.root/'coordination.json').exists())
 
+    def test_preparation_preflight_rejects_unsafe_source_before_any_network_change(self):
+        with patch.object(m, 'command', return_value='unsafe spaced ID'):
+            with self.assertRaises(ValueError):
+                m.preflight(self.request['target'])
+
+    def test_preparation_preflight_checks_existing_gate_and_independent_timers(self):
+        def command(*args, **kwargs):
+            if 'GENERAL.CONNECTION' in args:return 'IT-External-A'
+            if 'GENERAL.CON-UUID' in args:return str(uuid.uuid4())
+            if args[0]=='/usr/bin/systemctl':return 'active'
+            return 'RETURN_SWITCH_ENABLED=false'
+        with patch.object(m, 'command', side_effect=command):
+            with self.assertRaises(ValueError):
+                m.preflight(self.request['target'])
+
     def test_deadline_validation_rejects_late_extended_or_arbitrary_destination(self):
         for change in [{'switchAt': int(time.time())-1}, {'deadline': self.request['deadline']+1000}, {'kind': 'shell'}, {'target': ';invalid'}]:
             with self.assertRaises(ValueError):

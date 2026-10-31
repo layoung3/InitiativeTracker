@@ -56,7 +56,7 @@ public sealed class CoordinationTlsTests
             handler.ServerCertificateCustomValidationCallback = (_,cert,_,_) => DeviceProtocol.PinMatches(cert,DeviceProtocol.Fingerprint(serverCertificate));
             using var client = new HttpClient(handler);
             Assert.Equal(HttpStatusCode.Unauthorized,(await client.GetAsync(address+"/api/coordination/status")).StatusCode);
-            var request = new EnrollmentRequest(Guid.NewGuid(),"Synthetic satellite",1,DeviceProtocol.Capabilities);
+            var request = new EnrollmentRequest(Guid.NewGuid(),"Synthetic satellite",1,DeviceProtocol.Capabilities, Guid.NewGuid());
             var response = await client.PostAsJsonAsync(address+"/api/coordination/enroll",request);
             response.EnsureSuccessStatusCode();
             var enrollment = (await response.Content.ReadFromJsonAsync<Enrollment>())!;

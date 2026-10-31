@@ -25,7 +25,7 @@ public sealed class CoordinationNetworkBridge(NetworkCommandBridge commands) : I
     public async Task<(WifiProfile Target, WifiProfile Recovery)> ProfilesAsync(string kind, string? uuid, CancellationToken ct)
     {
         if (!commands.Enabled) throw new InvalidOperationException("Network commands disabled");
-        var reply = await Request(new { action = "coordination-profiles", uuid = kind == "hotspot" ? null : uuid }, ct);
+        var reply = await Request(new { action = kind == "recovery" ? "coordination-recovery-profile" : "coordination-profiles", uuid = kind is "hotspot" or "recovery" ? null : uuid }, ct);
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         return (reply.GetProperty("target").Deserialize<WifiProfile>(options)!, reply.GetProperty("recovery").Deserialize<WifiProfile>(options)!);
     }

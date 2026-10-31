@@ -28,8 +28,8 @@ public static class DeviceProtocol
 }
 
 public sealed record WifiProfile(string Ssid, string Password, string KeyManagement = "wpa-psk");
-public sealed record EnrollmentRequest(Guid DeviceId, string Name, int Version, string[] Capabilities);
-public sealed record Enrollment(Guid DeviceId, string Name, string CertificatePin, Guid Generation, string[] Capabilities, DateTimeOffset RequestedUtc, bool Approved, bool Revoked = false, Guid? DisplayId = null);
+public sealed record EnrollmentRequest(Guid DeviceId, string Name, int Version, string[] Capabilities, Guid IntentId);
+public sealed record Enrollment(Guid DeviceId, string Name, string CertificatePin, Guid Generation, string[] Capabilities, DateTimeOffset RequestedUtc, bool Approved, bool Revoked = false, Guid? DisplayId = null, Guid IntentId = default);
 public sealed record DeviceBinding(Guid HubId, Guid DeviceId, Guid Generation, string HubPin, string HubUrl, string DisplayUrl);
 public enum TransitionStage { Preparing, Committed, HubConfirmed, Completed, Recovered, Expired }
 public sealed record DeviceProgress(Guid DeviceId, Guid Generation, bool Ready = false, bool CommitReceived = false, bool Reconnected = false, bool Finalized = false, string? Failure = null, string? Name = null);

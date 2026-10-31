@@ -13,7 +13,7 @@ public interface ICoordinationNetwork
 
 public sealed class DeviceCoordinationService
 {
-    public sealed record Journal(long Revision, Enrollment[] Enrollments, Transition? Transition, string? ProtectedProfiles);
+    public sealed record Journal(long Revision, Enrollment[] Enrollments, Transition? Transition, string? ProtectedProfiles, Guid[]? RetiredIntents = null);
     private readonly object gate = new();
     private readonly string path;
     private readonly IDataProtector protector;
@@ -35,36 +35,47 @@ public sealed class DeviceCoordinationService
     }
     private void Save(Journal next) { PrivateFile.Save(path, next); state = next; }
     public Journal Snapshot { get { lock (gate) return state with { ProtectedProfiles = null }; } }
-    public Task<(WifiProfile Target, WifiProfile Recovery)> RecoveryAsync(CancellationToken ct) => network.ProfilesAsync("hotspot", null, ct);
+    public Task<(WifiProfile Target, WifiProfile Recovery)> RecoveryAsync(CancellationToken ct) => network.ProfilesAsync("recovery", null, ct);
     public bool Online(Guid id) { lock (gate) return seen.TryGetValue(id, out var at) && at > DateTimeOffset.UtcNow.AddSeconds(-30); }
     public Enrollment Request(X509Certificate2 certificate, EnrollmentRequest request, DateTimeOffset now)
     {
-        if (!Enabled || request.Version != DeviceProtocol.Version || request.DeviceId == Guid.Empty ||
+        if (!Enabled || request.Version != DeviceProtocol.Version || request.DeviceId == Guid.Empty || request.IntentId == Guid.Empty ||
             string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 64 || request.Name.Any(char.IsControl) ||
             request.Capabilities is null || !DeviceProtocol.Capabilities.All(request.Capabilities.Contains))
             throw new InvalidOperationException("Unsupported device or protocol");
         var pin = DeviceProtocol.Fingerprint(certificate);
         lock (gate)
         {
+            if (state.RetiredIntents?.Contains(request.IntentId) == true) throw new InvalidOperationException("Retired enrollment intent");
             var existing = state.Enrollments.SingleOrDefault(x => x.DeviceId == request.DeviceId || x.CertificatePin == pin);
             if (existing is not null && existing.CertificatePin == pin && existing.DeviceId == request.DeviceId)
             {
-                if (!existing.Revoked && (existing.Approved || existing.RequestedUtc > now.AddMinutes(-5))) return existing;
-                var renewed = existing with { Generation = Guid.NewGuid(), RequestedUtc = now, Revoked = false };
-                Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == existing.DeviceId ? renewed : x).ToArray() }); return renewed;
+                if (existing.IntentId == request.IntentId)
+                {
+                    if (existing.Revoked || !existing.Approved && existing.RequestedUtc <= now.AddMinutes(-5))
+                        throw new InvalidOperationException("Enrollment intent expired or revoked; authorize a new setup request");
+                    return existing;
+                }
+                var renewed = existing with { Generation = Guid.NewGuid(), RequestedUtc = now, Revoked = false, Approved = false, IntentId = request.IntentId };
+                Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == existing.DeviceId ? renewed : x).ToArray(),
+                    RetiredIntents = (state.RetiredIntents ?? []).Append(existing.IntentId).Where(x => x != Guid.Empty).TakeLast(128).ToArray(),
+                    Transition = state.Transition is null ? null : state.Transition with { Devices = state.Transition.Devices.Select(d => d.DeviceId == existing.DeviceId ? d with { Ready = false, Failure = "Enrollment generation changed" } : d).ToArray() } });
+                seen.Remove(existing.DeviceId);
+                return renewed;
             }
             if (existing is not null) throw new InvalidOperationException("Device identity conflict");
             var retained = state.Enrollments.Where(x => x.Approved || TransitionRules.Pending(state.Transition) && state.Transition!.Devices.Any(d => d.DeviceId == x.DeviceId) || x.RequestedUtc > now.AddMinutes(-5)).ToArray();
             if (retained.Length >= 32) throw new InvalidOperationException("Enrollment queue full");
-            var enrollment = new Enrollment(request.DeviceId, request.Name, pin, Guid.NewGuid(), DeviceProtocol.Capabilities, now, false);
+            var enrollment = new Enrollment(request.DeviceId, request.Name, pin, Guid.NewGuid(), DeviceProtocol.Capabilities, now, false, IntentId: request.IntentId);
             Save(state with { Enrollments = [.. retained, enrollment] }); return enrollment;
         }
     }
-    public void Approve(Guid id, string physicallyVerifiedPin, DateTimeOffset now, Guid? displayId = null)
+    public void Approve(Guid id, string physicallyVerifiedPin, DateTimeOffset now, Guid? displayId = null, Guid? intentId = null)
     {
         lock (gate)
         {
             var device = state.Enrollments.Single(x => x.DeviceId == id && !x.Revoked);
+            if (intentId is not null && device.IntentId != intentId) throw new InvalidOperationException("Enrollment intent changed; review the fresh request");
             if (!device.Approved && device.RequestedUtc <= now.AddMinutes(-5) || device.CertificatePin != physicallyVerifiedPin.ToUpperInvariant())
                 throw new InvalidOperationException("Expired request or certificate mismatch");
             if (displayId is not null && (!displays.IsTrustedDisplay(displayId.Value) || state.Enrollments.Any(x => x.Approved && x.DeviceId != id && x.DisplayId == displayId)))

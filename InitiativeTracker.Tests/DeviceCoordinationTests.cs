@@ -7,6 +7,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore;
 using InitiativeTracker.Web.Data;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace InitiativeTracker.Tests;
 
@@ -28,7 +33,7 @@ public sealed class DeviceCoordinationTests : IDisposable
     private (Enrollment Enrollment, X509Certificate2 Certificate) Enroll(bool approve = true)
     {
         var cert = DeviceProtocol.Certificate(Path.Combine(directory, Guid.NewGuid() + ".pfx"), "Synthetic satellite", false);
-        var enrollment = Service.Request(cert, new(Guid.NewGuid(), "Synthetic satellite", 1, DeviceProtocol.Capabilities), now);
+        var enrollment = Service.Request(cert, new(Guid.NewGuid(), "Synthetic satellite", 1, DeviceProtocol.Capabilities, Guid.NewGuid()), now);
         if (approve) Service.Approve(enrollment.DeviceId, DeviceProtocol.Fingerprint(cert), now);
         return (enrollment, cert);
     }
@@ -87,7 +92,7 @@ public sealed class DeviceCoordinationTests : IDisposable
         Service.Revoke(device.DeviceId);
         Assert.Throws<UnauthorizedAccessException>(()=>Service.Status(cert));
         Assert.False(Service.Snapshot.Transition!.Devices[0].Ready);
-        var renewed=Service.Request(cert,new(device.DeviceId,"Synthetic satellite",1,DeviceProtocol.Capabilities),now);
+        var renewed=Service.Request(cert,new(device.DeviceId,"Synthetic satellite",1,DeviceProtocol.Capabilities, Guid.NewGuid()),now);
         Assert.NotEqual(device.Generation,renewed.Generation);
         Service.Approve(renewed.DeviceId,renewed.CertificatePin,now); Service.Status(cert);
         Assert.Throws<InvalidOperationException>(()=>Service.Commit(t.Id,[],now));
@@ -157,10 +162,10 @@ public sealed class DeviceCoordinationTests : IDisposable
     {
         var (device, cert) = Enroll(false); using var certificate = cert;
         Assert.Throws<InvalidOperationException>(() => Service.Approve(device.DeviceId, device.CertificatePin, now.AddMinutes(6)));
-        var renewed = Service.Request(cert, new(device.DeviceId, "Synthetic satellite", 1, DeviceProtocol.Capabilities), now.AddMinutes(6));
+        var renewed = Service.Request(cert, new(device.DeviceId, "Synthetic satellite", 1, DeviceProtocol.Capabilities, Guid.NewGuid()), now.AddMinutes(6));
         Assert.NotEqual(device.Generation, renewed.Generation);
         using var attacker = DeviceProtocol.Certificate(Path.Combine(directory, "attacker.pfx"), "Synthetic unrelated", false);
-        Assert.Throws<InvalidOperationException>(() => Service.Request(attacker, new(device.DeviceId, "Impostor", 1, DeviceProtocol.Capabilities), now));
+        Assert.Throws<InvalidOperationException>(() => Service.Request(attacker, new(device.DeviceId, "Impostor", 1, DeviceProtocol.Capabilities, Guid.NewGuid()), now));
     }
     [Fact]
     public async Task HttpCannotFetchPlansSubmitCredentialsOrPromoteDisplayIdentity()
@@ -170,6 +175,64 @@ public sealed class DeviceCoordinationTests : IDisposable
         Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await client.PostAsync("/dm/network?handler=Provision", new FormUrlEncodedContent(new Dictionary<string,string> { ["WifiPassword"] = "synthetic-secret" }))).StatusCode);
         Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await client.PostAsync("/dm/network?handler=RotateHotspotPassword", new StringContent(""))).StatusCode);
         Assert.Equal(0, network.Schedules);
+    }
+    [Fact]
+    public async Task EveryPrivilegedNetworkHandlerRejectsRemoteHttpAndLegacyCookieReplay()
+    {
+        using var client=app.CreateClient(new WebApplicationFactoryClientOptions{AllowAutoRedirect=false});
+        client.DefaultRequestHeaders.Add("Cookie","InitiativeTracker.Auth=captured-gameplay-cookie");
+        foreach(var handler in new[]{"Prepare","Commit","Postpone","RevokeAgent","ConfirmCoordinated","BeginHotspot","BeginReturn","ConfirmHotspot","ConfirmReturn","UnlockNetwork"})
+        {
+            var response=await client.PostAsync("/dm/network?handler="+handler,new StringContent(""));
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden,response.StatusCode);
+        }
+        Assert.Equal(0,network.Schedules);
+    }
+    [Fact]
+    public async Task ValidLegacyDmCookieAtTrustedHttpsStillRequiresPhysicalNetworkProof()
+    {
+        using var trusted=app.WithWebHostBuilder(builder=>builder.ConfigureServices(services=>
+        {services.RemoveAll<IProvisioningHttps>();services.AddSingleton<IProvisioningHttps>(new TestBrowserTls());}));
+        using var client=trusted.CreateClient(new WebApplicationFactoryClientOptions{AllowAutoRedirect=false,BaseAddress=new Uri("https://localhost")});
+        var session=trusted.Services.GetRequiredService<GameSessionService>().CurrentSession.SessionId;
+        var scheme=CookieAuthenticationDefaults.AuthenticationScheme;
+        var options=trusted.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(scheme);
+        var principal=new ClaimsPrincipal(new ClaimsIdentity(new[]{new Claim(ClaimTypes.Role,"DM"),new Claim("session_id",session.ToString())},scheme));
+        var cookie=options.Cookie.Name+"="+options.TicketDataFormat.Protect(new AuthenticationTicket(principal,new AuthenticationProperties(),scheme));
+        client.DefaultRequestHeaders.Add("Cookie",cookie);
+        var page=await client.GetAsync("/dm/network");var html=await page.Content.ReadAsStringAsync();
+        Assert.Equal(System.Net.HttpStatusCode.OK,page.StatusCode);
+        var token=System.Net.WebUtility.HtmlDecode(Regex.Match(html,"name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value);
+        var blocked=await client.PostAsync("/dm/network?handler=Postpone",new FormUrlEncodedContent(new Dictionary<string,string>{{"__RequestVerificationToken",token}}));
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden,blocked.StatusCode);
+        var proof=trusted.Services.GetRequiredService<NetworkAdminAuthority>().PhysicalCode();Assert.DoesNotContain(proof,html);
+        var unlocked=await client.PostAsync("/dm/network?handler=UnlockNetwork",new FormUrlEncodedContent(new Dictionary<string,string>{{"__RequestVerificationToken",token},{"NetworkAuthorityCode",proof}}));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect,unlocked.StatusCode);
+        var authorityCookie=unlocked.Headers.GetValues("Set-Cookie").Single(x=>x.StartsWith(NetworkAdminAuthority.CookieName+"="));
+        Assert.Contains("secure",authorityCookie,StringComparison.OrdinalIgnoreCase);
+        client.DefaultRequestHeaders.Remove("Cookie");client.DefaultRequestHeaders.Add("Cookie",cookie+"; "+authorityCookie.Split(';')[0]);
+        var allowed=await client.PostAsync("/dm/network?handler=Postpone",new FormUrlEncodedContent(new Dictionary<string,string>{{"__RequestVerificationToken",token}}));
+        Assert.Equal(System.Net.HttpStatusCode.OK,allowed.StatusCode);
+    }
+    private sealed class TestBrowserTls:IProvisioningHttps
+    {
+        public bool Ready=>true;public string Host=>"localhost";public X509Certificate2? Certificate=>null;public X509Certificate2Collection Chain{get;}=[];
+    }
+    [Fact]
+    public void ReassignmentToFormerHubRequiresFreshApprovalAndRetiredIntentCannotBeReplayed()
+    {
+        var (first,cert)=Enroll();using var certificate=cert;
+        var old=new EnrollmentRequest(first.DeviceId,first.Name,1,DeviceProtocol.Capabilities,first.IntentId);
+        Assert.True(Service.Request(cert,old,now).Approved);
+        // The owner returns from another hub with a new, durable local reassignment intent.
+        var next=old with{IntentId=Guid.NewGuid()};var pending=Service.Request(cert,next,now);
+        Assert.False(pending.Approved);Assert.NotEqual(first.Generation,pending.Generation);
+        Assert.Equal(pending,Service.Request(cert,next,now));
+        Assert.Throws<UnauthorizedAccessException>(()=>Service.Status(cert));
+        Assert.Throws<InvalidOperationException>(()=>Service.Request(cert,old,now));
+        Assert.Throws<InvalidOperationException>(()=>Service.Approve(pending.DeviceId,pending.CertificatePin,now,null,first.IntentId));
+        Service.Approve(pending.DeviceId,pending.CertificatePin,now,null,pending.IntentId);
+        Assert.Equal(pending.Generation,Service.Status(cert).Generation);
     }
     [Fact]
     public void ProtocolRejectsWrongHubDeviceVersionStalePlanAndExtendedCommit()

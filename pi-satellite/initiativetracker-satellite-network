@@ -70,8 +70,16 @@ def nm(*args):
     return result.stdout.strip()
 
 
+def active_optional():
+    value = nm('-g', 'GENERAL.CON-UUID', 'device', 'show', DEVICE)
+    return None if value in ('', '--', 'unknown') else guid(value)
+
+
 def active():
-    return guid(nm('-g', 'GENERAL.CON-UUID', 'device', 'show', DEVICE))
+    value = active_optional()
+    if value is None:
+        raise ValueError('no active Wi-Fi profile')
+    return value
 
 
 def up(profile):
@@ -119,40 +127,74 @@ def load():
     return data
 
 
+def pending(state):
+    return state.get('transition') and state['transition']['phase'] in ('prepared', 'committed', 'recovering')
+
+
+def arm_trial(state, target, previous, kind):
+    now = time.time()
+    state['transition'] = {'id': str(uuid.uuid4()), 'phase': 'committed', 'previous': previous,
+                           'target': target, 'recovery': state['recovery'], 'switchAt': now,
+                           'deadline': now + 50, 'created': now, 'boot': boot(), 'mono_switch': time.monotonic(),
+                           'mono_deadline': time.monotonic() + 50, 'switched': False, 'automatic': True, 'kind': kind}
+    save(state)
+
+
+def remember_restoration(state, profile):
+    if profile is not None:
+        state['restoration'] = {'profile': profile, 'attempts': 0, 'next': time.time() + 30}
+
+
 def recover(state):
     journal = state['transition']
     if journal is None or journal['phase'] not in ('committed', 'recovering'):
         return
     journal['phase'] = 'recovering'
-    save(state)  # Recover intent before any effect, retry at most once per timer interval.
-    if active_safe() not in (journal['previous'], journal['recovery']):
+    save(state)
+    current = active_optional()
+    previous = journal['previous']
+    if previous is None:
+        if current in (journal['target'], journal['recovery']):
+            nm('connection', 'down', 'uuid', current)
+    elif current != previous:
         try:
-            up(journal['previous'])
+            up(previous)
         except (RuntimeError, subprocess.TimeoutExpired):
-            up(journal['recovery'])
+            if journal.get('automatic'):
+                # The trial target is not a recovery success without pinned hub verification.
+                # Bound the trial, retain restoration intent, and allow an owner AP window afterward.
+                if active_optional() == journal['target']:
+                    nm('connection', 'down', 'uuid', journal['target'])
+                remember_restoration(state, previous)
+            else:
+                up(journal['recovery'])
     journal['phase'] = 'recovered'
     save(state)
 
 
 def active_safe():
     try:
-        return active()
+        return active_optional()
     except (ValueError, RuntimeError):
         return None
 
 
 def close_lease(state):
     lease = state.get('provisioning')
-    if lease:
-        try:
-            if lease['previous']:
-                up(lease['previous'])
-        except (RuntimeError, subprocess.TimeoutExpired):
-            pass
-        if active_safe() == lease['profile']:
-            nm('connection', 'down', 'uuid', lease['profile'])
-        state['provisioning'] = None
-        save(state)
+    if lease is None:
+        return
+    lease['phase'] = 'restoring'
+    save(state)  # This durable intent survives failure and restart before restoration.
+    previous = lease['previous']
+    try:
+        if previous is not None:
+            up(previous)
+    except (RuntimeError, subprocess.TimeoutExpired):
+        remember_restoration(state, previous)
+    if active_optional() == lease['profile']:
+        nm('connection', 'down', 'uuid', lease['profile'])
+    state['provisioning'] = None
+    save(state)
 
 
 def execute(request):
@@ -180,6 +222,10 @@ def execute(request):
             state['provisioning'] = None
             state['revision'] = 0
             state['transition'] = None
+        if action == 'rebind':
+            state['preferred'] = active_optional()
+            state['boot_seen'] = boot()
+            state['restoration'] = None
         state['generation'] = generation
         state['recovery'] = profile
         if profile not in state['owned']:
@@ -191,6 +237,8 @@ def execute(request):
         revision = request['revision']
         if generation != state['generation'] or state['recovery'] is None or not isinstance(revision, int):
             raise ValueError('binding mismatch')
+        if state.get('provisioning'):
+            raise ValueError('local provisioning owns the radio')
         credentials(request['target'])
         signature = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
         old = state['transition']
@@ -217,6 +265,8 @@ def execute(request):
         return {'ok': True}
     if action == 'commit' and set(request) == {'action', 'id', 'switchAt', 'deadline'}:
         journal = state['transition']
+        if state.get('provisioning'):
+            raise ValueError('local provisioning owns the radio')
         if not journal or journal['id'] != guid(request['id']):
             raise ValueError('missing preparation')
         if journal['phase'] == 'committed':
@@ -242,6 +292,9 @@ def execute(request):
         if journal['phase'] != 'committed' or expired(journal) or active() != journal['target']:
             raise ValueError('not connected to target within deadline')
         journal['phase'] = 'finalized'
+        state['preferred'] = journal['target']
+        state['boot_seen'] = boot()
+        state['restoration'] = None
         save(state)
         return {'ok': True}
     if action == 'abandon' and set(request) == {'action', 'id'}:
@@ -254,8 +307,8 @@ def execute(request):
     if action == 'activate' and set(request) == {'action', 'profile'}:
         target = guid(request['profile'])
         journal = state['transition']
-        if journal and journal['phase'] in ('prepared', 'committed', 'recovering'):
-            raise ValueError('coordinated transition pending')
+        if state.get('provisioning') or pending(state):
+            raise ValueError('radio authority already active')
         if target not in state['owned']:
             raise ValueError('profile not owned by agent')
         up(target)
@@ -266,18 +319,15 @@ def execute(request):
             raise ValueError('transition pending')
         if state['recovery'] is None or state.get('provisioning'):
             raise ValueError('no recovery profile or local setup active')
-        previous = active()
+        previous = active_optional()
         if previous == state['recovery']:
             raise ValueError('already on paired private hotspot')
-        now = time.time()
-        state['transition'] = {'id': str(uuid.uuid4()), 'phase': 'committed', 'previous': previous,
-                               'target': state['recovery'], 'recovery': state['recovery'], 'switchAt': now,
-                               'deadline': now + 50, 'created': now, 'boot': boot(), 'mono_switch': time.monotonic(),
-                               'mono_deadline': time.monotonic() + 50, 'switched': False, 'automatic': True}
-        save(state)
+        arm_trial(state, state['recovery'], previous, 'hotspot')
         return {'ok': True}
     if action == 'open-provisioning' and set(request) == {'action'}:
         if state.get('provisioning'):
+            if state['provisioning'].get('phase', 'active') != 'active' or expired(state['provisioning']):
+                raise ValueError('provisioning window is restoring')
             return {'ok': True}  # No unauthenticated/unbounded lease extension.
         if state['transition'] and state['transition']['phase'] in ('prepared', 'committed', 'recovering'):
             raise ValueError('transition pending')
@@ -294,7 +344,7 @@ def execute(request):
         nm('connection', 'modify', 'uuid', profile, '802-11-wireless.mode', 'ap', 'ipv4.method', 'shared',
            'ipv4.addresses', '10.85.0.1/24', 'ipv6.method', 'disabled')
         now = time.time()
-        state['provisioning'] = {'previous': active_safe(), 'profile': profile, 'created': now,
+        state['provisioning'] = {'previous': active_optional(), 'phase': 'active', 'profile': profile, 'created': now,
                                  'deadline': now + 600, 'boot': boot(), 'mono_deadline': time.monotonic() + 600}
         save(state)
         up(profile)
@@ -308,7 +358,7 @@ def execute(request):
         close_lease(state)
         return {'ok': True}
     if action == 'candidate-network' and set(request) == {'action', 'profile'}:
-        if not state.get('provisioning'):
+        if not state.get('provisioning') or state['provisioning'].get('phase', 'active') != 'active' or expired(state['provisioning']) or pending(state):
             raise ValueError('open a bounded local setup session first')
         identity = str(uuid.uuid5(uuid.UUID(state['provisioning']['profile']), 'candidate'))
         stage_profile(identity, request['profile'])
@@ -333,24 +383,46 @@ def execute(request):
 def tick():
     state = load()
     lease = state.get('provisioning')
-    if lease and expired(lease):
-        close_lease(state)
-    journal = state['transition']
-    if not journal:
+    if pending(state):
+        if lease:
+            remember_restoration(state, lease['previous'])
+            state['provisioning'] = None
+            save(state)
+    elif lease:
+        if expired(lease) or lease.get('phase') == 'restoring':
+            close_lease(state)
         return
-    if journal['phase'] == 'prepared' and time.time() >= journal['expires']:
+    journal = state['transition']
+    if journal and journal['phase'] == 'prepared' and time.time() >= journal['expires']:
         journal['phase'] = 'expired'
         save(state)
-    elif journal['phase'] == 'recovering' or journal['phase'] == 'committed' and expired(journal):
+    elif journal and (journal['phase'] == 'recovering' or journal['phase'] == 'committed' and expired(journal)):
         recover(state)
-    elif journal['phase'] == 'committed' and time.monotonic() >= journal['mono_switch'] and not journal['switched']:
-        # Save switched only after effect; a crash repeats the idempotent activation.
+    elif journal and journal['phase'] == 'committed' and time.monotonic() >= journal['mono_switch'] and not journal['switched']:
         try:
             up(journal['target'])
             journal['switched'] = True
             save(state)
         except (RuntimeError, subprocess.TimeoutExpired):
             recover(state)
+    elif not pending(state):
+        preferred = state.get('preferred')
+        if preferred and state.get('boot_seen') != boot():
+            state['boot_seen'] = boot()
+            if active_optional() is None:
+                arm_trial(state, preferred, None, 'boot')
+                up(preferred)
+                state['transition']['switched'] = True
+            save(state)
+        restoration = state.get('restoration')
+        if restoration and time.time() >= restoration['next'] and not pending(state) and active_optional() is None:
+            try:
+                up(restoration['profile'])
+                state['restoration'] = None
+            except (RuntimeError, subprocess.TimeoutExpired):
+                restoration['attempts'] += 1
+                restoration['next'] = time.time() + min(900, 30 * 2 ** min(restoration['attempts'], 5))
+            save(state)
 
 
 def serve():

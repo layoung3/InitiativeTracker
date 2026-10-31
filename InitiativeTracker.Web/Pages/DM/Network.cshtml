@@ -8,6 +8,20 @@
         <div><h1 class="h3 mb-1">Hub Network</h1><div class="text-body-secondary">Network status and saved connections</div></div>
         <a href="/dm" class="btn btn-outline-secondary">Back to DM</a>
     </div>
+    @if (Model.PhysicalAuthorityCode is not null)
+    {
+        <div class="alert alert-info">Physical network-control authorization code (five minutes): <code>@Model.PhysicalAuthorityCode</code>. Remote control requires this fresh code over the configured trusted HTTPS endpoint.</div>
+    }
+    @if (!Model.NetworkAuthority)
+    {
+        <div class="alert alert-warning">Network changes require fresh physical authorization. An existing DM gameplay session does not authorize network control.</div>
+        @if (Model.CanSubmitSecrets)
+        {
+            <form method="post" asp-page-handler="UnlockNetwork"><label>Code from the physical hub screen</label>
+                <input asp-for="NetworkAuthorityCode" autocomplete="off" class="form-control" required />
+                <button class="btn btn-primary">Authorize secure network control for fifteen minutes</button></form>
+        }
+    }
     <div class="alert alert-warning" role="status">
         <strong>Network switching:</strong> With Pi administrator approval, the DM can switch between the private hotspot and an already-saved network. Save a new WPA-Personal Wi-Fi profile below. Fresh radio scans while hosting the hotspot are not yet available.
     </div>
@@ -60,6 +74,7 @@
                 {
                     <form method="post" asp-page-handler="ApproveAgent" class="mb-3">
                         <input type="hidden" name="AgentId" value="@agent.DeviceId" />
+                        <input type="hidden" name="AgentIntentId" value="@agent.IntentId" />
                         <label>Enter the full certificate SHA-256 from this satellite's physical screen</label>
                         <input name="VerifiedPin" class="form-control" required minlength="64" maxlength="64" autocomplete="off" />
                         <label>Corresponding paired display (inventory link only)</label>
@@ -82,7 +97,7 @@
             @if (Model.Coordination.Transition is not { Stage: InitiativeTracker.Core.Coordination.TransitionStage.Preparing or InitiativeTracker.Core.Coordination.TransitionStage.Committed or InitiativeTracker.Core.Coordination.TransitionStage.HubConfirmed } transition)
             {
                 <form method="post" asp-page-handler="Prepare">
-                    <label>Destination</label><select name="TargetKind" class="form-select"><option value="wifi">Saved WPA Wi-Fi (from private hotspot)</option><option value="hotspot">Hub private hotspot</option></select>
+                    <label>Destination</label><select name="TargetKind" class="form-select"><option value="wifi">Saved WPA Wi-Fi</option><option value="hotspot">Hub private hotspot</option></select>
                     <label>Saved Wi-Fi profile</label><select asp-for="SavedUuid" class="form-select"><option value="">Private hotspot / choose Wi-Fi</option>
                         @foreach (var saved in Model.Status.SavedNetworks) { <option value="@saved.Uuid">@saved.Name</option> }
                     </select><button class="btn btn-primary mt-2">Prepare devices without switching</button>
@@ -125,7 +140,7 @@
     <div class="card mb-3"><div class="card-body">
         <h2 class="h5">Save a new Wi-Fi connection</h2>
         <p>Save credentials securely on this Pi without disconnecting anyone. After saving, switch using the supervised saved-network return below. WPA-Personal networks only.</p>
-        @if (Model.CommandsEnabled && Model.CanSubmitSecrets)
+        @if (Model.CommandsEnabled && Model.NetworkAuthority && Model.CanSubmitSecrets)
         {
             <form method="post" asp-page-handler="Provision" autocomplete="off">
                 <div class="mb-2"><label asp-for="HiddenSsid" class="form-label">Wi-Fi name (SSID)</label>
@@ -140,7 +155,7 @@
     <div class="card mb-3"><div class="card-body">
         <h2 class="h5">Private hotspot password</h2>
         <p>Change the password for the hub's private network. Only available while connected to external Wi-Fi and no switch is pending. The physical Setup Wi-Fi QR will use the new password.</p>
-        @if (Model.CommandsEnabled && Model.CanSubmitSecrets && Model.Status.IsConnected && Model.Status.Connection != "InitiativeTracker-Recovery")
+        @if (Model.CommandsEnabled && Model.NetworkAuthority && Model.CanSubmitSecrets && Model.Status.IsConnected && Model.Status.Connection != "InitiativeTracker-Recovery")
         {
             <form method="post" asp-page-handler="RotateHotspotPassword" autocomplete="off">
                 <label asp-for="NewHotspotPassword" class="form-label">New hotspot password</label>
