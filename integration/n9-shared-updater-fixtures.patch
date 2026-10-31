@@ -1,17 +1,17 @@
 --- a/scripts/installation/tests/test_updater_container.py
 +++ b/scripts/installation/tests/test_updater_container.py
-@@ -39,6 +39,10 @@
+@@ -39,7 +39,10 @@
          self.data.mkdir(mode=0o750)
          for name, content in [('database', 'old-database'), ('DataProtection-Keys', 'fixture-key'), ('identity', 'fixture-guid')]:
              (self.data / name).write_text(content)
 +        (self.data / 'secure-access').mkdir(mode=0o700)
 +        (self.data / 'secure-access/state.bin').write_bytes(b'backup-era-secure-grant')
-+        (self.data / 'Media').mkdir()
-+        (self.data / 'Media/portrait.png').write_bytes(b'private-media-fixture')
          (self.data / 'Media').mkdir(mode=0o700)
++        (self.data / 'Media/portrait.png').write_bytes(b'private-media-fixture')
          self.media = self.data / 'Media/0123456789abcdef0123456789abcdef.png'
          self.media.write_bytes(b'private-old-image-fixture')
-@@ -76,9 +80,13 @@
+         self.media.chmod(0o600)
+@@ -76,9 +79,13 @@
  with (base/'operations').open('a') as stream: stream.write(operation+' '+active+'\\n')
  if operation=='stop' and (mode=='stopfail-initial' or (mode=='stopfail-rollback' and active.startswith('0.1.6'))):
      sys.exit(1)
@@ -25,7 +25,7 @@
      if mode=='startfail-new': sys.exit(1)
  sys.exit(0)
  ''')
-@@ -144,6 +152,11 @@
+@@ -144,6 +151,11 @@
                  self.assertEqual((self.data / 'database').read_text(), 'old-database')
                  self.assertEqual((self.data / 'identity').read_text(), 'fixture-guid')
                  self.assertEqual((self.data / 'DataProtection-Keys').read_text(), 'fixture-key')
@@ -37,7 +37,7 @@
                  self.assertEqual(self.media.read_bytes(), b'private-old-image-fixture')
                  self.assertEqual(stat.S_IMODE(self.media.stat().st_mode), 0o600)
                  failed = next(self.base.glob('data.failed-*'))
-@@ -152,6 +165,21 @@
+@@ -152,6 +164,21 @@
                  shutil.rmtree(failed)
                  for backup in (self.base / 'backups').glob('*'):
                      backup.unlink()
