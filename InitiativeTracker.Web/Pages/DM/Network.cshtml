@@ -55,8 +55,8 @@
             @if (Model.HubPin is not null) { <p>Physical hub certificate SHA-256: <code>@Model.HubPin</code></p> }
             @foreach (var agent in Model.Coordination.Enrollments)
             {
-                <p><strong>@agent.Name</strong> · @(agent.Approved ? (Model.Online(agent.DeviceId) ? "Online" : "Offline") : "Awaiting approval")</p>
-                @if (!agent.Approved && Model.LocalCredentials)
+                <p><strong>@agent.Name</strong> · @(agent.Revoked ? "Revoked" : agent.Approved ? (Model.Online(agent.DeviceId) ? "Online" : "Offline") : "Awaiting approval")</p>
+                @if (!agent.Approved && !agent.Revoked && Model.LocalCredentials)
                 {
                     <form method="post" asp-page-handler="ApproveAgent" class="mb-3">
                         <input type="hidden" name="AgentId" value="@agent.DeviceId" />
@@ -95,7 +95,7 @@
                         {
                             var name = Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name;
                             <div><label><input type="checkbox" name="LeaveBehind" value="@device.DeviceId" /> Leave @name behind</label>
-                                — @(device.Ready ? "Ready" : "Not ready") · @(Model.Online(device.DeviceId) ? "Online" : "Offline")</div>
+                                — @(device.Failure ?? (device.Ready ? "Ready" : "Not ready")) · @(Model.Online(device.DeviceId) ? "Online" : "Offline")</div>
                         }
                         <button class="btn btn-warning mt-2">Commit switch; cannot cancel afterward</button>
                     </form>
@@ -106,7 +106,7 @@
                     <p>Recovery deadline @transition.DeadlineUtc. Join the destination network and confirm hub connectivity. Each satellite must reconnect and finalize separately.</p>
                     <ul>@foreach (var device in transition.Devices)
                     {
-                        <li>@Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name: @(transition.LeftBehind.Contains(device.DeviceId) ? "Left behind by DM" : device.Finalized ? "Finalized" : device.Reconnected ? "Reconnected" : device.CommitReceived ? "Committed" : "Commit not acknowledged")</li>
+                        <li>@Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name: @(device.Failure ?? (transition.LeftBehind.Contains(device.DeviceId) ? "Left behind by DM" : device.Finalized ? "Finalized" : device.Reconnected ? "Reconnected" : device.CommitReceived ? "Committed" : "Commit not acknowledged"))</li>
                     }</ul>
                     @if (transition.Stage == InitiativeTracker.Core.Coordination.TransitionStage.Committed)
                     {

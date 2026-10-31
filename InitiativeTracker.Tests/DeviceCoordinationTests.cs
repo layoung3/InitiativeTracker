@@ -78,6 +78,21 @@ public sealed class DeviceCoordinationTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => Service.Receipt(cert, Receipt(device, t, "finalized"), now.AddSeconds(12)));
     }
     [Fact]
+    public async Task RevocationImmediatelyInvalidatesPreparedReadinessAndReenrollmentUsesNewGeneration()
+    {
+        var (device, cert) = Enroll(); using var certificate = cert;
+        var t = await Prepare(); Service.Status(cert); Service.Receipt(cert, Receipt(device,t,"ready"),now);
+        Service.Revoke(device.DeviceId);
+        Assert.Throws<UnauthorizedAccessException>(()=>Service.Status(cert));
+        Assert.False(Service.Snapshot.Transition!.Devices[0].Ready);
+        var renewed=Service.Request(cert,new(device.DeviceId,"Synthetic satellite",1,DeviceProtocol.Capabilities),now);
+        Assert.NotEqual(device.Generation,renewed.Generation);
+        Service.Approve(renewed.DeviceId,renewed.CertificatePin,now); Service.Status(cert);
+        Assert.Throws<InvalidOperationException>(()=>Service.Commit(t.Id,[],now));
+        Assert.Throws<InvalidOperationException>(()=>Service.Receipt(cert,Receipt(device,t,"ready"),now));
+        Service.Commit(t.Id,[device.DeviceId],now);
+    }
+    [Fact]
     public async Task RestartPreservesDeadlineRevisionAndProtectedProfiles()
     {
         var (device, cert) = Enroll(); using var certificate = cert;

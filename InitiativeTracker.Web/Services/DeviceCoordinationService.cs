@@ -48,12 +48,12 @@ public sealed class DeviceCoordinationService
             var existing = state.Enrollments.SingleOrDefault(x => x.DeviceId == request.DeviceId || x.CertificatePin == pin);
             if (existing is not null && existing.CertificatePin == pin && existing.DeviceId == request.DeviceId)
             {
-                if (existing.Approved || existing.RequestedUtc > now.AddMinutes(-5)) return existing;
-                var renewed = existing with { Generation = Guid.NewGuid(), RequestedUtc = now };
+                if (!existing.Revoked && (existing.Approved || existing.RequestedUtc > now.AddMinutes(-5))) return existing;
+                var renewed = existing with { Generation = Guid.NewGuid(), RequestedUtc = now, Revoked = false };
                 Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == existing.DeviceId ? renewed : x).ToArray() }); return renewed;
             }
             if (existing is not null) throw new InvalidOperationException("Device identity conflict");
-            var retained = state.Enrollments.Where(x => x.Approved || x.RequestedUtc > now.AddMinutes(-5)).ToArray();
+            var retained = state.Enrollments.Where(x => x.Approved || TransitionRules.Pending(state.Transition) && state.Transition!.Devices.Any(d => d.DeviceId == x.DeviceId) || x.RequestedUtc > now.AddMinutes(-5)).ToArray();
             if (retained.Length >= 32) throw new InvalidOperationException("Enrollment queue full");
             var enrollment = new Enrollment(request.DeviceId, request.Name, pin, Guid.NewGuid(), DeviceProtocol.Capabilities, now, false);
             Save(state with { Enrollments = [.. retained, enrollment] }); return enrollment;
@@ -63,7 +63,7 @@ public sealed class DeviceCoordinationService
     {
         lock (gate)
         {
-            var device = state.Enrollments.Single(x => x.DeviceId == id && !x.Approved);
+            var device = state.Enrollments.Single(x => x.DeviceId == id && !x.Approved && !x.Revoked);
             if (device.RequestedUtc <= now.AddMinutes(-5) || device.CertificatePin != physicallyVerifiedPin.ToUpperInvariant())
                 throw new InvalidOperationException("Expired request or certificate mismatch");
             Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == id ? x with { Approved = true } : x).ToArray() });
@@ -73,8 +73,9 @@ public sealed class DeviceCoordinationService
     {
         lock (gate)
         {
-            if (TransitionRules.Pending(state.Transition)) throw new InvalidOperationException("Wait for transition recovery before revoking a device");
-            Save(state with { Enrollments = state.Enrollments.Where(x => x.DeviceId != id).ToArray() }); seen.Remove(id);
+            Save(state with { Enrollments = state.Enrollments.Select(x => x.DeviceId == id ? x with { Approved = false, Revoked = true } : x).ToArray(),
+                Transition = state.Transition is null ? null : state.Transition with { Devices = state.Transition.Devices.Select(d => d.DeviceId == id ? d with { Ready = false, Failure = "Enrollment revoked" } : d).ToArray() } });
+            seen.Remove(id);
         }
     }
     public Enrollment Authenticate(X509Certificate2? certificate)
@@ -144,7 +145,7 @@ public sealed class DeviceCoordinationService
         {
             var t = state.Transition ?? throw new InvalidOperationException("No transition");
             if (t.Id != id || t.Stage != TransitionStage.Preparing || now >= t.PrepareExpiresUtc) throw new InvalidOperationException("Preparation expired");
-            var unready = t.Devices.Where(x => !x.Ready || !Online(x.DeviceId)).Select(x => x.DeviceId).ToArray();
+            var unready = t.Devices.Where(x => !x.Ready || !Online(x.DeviceId) || !state.Enrollments.Any(e => e.Approved && e.DeviceId == x.DeviceId && e.Generation == x.Generation)).Select(x => x.DeviceId).ToArray();
             if (leaveBehind.Except(t.Devices.Select(x => x.DeviceId)).Any() || unready.Except(leaveBehind).Any())
                 throw new InvalidOperationException("Explicitly identify every unavailable device to leave behind, or postpone");
             Save(state with { Transition = t with { Stage = TransitionStage.Committed, LeftBehind = leaveBehind.Distinct().ToArray(),

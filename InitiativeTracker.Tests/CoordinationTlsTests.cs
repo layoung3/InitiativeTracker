@@ -1,5 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Text.Json;
+using InitiativeTracker.Satellite;
+using Microsoft.Extensions.Configuration;
 using InitiativeTracker.Core.Coordination;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Builder;
@@ -75,7 +79,7 @@ public sealed class CoordinationTlsTests
             Assert.Equal("synthetic-only-secret",status.Plan!.Target.Password);
             await signalr.InvokeAsync("Receipt",new DeviceReceipt(1,status.Plan.Transition.Id,status.Plan.Transition.Revision,enrollment.Generation,"ready"));
             Assert.True(service.Snapshot.Transition!.Devices[0].Ready);
-            service.Postpone(service.Snapshot.Transition.Id);
+            await ExerciseSatelliteAgent(directory,address,status.HubId,enrollment,service);
             service.Revoke(enrollment.DeviceId);
             await Assert.ThrowsAnyAsync<Exception>(()=>signalr.InvokeAsync<DeviceStatus>("Poll"));
             Assert.Throws<UnauthorizedAccessException>(()=>service.Status(clientCertificate));
@@ -84,6 +88,59 @@ public sealed class CoordinationTlsTests
             await server.StopAsync();
         }
         finally { Directory.Delete(directory,true); }
+    }
+    private static async Task ExerciseSatelliteAgent(string directory,string address,Guid hubId,Enrollment enrollment,DeviceCoordinationService service)
+    {
+        var agentDirectory=Path.Combine(directory,"satellite"); Directory.CreateDirectory(agentDirectory);
+        File.Copy(Path.Combine(directory,"test-agent.pfx"),Path.Combine(agentDirectory,"agent.pfx"));
+        var socketPath=Path.Combine(agentDirectory,"network.sock");
+        using var socket=new Socket(AddressFamily.Unix,SocketType.Stream,ProtocolType.Unspecified);
+        socket.Bind(new UnixDomainSocketEndPoint(socketPath)); socket.Listen(10);
+        using var stopping=new CancellationTokenSource();
+        var target=Guid.NewGuid().ToString(); var recovery=Guid.NewGuid().ToString(); var active=Guid.NewGuid().ToString();
+        string? transition=null; string phase="none"; var staged=false;
+        var broker=Task.Run(async ()=>
+        {
+            while(!stopping.IsCancellationRequested)
+            {
+                try
+                {
+                    using var peer=await socket.AcceptAsync(stopping.Token); using var stream=new NetworkStream(peer); using var reader=new StreamReader(stream,leaveOpen:true);
+                    using var request=JsonDocument.Parse((await reader.ReadLineAsync(stopping.Token))!);
+                    var action=request.RootElement.GetProperty("action").GetString();
+                    if(action=="bootstrap") staged=true;
+                    if(action=="prepare") {Assert.True(staged);transition=request.RootElement.GetProperty("id").GetString();phase="prepared";}
+                    if(action=="commit") {Assert.Equal("prepared",phase);phase="committed";active=target;}
+                    if(action=="finalize") {Assert.Equal(target,active);phase="finalized";}
+                    object reply=action=="status" ? new {ok=true,active,state=new {recovery,provisioning=(object?)null,
+                        transition=transition is null ? null : (object)new {id=transition,target,phase}}} : new {ok=true};
+                    await stream.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(reply),stopping.Token); await stream.WriteAsync("\n"u8.ToArray(),stopping.Token);
+                }
+                catch(OperationCanceledException) {break;}
+                catch(ObjectDisposedException) {break;}
+            }
+        });
+        try
+        {
+            var config=new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
+            { ["Satellite:StateDirectory"]=agentDirectory,["Satellite:NetworkSocket"]=socketPath,["Satellite:KioskState"]=Path.Combine(agentDirectory,"kiosk.json")}).Build();
+            await using var initial=new SatelliteAgent(config);
+            PrivateFile.Save(Path.Combine(agentDirectory,"agent.json"),initial.Snapshot with
+            {DeviceId=enrollment.DeviceId,Binding=new(hubId,enrollment.DeviceId,enrollment.Generation,
+                DeviceProtocol.Fingerprint(DeviceProtocol.Certificate(Path.Combine(directory,"test-server.pfx"),"Synthetic",true)),address,"http://synthetic.invalid/display")});
+            await using var agent=new SatelliteAgent(config);
+            await agent.Tick(default);
+            Assert.Equal("prepared",phase);
+            service.Commit(service.Snapshot.Transition!.Id,[],DateTimeOffset.UtcNow.AddSeconds(-11));
+            await agent.Tick(default);
+            Assert.True(service.Snapshot.Transition.Devices[0].Reconnected);
+            Assert.False(service.Snapshot.Transition.Devices[0].Finalized);
+            await service.ConfirmAsync(service.Snapshot.Transition.Id,default);
+            await agent.Tick(default);
+            Assert.Equal("finalized",phase);
+            Assert.True(service.Snapshot.Transition.Devices[0].Finalized);
+        }
+        finally {stopping.Cancel();socket.Dispose();await broker;}
     }
     private sealed class TestNetwork : ICoordinationNetwork
     {

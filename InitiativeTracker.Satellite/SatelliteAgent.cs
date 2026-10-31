@@ -13,7 +13,7 @@ public sealed record Candidate(string Url, string Pin, Guid HubId, Guid Generati
 public sealed record AgentState(Guid DeviceId, DeviceBinding? Binding, Candidate? Candidate, long LastRevision, Transition? Transition,
     DateTimeOffset? UnavailableSince, int Failures, DateTimeOffset? NextRecoveryUtc, int RecoveryAttempts, string OwnerHash);
 
-public sealed class SatelliteAgent
+public sealed class SatelliteAgent : IAsyncDisposable
 {
     private readonly string path;
     private readonly IConfiguration configuration;
@@ -198,6 +198,10 @@ public sealed class SatelliteAgent
         File.Move(temporary, kioskPath, true);
         if (OperatingSystem.IsLinux()) File.SetUnixFileMode(kioskPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
     }
+    public async ValueTask DisposeAsync()
+    {
+        await Disconnect(); Certificate.Dispose(); gate.Dispose();
+    }
     private async Task Disconnect()
     {
         if (connection is not null) await connection.DisposeAsync();
@@ -246,6 +250,7 @@ public sealed class SatelliteAgent
         if (old is null || !TransitionRules.SameTransaction(old, t))
         {
             if (!TransitionRules.ValidPlan(plan, binding, state.LastRevision, now)) return;
+            await Broker(new { action = "bootstrap", generation = binding.Generation, recovery = plan.Recovery }, ct);
             await Broker(new { action = "prepare", generation = binding.Generation, id = t.Id, revision = t.Revision,
                 expires = t.PrepareExpiresUtc.ToUnixTimeMilliseconds() / 1000.0, target = plan.Target }, ct);
             Save(state with { Transition = t, LastRevision = t.Revision });
@@ -257,6 +262,7 @@ public sealed class SatelliteAgent
             if (old.TargetKind != t.TargetKind || old.TargetUuid != t.TargetUuid || old.PrepareExpiresUtc != t.PrepareExpiresUtc) throw new IOException("Conflicting preparation");
             if (now < t.PrepareExpiresUtc)
             {
+                await Broker(new { action = "bootstrap", generation = binding.Generation, recovery = plan.Recovery }, ct);
                 await Broker(new { action = "prepare", generation = binding.Generation, id = t.Id, revision = t.Revision,
                     expires = t.PrepareExpiresUtc.ToUnixTimeMilliseconds() / 1000.0, target = plan.Target }, ct);
                 await Receipt(t, "ready", ct);
