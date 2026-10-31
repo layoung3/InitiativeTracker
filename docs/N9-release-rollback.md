@@ -1,5 +1,7 @@
 # N9 release and rollback guide
 
+For the combined 0.1.6 release, use the consolidated plan owned by [shared HTTPS PR #6](https://github.com/layoung3/InitiativeTracker/pull/6) and [N9's integration requirements](N9-https-integration-readiness.md). This earlier standalone guide supplies migration/media/startup constraints; it is not authority to deploy N9 independently of the reviewed shared authentication adapter. Automatic updater restoration of stale secure grants must be corrected by the shared task before combined release acceptance.
+
 Status: N9 software candidate **0.1.6**, **not approved for publication, merge or installation**. N8 PR #4 remains separate, draft and unmerged at `93e93d37ffa5dfdc809434751f6b641087d7913c`. N9 starts from master `d584b7963ca6bb7916f21d9ee94082f9f2821f34`; it does not include N8 TLS/network-agent changes.
 
 **Deployment dependency:** an existing HTTP-only 0.1.5 installation cannot use custom private media or image/branding-settings changes until trusted HTTPS is separately approved and configured for its application/authentication origin. Production returns 426 for these HTTP requests; do not bypass certificate trust, enable Development on a Pi, or import unmerged N8 infrastructure to work around this requirement. Neutral image defaults, public product branding/loading and existing gameplay remain available. This software candidate is not a deployment-ready commissioning claim.

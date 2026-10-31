@@ -59,6 +59,26 @@ jobs:
           $manifest = Get-ChildItem /tmp/n9-release -Recurse -Filter '*.manifest.json' | Select-Object -First 1
           if (!$manifest) { throw 'No release manifest produced' }
           ./scripts/Test-InitiativeTrackerRelease.ps1 -ManifestPath $manifest.FullName
+      - name: Disposable N9 and shared HTTPS integration
+        env:
+          N9_INTEGRATION_HTML_DIRECTORY: ${{ runner.temp }}/n9-integrated-html
+        run: |
+          python3 scripts/tests/n9-https-integration.py --fixture "$RUNNER_TEMP/n9-integrated-source" --evidence "$RUNNER_TEMP/n9-integrated-results"
+      - name: Responsive integrated Razor responses
+        env:
+          NODE_PATH: /tmp/n9-ui/node_modules
+          N9_INTEGRATION_HTML_DIRECTORY: ${{ runner.temp }}/n9-integrated-html
+          N9_INTEGRATION_SOURCE_DIRECTORY: ${{ runner.temp }}/n9-integrated-source
+        run: node --test scripts/tests/n9-integrated-ui.integration.cjs
+      - name: Published composite Kestrel TLS and restart checks
+        run: |
+          dotnet publish "$RUNNER_TEMP/n9-integrated-source/InitiativeTracker.Web" -c Release -o "$RUNNER_TEMP/n9-integrated-publish"
+          python3 "$RUNNER_TEMP/n9-integrated-source/https-infra/tests/published_tls_smoke.py" --publish "$RUNNER_TEMP/n9-integrated-publish"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: n9-shared-https-composite-evidence
+          path: ${{ runner.temp }}/n9-integrated-results/*.trx
   arm64-native:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
