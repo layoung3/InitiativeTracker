@@ -8,6 +8,7 @@ on:
       - 'hub-bootstrap/**'
       - 'pi-network/**'
       - '.github/workflows/installer-tests.yml'
+      - 'docs/N9-*.md'
   workflow_dispatch:
 permissions:
   contents: read
