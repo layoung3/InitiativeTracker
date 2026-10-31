@@ -74,6 +74,22 @@ def main():
             else:
                 raise AssertionError('TLS without a valid certificate must fail')
             checks += 1
+            # Failed initial acknowledgement publishes explicit disable; no false rollback claim.
+            try:
+                f.activate(settings, root / 'first.pem', root / 'first.key', dry_run=False,
+                           _probe=lambda *a: (_ for _ in ()).throw(f.Rejected('fixture outage')), _test_ca=root / 'ca.pem')
+            except f.Rejected as error:
+                assert 'recovery is unconfirmed' in str(error)
+            else:
+                raise AssertionError('Unconfirmed initial activation reported success')
+            time.sleep(2.5)
+            try:
+                probe(host, 5445, 'disabled')
+            except (OSError, ValueError):
+                pass
+            else:
+                raise AssertionError('Explicit disabled manifest continued accepting TLS')
+            checks += 1
             first = f.activate(settings, root / 'first.pem', root / 'first.key', dry_run=False, _probe=probe, _test_ca=root / 'ca.pem')['generation']
             probe(host, 5445, first)
             checks += 1
@@ -97,6 +113,14 @@ def main():
             else:
                 raise AssertionError('Wrong SNI accepted')
             checks += 1
+            # A valid TLS handshake cannot authorize an unrelated Host header or port.
+            for bad_host in ['other.owner-domain.org:5445', host + ':443']:
+                with socket.create_connection(('127.0.0.1', 5445), timeout=3) as raw:
+                    with context.wrap_socket(raw, server_hostname=host) as connection:
+                        connection.sendall(f'GET /system/health HTTP/1.0\r\nHost: {bad_host}\r\n\r\n'.encode())
+                        response = connection.recv(4096)
+                        assert response.startswith((b'HTTP/1.1 421', b'HTTP/1.0 421'))
+                checks += 1
             # Invalid on-disk generation cannot displace the valid serving generation.
             corrupt = 'a' * 32
             (store / corrupt).mkdir(mode=0o750)

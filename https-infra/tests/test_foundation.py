@@ -173,12 +173,13 @@ class FoundationTests(unittest.TestCase):
             with self.assertRaisesRegex(f.Rejected, 'recovery is unconfirmed'):
                 self.activate(folder, dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
 
-    def test_first_activation_failure_removes_manifest(self):
+    def test_first_activation_failure_requests_disable(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(f.time, 'sleep'):
             folder = Path(tmp)
             with self.assertRaises(f.Rejected):
                 self.activate(folder, dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
             self.assertIsNone(f.read_active(folder))
+            self.assertEqual({"disabled": True}, json.loads((folder / "active.json").read_text()))
 
     def test_renewal_failure_preserves_active(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,6 +193,39 @@ class FoundationTests(unittest.TestCase):
             with self.assertRaises(f.Rejected):
                 f.renew(settings, apply=True)
             self.assertEqual(old, f.read_active(folder)['generation'])
+
+    def test_resolution_ignores_unselected_global_interface(self):
+        self.assertEqual({'192.168.4.1'}, f.resolution(self.host, ['192.168.4.1'], ['192.168.4.1', '2001:db8::1']))
+
+    def test_group_writable_adapter_and_concurrent_renewal_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            adapter = folder / 'adapter'
+            adapter.write_text('#!/bin/sh\nexit 0\n')
+            adapter.chmod(0o770)
+            settings = self.settings(folder) | {'renewal_adapter': str(adapter)}
+            with self.assertRaises(f.Rejected):
+                f.renew(settings, apply=True)
+            adapter.chmod(0o700)
+            lock = os.open(folder / '.renewal-lock', os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                f.fcntl.flock(lock, f.fcntl.LOCK_EX | f.fcntl.LOCK_NB)
+                with self.assertRaises(BlockingIOError):
+                    f.renew(settings, apply=True)
+            finally:
+                os.close(lock)
+
+    def test_rollback_revalidates_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            generation = self.activate(folder, dry_run=False, _probe=lambda *a: None)['generation']
+            validate = f.validate_certificate
+            with patch.object(f, 'validate_certificate', side_effect=lambda h, c, k, **kwargs: validate(h, c, k, _test_ca=self.root / 'ca.pem')):
+                result = f.rollback(self.settings(folder), generation)
+            self.assertFalse(result['changed'])
+            self.assertEqual(generation, f.read_active(folder)['generation'])
+            with self.assertRaises(f.Rejected):
+                f.rollback(self.settings(folder), '../../etc')
 
     def test_path_traversal_manifest_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

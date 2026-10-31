@@ -31,8 +31,9 @@ jobs:
         run: dotnet test -c Release --logger 'trx;LogFileName=https-checkpoint.trx'
       - name: Direct and transitive dependency audit
         run: |
+          dotnet restore InitiativeTracker.slnx --force -p:NuGetAudit=true -p:NuGetAuditMode=all -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904
           dotnet list InitiativeTracker.slnx package --vulnerable --include-transitive --format json > dependency-audit.json
-          python3 -c 'import json; d=json.load(open("dependency-audit.json")); assert not any(f.get("topLevelPackages") or f.get("transitivePackages") for p in d["projects"] for f in p.get("frameworks", [])), "Dependency audit findings"; assert not any(x.get("level") == "error" for x in d.get("problems", [])), "Audit feed failure"'
+          python3 -c 'import json; d=json.load(open("dependency-audit.json")); assert not any(f.get("topLevelPackages") or f.get("transitivePackages") for p in d["projects"] for f in p.get("frameworks", [])), "Dependency audit findings"; assert not d.get("problems"), "Audit feed failure"'
       - name: Publish Linux ARM64 without private material
         run: |
           dotnet publish InitiativeTracker.Web -c Release -r linux-arm64 --self-contained true -o "$RUNNER_TEMP/https-arm64"
