@@ -8,5 +8,6 @@
 <section data-request="@request.Id"><p>Browser reference <strong>@request.Reference</strong> · @request.Purpose</p><p class="code" data-physical-code="@request.Code">@request.Code</p><p>Expires @request.Expires.ToString("u"). One use only.</p></section>
 }
 @if (Model.Requests.Count == 0) { <p>No pending DM requests. Start a request at the hub's HTTPS /secure-access page on the browser you want to authorize.</p> }
+<form method="post" asp-page-handler="ClearRequests"><button>Clear pending requests and expired attempts</button></form>
 <p>This screen is available only through trusted HTTPS over loopback. It does not display agent enrollment credentials or change network trust.</p>
 </body></html>

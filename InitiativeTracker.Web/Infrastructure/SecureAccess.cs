@@ -108,10 +108,18 @@ public static class SecureAccess
     private static bool IsPage(HttpRequest request, string page, string path) =>
         string.Equals(request.RouteValues["page"]?.ToString(), page, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(request.Path.Value?.TrimEnd('/'), path, StringComparison.OrdinalIgnoreCase);
-    private static bool PrivateRoute(HttpRequest request) => request.Path.StartsWithSegments("/media") || request.Path.StartsWithSegments("/appearance") ||
-        request.Path.StartsWithSegments("/player/editcharacter") ||
-        request.Path.StartsWithSegments("/player") && HttpMethods.IsPost(request.Method) && request.Query["handler"].ToString().ToUpperInvariant() is
-            "CREATECHARACTER" or "ADDCHARACTER" or "REGENERATERECOVERYKEY" or "UPLOADPORTRAIT" or "REMOVEPORTRAIT" or "UPLOADBANNER" or "REMOVEBANNER";
+    private static bool PrivateRoute(HttpRequest request)
+    {
+        if (request.Path.StartsWithSegments("/media") || request.Path.StartsWithSegments("/appearance") ||
+            request.Path.StartsWithSegments("/player/editcharacter")) return true;
+        if (!HttpMethods.IsPost(request.Method)) return false;
+        var handler = request.Query["handler"].ToString().ToUpperInvariant();
+        if (request.Path.StartsWithSegments("/player/character"))
+            return handler is not ("ENDTURN" or "ADJUSTHP" or "SETHP" or "SETTEMPORARYHP" or "TOGGLEINSPIRATION" or "SETEXHAUSTION" or
+                "TOGGLECONDITION" or "ADDCUSTOMCONDITION" or "REMOVECONDITION" or "ADJUSTSPELLSLOT" or "RESTOREALLSPELLSLOTS" or
+                "CASTSPELL" or "ENDCONCENTRATION" or "TOGGLESPELLPREPARED" or "TOGGLEINVENTORYITEMEQUIPPED" or "ADJUSTINVENTORYITEMQUANTITY");
+        return IsPage(request, "/Player/Index", "/player") && handler is "CREATECHARACTER" or "ADDCHARACTER" or "REGENERATERECOVERYKEY";
+    }
     private static bool AdminMutation(HttpRequest request) => !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) &&
         (request.Path.StartsWithSegments("/dm/players") || request.Path.StartsWithSegments("/dm/profiles") || request.Path.StartsWithSegments("/dm/devices") ||
          IsPage(request, "/DM/Index", "/dm") && request.Query["handler"].ToString().ToUpperInvariant() is
@@ -141,17 +149,21 @@ public static class SecureAccess
                 if (HttpMethods.IsPost(context.Request.Method) && context.Request.Headers.Origin.ToString() != origin.Origin)
                 { context.Response.StatusCode = 403; return; }
             }
+            if (context.Request.Path.StartsWithSegments("/dm/players") || context.Request.Path.StartsWithSegments("/dm/profiles") || context.Request.Path.StartsWithSegments("/dm/devices")) Headers(context);
             var needsPrivate = PrivateRoute(context.Request);
             var needsAdmin = AdminMutation(context.Request);
             if (needsPrivate || needsAdmin)
             {
                 Headers(context);
                 if (!origin.TrustedRequest(context)) { context.Response.StatusCode = 426; return; }
+                if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method) && context.Request.Headers.Origin.ToString() != origin.Origin)
+                { context.Response.StatusCode = 403; return; }
                 var grant = await Current(context);
                 if (grant is null || needsAdmin && grant.Identity.Role != "DM" ||
-                    needsPrivate && grant.Identity.Role == "Display" && (!HttpMethods.IsGet(context.Request.Method) || context.Request.Path.StartsWithSegments("/appearance") || context.Request.Path.StartsWithSegments("/player")) ||
-                    !context.RequestServices.GetRequiredService<SecureAccessService>().MediaOwnershipUnchanged(context))
+                    needsPrivate && grant.Identity.Role == "Display" && (!HttpMethods.IsGet(context.Request.Method) || context.Request.Path.StartsWithSegments("/appearance") || context.Request.Path.StartsWithSegments("/player")))
                 { context.Response.StatusCode = 403; return; }
+                if (!context.RequestServices.GetRequiredService<SecureAccessService>().MediaOwnershipUnchanged(context))
+                { context.Response.StatusCode = 404; return; }
             }
             if (IdentityMutation(context.Request) && context.User.Identity?.IsAuthenticated == true &&
                 (IsPage(context.Request, "/Player/Index", "/player") ? context.User.IsInRole("Player") : context.User.IsInRole("DM")))

@@ -158,11 +158,12 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
         rates[key] = (bucket.Start, bucket.Count + 1);
     }
 
-    public SecureEnrollment Begin(string purpose, string browser, string origin, string remote, ClaimsPrincipal user)
+    public SecureEnrollment Begin(string purpose, string browser, string origin, string remote, ClaimsPrincipal user, bool physical = false)
     {
         lock (gate)
         {
-            Rate("begin:" + remote);
+            Rate((physical ? "physical-begin:" : "begin:") + remote);
+            if (pending.Count >= 32 && physical) pending.Remove(pending.Values.MinBy(p => p.Expires)!.Id);
             if (pending.Count >= 32 || browser.Length != 64) throw new SecureAccessDenied();
             var identity = purpose is "dm-bootstrap" or "dm-recover" ? Capture(user, true) : Capture(user);
             if (identity is null || (purpose == "enroll-player" && identity.Role != "Player") ||
@@ -181,6 +182,7 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     public SecureEnrollment? ForBrowser(string browser) { lock (gate) return FindBrowser(browser) is { } request ? Public(request) : null; }
     public IReadOnlyList<SecureEnrollment> PhysicalRequests() { lock (gate) { Cleanup(); return pending.Values.Where(p => p.Purpose.StartsWith("dm-")).ToArray(); } }
     public IReadOnlyList<SecureEnrollment> MemberRequests() { lock (gate) { Cleanup(); return pending.Values.Where(p => p.Purpose.StartsWith("enroll-")).Select(Public).ToArray(); } }
+    public void ClearPending() { lock (gate) { pending.Clear(); rates.Clear(); } }
     public IReadOnlyList<SecureGrant> Grants() { lock (gate) return Read()?.Grants.Where(g => !g.Revoked && g.Expires > Now).ToArray() ?? []; }
 
     private SecureGrant Issue(SecureGrantState state, SecureEnrollment request)
@@ -295,6 +297,7 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
                 var character = db.PlayerCharacters.AsNoTracking().SingleOrDefault(p => p.Id == id);
                 if (character is not null) ids.Add(character.PlayerProfileId);
             }
+            foreach (var request in pending.Values.Where(p => ids.Contains(p.Identity.Profile ?? Guid.Empty) || ids.Contains(p.Identity.Display ?? Guid.Empty)).ToArray()) pending.Remove(request.Id);
             var changed = false;
             for (var i = 0; i < state.Grants.Count; i++)
             {

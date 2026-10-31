@@ -3,6 +3,10 @@
 import argparse
 import importlib.util
 import http.client
+from http.cookies import SimpleCookie
+from html import unescape
+from urllib.parse import urlencode
+import re
 import json
 import os
 from pathlib import Path
@@ -164,6 +168,42 @@ def main():
             with urllib.request.urlopen('http://127.0.0.1:15491/system/health', timeout=2) as response:
                 assert response.status == 200
             checks += 1
+            # Actual secure authorization handlers over real Kestrel TLS. All secrets stay
+            # in local fixture memory, HTTPS bodies and cookies; never in URLs or output.
+            cookies = {}
+            def auth_request(path, fields=None):
+                connection = http.client.HTTPSConnection(host, 5445, context=context, timeout=5)
+                connection.connect = lambda: setattr(connection, 'sock', context.wrap_socket(
+                    socket.create_connection(('127.0.0.1', 5445), timeout=5), server_hostname=host))
+                headers = {'Host': host + ':5445', 'Cookie': '; '.join(k + '=' + v for k, v in cookies.items())}
+                body = None
+                if fields is not None:
+                    headers |= {'Origin': 'https://' + host + ':5445', 'Content-Type': 'application/x-www-form-urlencoded'}
+                    body = urlencode(fields)
+                connection.request('POST' if fields is not None else 'GET', path, body=body, headers=headers)
+                response = connection.getresponse()
+                for name, value in response.getheaders():
+                    if name.lower() == 'set-cookie':
+                        parsed = SimpleCookie(); parsed.load(value)
+                        for key, morsel in parsed.items():
+                            cookies[key] = morsel.value
+                result = response.status, response.read().decode()
+                connection.close()
+                return result
+            def auth_post(handler, fields=None):
+                status, page = auth_request('/secure-access')
+                assert status == 200
+                token = unescape(re.search(r'name="__RequestVerificationToken"[^>]*value="([^"]+)"', page)[1])
+                return auth_request('/secure-access?handler=' + handler, (fields or {}) | {'__RequestVerificationToken': token})
+            assert auth_post('BeginDm', {'recovery': 'true'})[0] == 302
+            status, screen = auth_request('/secure-access/physical')
+            assert status == 200
+            proof = re.search(r'data-physical-code="([^"]+)"', screen)[1]
+            assert proof not in auth_request('/secure-access')[1]
+            assert auth_post('Redeem', {'Code': proof})[0] == 302
+            assert 'Authorized as DM' in auth_request('/secure-access')[1]
+            assert auth_post('Redeem', {'Code': proof})[0] == 403
+            checks += 2
             # Preserve an established TLS stream across cache eviction and >16 rotations.
             with socket.create_connection(('127.0.0.1', 5445), timeout=3) as held_raw:
                 with context.wrap_socket(held_raw, server_hostname=host) as held:
@@ -188,6 +228,20 @@ def main():
                     held.sendall(f'GET /system/health HTTP/1.0\r\nHost: {host}:5445\r\n\r\n'.encode())
                     assert held.recv(4096).startswith((b'HTTP/1.1 200', b'HTTP/1.0 200'))
             checks += 2
+            assert 'Authorized as DM' in auth_request('/secure-access')[1]
+            checks += 1
+            process.terminate(); process.wait(timeout=10)
+            process = subprocess.Popen([args.dotnet, str(args.publish.resolve() / 'InitiativeTracker.Web.dll')], cwd=args.publish.resolve(), env=env, stdout=log, stderr=log)
+            for _ in range(80):
+                try:
+                    if 'Authorized as DM' in auth_request('/secure-access')[1]:
+                        break
+                except (OSError, ValueError):
+                    pass
+                time.sleep(.25)
+            else:
+                raise AssertionError('Secure session did not survive application restart')
+            checks += 1
             print(f'PASS: {checks} published Kestrel TLS/rotation/rollback/legacy checks; synthetic process trust only')
         except Exception:
             log.flush()

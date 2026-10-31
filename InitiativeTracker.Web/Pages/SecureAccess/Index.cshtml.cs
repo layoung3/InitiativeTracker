@@ -25,7 +25,7 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
         if (Grant?.Identity.Role == "DM") { Requests = access.MemberRequests(); Grants = access.Grants(); }
     }
     public IActionResult OnPostBeginDm(bool recovery = false) => Attempt(() =>
-        access.Begin(recovery ? "dm-recover" : "dm-bootstrap", Binding, origin.Origin, Peer, User));
+        access.Begin(recovery ? "dm-recover" : "dm-bootstrap", Binding, origin.Origin, Peer, User, physical: origin.Physical(HttpContext)));
     public IActionResult OnPostBeginMember() => Attempt(() =>
     {
         var identity = access.Capture(User) ?? throw new SecureAccessDenied();

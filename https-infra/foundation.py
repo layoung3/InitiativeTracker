@@ -208,6 +208,16 @@ def resolve_preflight(host, expected, resolver=socket.getaddrinfo):
     # Reject stale AAAA as well as stale A; no fallback to an unrelated interface/address.
     return {'ready': found == set(expected), 'reason': 'resolved' if found == set(expected) else 'dns-mismatch'}
 
+def physical_resolution_preflight(host, resolver=socket.getaddrinfo):
+    hostname(host)
+    try:
+        found = {item[4][0] for item in resolver(host, None, type=socket.SOCK_STREAM)}
+    except OSError:
+        return {'ready': False, 'reason': 'physical-dns-unavailable'}
+    return {'ready': bool(found) and found <= {'127.0.0.1', '::1'},
+            'reason': 'loopback-only' if found and found <= {'127.0.0.1', '::1'} else 'physical-dns-not-loopback-only'}
+
+
 def render_dns(host, addresses, assigned):
     addresses = resolution(host, addresses, assigned)
     # host-record is exact; local prevents upstream leakage of this private runtime name.
@@ -397,7 +407,7 @@ def renew(settings, *, apply=False, _runner=run):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue'])
+    parser.add_argument('action', choices=['preflight', 'physical-preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue'])
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--generation')
     parser.add_argument('--address', action='append', default=[])
@@ -405,7 +415,11 @@ def main():
     args = parser.parse_args()
     try:
         settings = config(args.config)
-        if args.action in {'preflight', 'dns-template'}:
+        if args.action == 'physical-preflight':
+            result = physical_resolution_preflight(settings['hostname'])
+            print(json.dumps(result))
+            return 0 if result['ready'] else 1
+        elif args.action in {'preflight', 'dns-template'}:
             selected = resolution(settings['hostname'], args.address, assigned_addresses())
             if args.action == 'dns-template':
                 print(render_dns(settings['hostname'], selected, selected), end='')

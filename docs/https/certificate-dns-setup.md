@@ -72,3 +72,17 @@ The tool's preflight runs on the hub; it does not prove a phone uses that same r
 | Bad candidate/reload | Valid last-known-good stays serving. If acknowledgement or rollback cannot be confirmed, treat service state as uncertain and verify served TLS before proceeding. |
 
 Offline runtime is bounded by actual issued lifetime, intermediate/root trust, clocks, address reachability and client resolver policy. No certificate design can promise indefinite publicly trusted offline operation. Read `/system/https-status` through trusted TLS and inspect the served certificate expiry; alert with enough time for operator repair, based on actual remaining lifetime. Keep a documented physical owner maintenance path and encrypted backups before travel.
+
+## Physical authorization screen: separate hub-only loopback resolution
+
+The physical proof screen must use the configured HTTPS FQDN and trusted certificate, **not** an HTTP Setup page or `https://localhost` certificate mismatch. On the hub only, arrange an independently approved local resolver/hosts override mapping the configured name exclusively to `127.0.0.1` and/or `::1`. Ordinary phones/tablets/displays must still resolve the same name to the hub's reachable private LAN/hotspot address. Never advertise loopback answers through hotspot DHCP/DNS or external client resolvers.
+
+No hosts/resolver file is changed by this PR. Review the OS/image-specific local override as a distinct networking stage, then check it on the hub:
+
+```sh
+python3 foundation.py physical-preflight --config /etc/initiativetracker-https/settings.json
+```
+
+This read-only check rejects DNS failure or mixed loopback/LAN answers. Normal `preflight --address <private-IP>` remains the client/LAN resolver check; a hub-local loopback override is intentionally a different scope. Validate normal resolution from clients separately. A public FQDN resolved to its LAN address on the hub may be reachable but will not meet the physical screen's strict loopback checks.
+
+After the approved certificate and app stages, open `https://<configured-host>:5445/secure-access/physical` in the hub's graphical browser (the legacy Setup page provides a public, non-secret link). No authorization code or token is put in a URL, QR payload, HTTP response or startup log. This deployment prerequisite does not authorize changing Labwc, Chromium profiles or updater sequencing.

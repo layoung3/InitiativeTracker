@@ -55,9 +55,12 @@ public sealed class SecureAccessWebTests
         };
     }
     public sealed class FailureSwitch { public bool Enabled; }
-    public sealed class FaultPersistence(SecureAccessStorage storage, Microsoft.AspNetCore.DataProtection.IDataProtectionProvider protection,
-        FailureSwitch failure) : SecureGrantPersistence(storage, protection)
+    public sealed class FaultPersistence : SecureGrantPersistence
     {
+        private readonly SecureAccessStorage storage;
+        private readonly FailureSwitch failure;
+        public FaultPersistence(SecureAccessStorage storage, Microsoft.AspNetCore.DataProtection.IDataProtectionProvider protection, FailureSwitch failure)
+            : base(storage, protection) { this.storage = storage; this.failure = failure; }
         public override void Write(SecureGrantState state, bool recovery = false)
         {
             if (failure.Enabled)
@@ -323,7 +326,7 @@ public sealed class SecureAccessWebTests
         using var stale = host.Client(); foreach (var item in old) stale.Cookies[item.Key] = item.Value;
         Assert.Equal(HttpStatusCode.Forbidden, (await stale.Send("/media/fixture")).StatusCode);
         File.WriteAllText(Path.Combine(host.DirectoryPath, "secure-access", "mutation.pending"), "interrupted");
-        File.SetUnixFileMode(Path.Combine(host.DirectoryPath, "secure-access", "mutation.pending"), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        if (OperatingSystem.IsLinux()) File.SetUnixFileMode(Path.Combine(host.DirectoryPath, "secure-access", "mutation.pending"), UnixFileMode.UserRead | UnixFileMode.UserWrite);
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
         await dm.Bootstrap(recovery: true);
         File.Delete(path); Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
@@ -435,6 +438,9 @@ public sealed class SecureAccessWebTests
             using var excess = first.Client(); excess.Client.DefaultRequestHeaders.Remove("Fixture-Peer"); excess.Client.DefaultRequestHeaders.Add("Fixture-Peer", "192.168.4.90");
             Assert.Equal(HttpStatusCode.Forbidden, (await excess.Post("BeginDm", ("recovery", "true"))).StatusCode);
             Assert.Equal(32, first.Access.PhysicalRequests().Count);
+            using var owner = first.Client(physical: true);
+            Assert.Equal(HttpStatusCode.Redirect, (await owner.Post("BeginDm", ("recovery", "true"))).StatusCode);
+            Assert.Equal(32, first.Access.PhysicalRequests().Count);
         }
         using (var restarted = new Host(directory))
         {
@@ -458,6 +464,60 @@ public sealed class SecureAccessWebTests
         await dm.Bootstrap();
         using (var db = host.Factory.CreateDbContext()) { db.GameSessions.Single().SessionId = Guid.NewGuid(); db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        host.Delete();
+    }
+
+    [Fact]
+    public async Task LegacyPlayerMutationCannotRevokeAnotherIdentityAndLogoutCannotBeUndoneIntoAuthority()
+    {
+        using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
+        var a = AddPlayer(host); var b = AddPlayer(host);
+        using var first = host.Client(); first.Legacy("Player", a.Profile, a.Player, a.Credential); await Enroll(first, dm);
+        using var second = host.Client(); second.Legacy("Player", b.Profile, b.Player, b.Credential); await Enroll(second, dm);
+        var token = await first.Token("/player");
+        await first.Send("/player/?handler=RevokeDevice", new FormUrlEncodedContent(new Dictionary<string, string>
+        { ["__RequestVerificationToken"] = token, ["credentialId"] = Guid.NewGuid().ToString(), ["PROFILEID"] = b.Profile.ToString() }));
+        Assert.Equal(HttpStatusCode.OK, (await second.Send("/media/fixture")).StatusCode);
+        using var oldHttp = host.Client(http: true); oldHttp.Legacy("Player", b.Profile, b.Player, b.Credential);
+        token = await oldHttp.Token("/player");
+        await oldHttp.Send("/player/?handler=SignOut", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+        using (var db = host.Factory.CreateDbContext()) { db.PlayerConnections.Single(p => p.Id == b.Player).IsActive = true; db.SaveChanges(); }
+        Assert.Equal(HttpStatusCode.Forbidden, (await second.Send("/media/fixture")).StatusCode);
+        host.Delete();
+    }
+
+    [Theory]
+    [InlineData("/dm/players", "ResetRecoveryKey")]
+    [InlineData("/dm/players", "RevokeAllDevices")]
+    [InlineData("/dm/players", "DeleteProfile")]
+    [InlineData("/dm/devices", "Approve")]
+    [InlineData("/dm/devices", "Forget")]
+    [InlineData("/dm/devices", "RemovePlayer")]
+    [InlineData("/dm/profiles", "DeleteProfile")]
+    [InlineData("/dm/profiles", "DeleteCharacter")]
+    public async Task LegacyAdminRoutesCannotUseCapturedCookieAsSensitiveAuthority(string page, string handler)
+    {
+        using var host = new Host(); using var legacy = host.Client(); legacy.Legacy("DM");
+        var token = await legacy.Token(page);
+        Assert.Equal(HttpStatusCode.Forbidden, (await legacy.Send(page + "/?handler=" + handler,
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["profileId"] = Guid.NewGuid().ToString(), ["id"] = Guid.NewGuid().ToString() }))).StatusCode);
+        host.Delete();
+    }
+
+    [Fact]
+    public async Task DisplayReplacementAndDeletionInvalidateApprovedIdentityDurably()
+    {
+        using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
+        Guid deviceId; DateTime paired;
+        using (var db = host.Factory.CreateDbContext()) { var device = new RegisteredDevice { Name = "Original", PairedAtUtc = DateTime.UtcNow }; db.Add(device); db.SaveChanges(); deviceId = device.Id; paired = device.PairedAtUtc; }
+        using var display = host.Client(); display.Legacy("Display", display: deviceId); await Enroll(display, dm);
+        var token = await dm.Token("/dm/devices");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/dm/devices?handler=Forget", new FormUrlEncodedContent(new Dictionary<string, string>
+            { ["__RequestVerificationToken"] = token, ["id"] = deviceId.ToString() }))).StatusCode);
+        using (var db = host.Factory.CreateDbContext()) { db.RegisteredDevices.Single(d => d.Id == deviceId).IsTrusted = true; db.SaveChanges(); }
+        Assert.Equal(HttpStatusCode.Forbidden, (await display.Send("/media/fixture")).StatusCode);
+        using (var db = host.Factory.CreateDbContext()) { db.RegisteredDevices.Remove(db.RegisteredDevices.Single(d => d.Id == deviceId)); db.SaveChanges(); db.Add(new RegisteredDevice { Id = deviceId, Name = "Replacement", PairedAtUtc = paired }); db.SaveChanges(); }
+        Assert.Equal(HttpStatusCode.Forbidden, (await display.Send("/media/fixture")).StatusCode);
         host.Delete();
     }
 

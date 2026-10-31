@@ -87,8 +87,8 @@ public sealed class SecureN9OverlayTests
         using var player = host.Client(); player.Legacy("Player", owner.Profile, owner.Player, owner.Credential); await Enroll(player, dm); await Upload(player, id);
         using var other = host.Client(); other.Legacy("Player", next.Profile, next.Player, next.Credential); await Enroll(other, dm);
         using (var db = host.Factory.CreateDbContext()) { db.PlayerCharacters.Single(c => c.Id == id).PlayerProfileId = next.Profile; db.SaveChanges(); }
-        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send(Editor(id))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await dm.Send(Editor(id))).StatusCode);
         host.Delete();
     }
 

@@ -70,6 +70,19 @@ class FoundationTests(unittest.TestCase):
         with self.assertRaises(f.Rejected):
             f.resolution(self.host, [], ['192.168.4.1'])
 
+    def test_physical_resolution_requires_loopback_only_on_the_hub(self):
+        local = lambda *a, **kw: [(None, None, None, None, ('127.0.0.1', 0)), (None, None, None, None, ('::1', 0))]
+        self.assertTrue(f.physical_resolution_preflight(self.host, local)['ready'])
+        mixed = lambda *a, **kw: local() + [(None, None, None, None, ('192.168.4.1', 0))]
+        self.assertFalse(f.physical_resolution_preflight(self.host, mixed)['ready'])
+        with self.assertRaises(f.Rejected):
+            f.render_dns(self.host, ['127.0.0.1'], ['127.0.0.1'])
+
+    def test_physical_dns_outage_fails_closed(self):
+        def offline(*a, **kw):
+            raise OSError('offline fixture')
+        self.assertFalse(f.physical_resolution_preflight(self.host, offline)['ready'])
+
     def test_exact_dns_template_no_public_update(self):
         text = f.render_dns(self.host, ['192.168.4.1', 'fd12::2'], ['192.168.4.1', 'fd12::2'])
         self.assertEqual(text, f'local=/{self.host}/\nhost-record={self.host},192.168.4.1,fd12::2\n')
