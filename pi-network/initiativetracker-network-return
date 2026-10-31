@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
 """N6.8 hub-only: supervised hotspot -> saved Wi-Fi transition. No web access or credential input."""
-import argparse, fcntl, json, os, pathlib, subprocess, sys, tempfile, time
+import argparse, fcntl, json, os, pathlib, re, subprocess, sys, tempfile, time
 
 ROOT = pathlib.Path('/var/lib/initiativetracker-network')
 JOURNAL = ROOT / 'return-transition.json'
@@ -63,17 +63,32 @@ def write(j):
         with os.fdopen(fd,'w') as f:
             json.dump(j,f,sort_keys=True);f.write('\n');f.flush();os.fsync(f.fileno())
         os.replace(name,JOURNAL)
+        directory = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
     finally:
         if os.path.exists(name):os.unlink(name)
 
+def clock_expired(j):
+    clock = j.get('clock')
+    return clock is not None and (pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip() != clock['boot'] or time.monotonic() >= clock['deadline'])
+
+
 def rollback(j):
     try:
-        nm('--wait','30','connection','up','id',HOTSPOT,'ifname',DEV,timeout=45)
+        if j.get('previous_uuid'):
+            try:
+                nm('--wait','30','connection','up','uuid',j['previous_uuid'],'ifname',DEV,timeout=45)
+            except (RuntimeError, subprocess.TimeoutExpired):
+                nm('--wait','30','connection','up','id',HOTSPOT,'ifname',DEV,timeout=45)
+                j['fallback_private_hotspot'] = True
+        else:
+            nm('--wait','30','connection','up','id',HOTSPOT,'ifname',DEV,timeout=45)
         j['state']='rolled_back';j['finished_at']=time.time();write(j)
-        print('RETURN_ACTION=ROLLED_BACK_TO_PRIVATE_HOTSPOT')
+        print('RETURN_ACTION=ROLLED_BACK_TO_PREVIOUS_WIFI' if j.get('previous_uuid') else 'RETURN_ACTION=ROLLED_BACK_TO_PRIVATE_HOTSPOT')
     except Exception as e:
         # Leave pending so future timer ticks retry recovery.
-        j['last_error']='Hotspot restore failed; retry pending';write(j)
+        j['last_error']='Previous network restore failed; retry pending';write(j)
         raise RuntimeError('Hotspot rollback failed: '+str(e)) from e
 
 def run(args):
@@ -92,14 +107,14 @@ def run(args):
             print('SAVED_WIFI='+json.dumps(saved(),sort_keys=True));return
         if args.command=='tick':
             if not j or j['state']!='pending':print('RETURN_ACTION=NONE');return
-            if not enabled():print('RETURN_ACTION=GATE_DISABLED_PENDING_ROLLBACK');return
-            if time.time()<j['deadline']:
+            # The new-switch gate does not disable already-armed rollback.
+            if time.time()<j['deadline'] and not clock_expired(j):
                 print('RETURN_ACTION=WAIT');return
             rollback(j);return
         if args.command=='confirm':
             if not j or j['state']!='pending':raise RuntimeError('No pending return')
             if not enabled():raise RuntimeError('Return gate disabled')
-            if time.time()>=j['deadline']:rollback(j);return
+            if time.time()>=j['deadline'] or clock_expired(j):rollback(j);raise RuntimeError('Confirmation expired; rollback executed')
             targets=[x for x in saved() if x['uuid']==j['target_uuid']]
             if len(targets)!=1 or a!=targets[0]['name']:raise RuntimeError('Target is not active')
             j['state']='confirmed';j['finished_at']=time.time();write(j)
@@ -108,12 +123,19 @@ def run(args):
             if not enabled():raise RuntimeError('Live return disabled')
             if pending_recovery():raise RuntimeError('Independent recovery transition pending')
             if j and j['state']=='pending':raise RuntimeError('Return transition already pending')
-            if a!=HOTSPOT:raise RuntimeError('Must begin from active private hotspot')
+            previous_uuid = None
+            if a != HOTSPOT:
+                if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', a):raise RuntimeError('Unsafe or disconnected previous profile')
+                previous_uuid = nm('-g','GENERAL.CON-UUID','device','show',DEV)
+                if not re.fullmatch(r'[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}',previous_uuid):raise RuntimeError('Previous connection UUID unavailable')
+                if not any(x['uuid']==previous_uuid and x['name']==a for x in saved()):raise RuntimeError('Previous profile is not eligible saved Wi-Fi')
+                if previous_uuid==args.uuid:raise RuntimeError('Destination is already active')
             if not 90<=args.seconds<=600:raise RuntimeError('Invalid rollback deadline')
             targets=[x for x in saved() if x['uuid']==args.uuid]
             if len(targets)!=1:raise RuntimeError('Target not an eligible saved Wi-Fi profile UUID')
             j={'state':'pending','target_uuid':args.uuid,'target_name':targets[0]['name'],
-               'previous':HOTSPOT,'deadline':time.time()+args.seconds,'created_at':time.time()}
+               'previous':a,'previous_uuid':previous_uuid,'deadline':time.time()+args.seconds,'created_at':time.time(),
+               'clock': {'boot': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'deadline': time.monotonic()+args.seconds}}
             write(j) # durable before potential SSH loss
             print('RETURN_ACTION=ATTEMPT_SAVED_WIFI',flush=True)
             try:
@@ -130,7 +152,13 @@ def main():
     p.add_argument('--uuid',default='')
     p.add_argument('--seconds',type=int,default=180)
     args=p.parse_args()
-    try:run(args);return 0
+    try:
+        if args.command == 'begin':
+            with (ROOT/'activation.lock').open('a+b') as activation:
+                fcntl.flock(activation, fcntl.LOCK_EX)
+                run(args)
+        else: run(args)
+        return 0
     except (OSError,ValueError,RuntimeError,PermissionError,subprocess.TimeoutExpired,json.JSONDecodeError) as e:
         print('N68_ERROR='+str(e),file=sys.stderr);return 1
 if __name__=='__main__':sys.exit(main())

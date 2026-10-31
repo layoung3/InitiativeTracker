@@ -21,6 +21,8 @@ Complete hardware acceptance before handover.
 
 | Task | Guide |
 | --- | --- |
+| Review N8 authentication migration and existing-Pi disposable-card core tests | [N8 minimum hardware checkpoint](docs/N8-authentication-and-core-hardware-trial.md) |
+| Review N8 software evidence, current no-spare-storage constraint and remaining physical tests | [N8 software validation status](docs/N8-software-validation-status.md) |
 | Preview/install a fresh hub or satellite automatically | [Automated installation and rollback checks](docs/setup/automated-installation.md) |
 | Review a backed-up component-only upgrade for an existing hub | [Separate approval-gated maintenance procedure](hub-updater/EXISTING-HUB-UPGRADE.md) |
 | Update an already configured hub | [Canonical hub release procedure](docs/setup/hub-release.md) |

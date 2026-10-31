@@ -1,0 +1,211 @@
+#!/usr/bin/python3 -I
+"""N8 root-only profile export and deduplicated handoff to existing independent controllers."""
+import fcntl
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
+import uuid
+
+ROOT = pathlib.Path('/var/lib/initiativetracker-network')
+LIB = '/usr/local/libexec/initiativetracker/'
+HOTSPOT = 'InitiativeTracker-Recovery'
+
+
+def guid(value):
+    if not isinstance(value, str) or str(uuid.UUID(value)) != value.lower():
+        raise ValueError('invalid UUID')
+    return value.lower()
+
+
+def command(*args, timeout=10):
+    result = subprocess.run(list(args), capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError('operation refused')
+    return result.stdout.rstrip("\r\n")
+
+
+def profile(identifier):
+    mode = command('/usr/bin/nmcli', '-g', '802-11-wireless.mode', 'connection', 'show', identifier)
+    if mode not in ('infrastructure', 'ap') or mode == 'ap' and identifier != HOTSPOT:
+        raise ValueError('unsupported network profile')
+    key_management = command('/usr/bin/nmcli', '-g', '802-11-wireless-security.key-mgmt', 'connection', 'show', identifier)
+    if key_management not in ('wpa-psk', 'sae'):
+        raise ValueError('WPA-Personal required')
+    ssid = command('/usr/bin/nmcli', '--escape', 'no', '-g', '802-11-wireless.ssid', 'connection', 'show', identifier)
+    password = command('/usr/bin/nmcli', '--show-secrets', '--escape', 'no', '-g', '802-11-wireless-security.psk', 'connection', 'show', identifier)
+    if not 1 <= len(ssid.encode()) <= 32 or not 8 <= len(password.encode()) <= 63 or any(ord(c) < 32 for c in ssid + password):
+        raise ValueError('unsupported profile credentials')
+    return {'ssid': ssid, 'password': password, 'keyManagement': key_management}
+
+
+def preflight(target):
+    current = command('/usr/bin/nmcli', '-g', 'GENERAL.CONNECTION', 'device', 'show', 'wlan0')
+    if current in ('', '--', 'unknown') or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', current):
+        raise ValueError('unsupported previous profile; commission safe active ID before preparation')
+    if target == HOTSPOT and current == HOTSPOT:
+        raise ValueError('destination already active')
+    if target != HOTSPOT:
+        previous = command('/usr/bin/nmcli', '-g', 'GENERAL.CON-UUID', 'device', 'show', 'wlan0')
+        guid(previous)
+        if previous == target:raise ValueError('destination already active')
+    for timer in ('initiativetracker-network-recovery.timer', 'initiativetracker-network-return.timer'):
+        if command('/usr/bin/systemctl', 'is-active', timer) != 'active':raise ValueError('independent timer inactive')
+    status = command(LIB + ('initiativetracker-network-control' if target == HOTSPOT else 'initiativetracker-network-return'), 'status')
+    fields = dict(line.split('=', 1) for line in status.splitlines() if '=' in line)
+    if fields.get('N64C_LIVE_ENABLED' if target == HOTSPOT else 'RETURN_SWITCH_ENABLED') != 'true':
+        raise ValueError('live switch gate disabled')
+
+
+def validate(request, now):
+    if not isinstance(request, dict) or set(request) != {'id', 'kind', 'target', 'switchAt', 'deadline'}:
+        raise ValueError('invalid transition')
+    guid(request['id'])
+    if request['kind'] not in ('wifi', 'hotspot'):
+        raise ValueError('invalid target kind')
+    if request['kind'] == 'wifi':
+        guid(request['target'])
+    elif request['target'] is not None:
+        raise ValueError('unexpected profile')
+    start, deadline = request['switchAt'], request['deadline']
+    if type(start) is not int or type(deadline) is not int or not now < start <= now + 15 or not 90 <= deadline - start <= 180:
+        raise ValueError('invalid deadline')
+    return request
+
+
+def write(path, value):
+    import tempfile
+    fd, temporary = tempfile.mkstemp(dir=ROOT, prefix='.coordination-')
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(value, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        descriptor = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def schedule(request):
+    path = ROOT / 'coordination.json'
+    with (ROOT / 'coordination.lock').open('a+b') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        previous = json.loads(path.read_text()) if path.exists() else None
+        if previous and previous['request']['id'] == request['id']:
+            if previous['request'] != request:
+                raise ValueError('conflicting duplicate')
+            if previous['started']:
+                return
+            try:
+                if command('/usr/bin/systemctl', 'is-active', 'initiativetracker-n8-' + request['id'] + '.timer') == 'active':
+                    return
+            except RuntimeError:
+                pass
+            # A crash between fsync and systemd-run is retried without altering switch/deadline.
+        validate(request, time.time())
+        if previous and previous['request']['id'] != request['id'] and previous['request']['deadline'] > time.time():
+            raise ValueError('transition still pending')
+        # Both rollback timers must be active before arming any new coordinated change.
+        for timer in ('initiativetracker-network-recovery.timer', 'initiativetracker-network-return.timer'):
+            if command('/usr/bin/systemctl', 'is-active', timer) != 'active':
+                raise ValueError('independent rollback timer inactive')
+        target = request['target'] if request['kind'] == 'wifi' else HOTSPOT
+        profile(target)  # Reject unreadable/unsupported profile before disconnect.
+        write(path, {'request': request, 'started': False})
+        # systemd timer survives application/process failure. Repeated requests never extend its time.
+        command('/usr/bin/systemd-run', '--unit=initiativetracker-n8-' + request['id'], '--collect',
+                '--on-active=' + str(max(1, int(request['switchAt'] - time.time()))) + 's',
+                LIB + 'initiativetracker-device-coordination', 'run', request['id'])
+
+
+def run(identity):
+    guid(identity)
+    path = ROOT / 'coordination.json'
+    with (ROOT / 'coordination.lock').open('a+b') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        journal = json.loads(path.read_text())
+        request = journal['request']
+        if request['id'] != identity or journal['started']:
+            return
+        seconds = int(request['deadline'] - time.time())
+        if not 90 <= seconds <= 180:
+            raise ValueError('missed activation window')
+        journal['started'] = True
+        write(path, journal)  # Unknown outcome is never automatically retried; existing controllers own recovery.
+        if request['kind'] == 'wifi':
+            command(LIB + 'initiativetracker-return-handoff', '--uuid', request['target'], '--seconds', str(seconds), timeout=60)
+        else:
+            command(LIB + 'initiativetracker-network-control', 'begin', '--target', HOTSPOT, '--seconds', str(seconds),
+                    '--execute', 'CONFIRM_DISCONNECT', timeout=60)
+
+
+def confirm(identity):
+    guid(identity)
+    journal = json.loads((ROOT / 'coordination.json').read_text())
+    request = journal['request']
+    if request['id'] != identity or not journal['started'] or time.time() >= request['deadline']:
+        raise ValueError('no pending matching transition')
+    if request['kind'] == 'wifi':
+        path = ROOT / 'return-transition.json'
+        current = json.loads(path.read_text())
+        if current.get('target_uuid') != request['target'] or current.get('created_at', 0) < request['switchAt'] - 5:
+            raise ValueError('controller transaction mismatch')
+        if current.get('state') == 'confirmed': return
+        if current.get('state') != 'pending':
+            raise ValueError('controller transaction mismatch')
+        command(LIB + 'initiativetracker-network-return', 'confirm', timeout=40)
+        if json.loads(path.read_text()).get('state') != 'confirmed':
+            raise ValueError('controller rolled back instead of confirming')
+    else:
+        path = ROOT / 'transition.json'
+        current = json.loads(path.read_text())
+        from datetime import datetime
+        if current.get('target') != HOTSPOT or datetime.fromisoformat(current['created_utc'].replace('Z', '+00:00')).timestamp() < request['switchAt'] - 5:
+            raise ValueError('controller transaction mismatch')
+        if current.get('state') == 'completed': return
+        if current.get('state') != 'pending':
+            raise ValueError('controller transaction mismatch')
+        command(LIB + 'initiativetracker-network-control', 'confirm', timeout=40)
+        if json.loads(path.read_text()).get('state') != 'completed':
+            raise ValueError('controller did not confirm')
+
+
+def main():
+    if os.geteuid() != 0 or ROOT.is_symlink() or not ROOT.is_dir():
+        raise PermissionError('protected root context required')
+    action = sys.argv[1]
+    if action in ('profiles', 'prepare-profiles'):
+        target = sys.argv[2] if len(sys.argv) == 3 else HOTSPOT
+        if target != HOTSPOT:
+            guid(target)
+        if action == 'prepare-profiles':preflight(target)
+        print(json.dumps({'target': profile(target), 'recovery': profile(HOTSPOT)}))
+    elif action == 'schedule':
+        raw = sys.stdin.buffer.read(2049)
+        if len(raw) > 2048:
+            raise ValueError('oversized request')
+        schedule(json.loads(raw))
+    elif action == 'confirm' and len(sys.argv) == 3:
+        confirm(sys.argv[2])
+    elif action == 'run' and len(sys.argv) == 3:
+        run(sys.argv[2])
+    else:
+        raise ValueError('unsupported operation')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, subprocess.TimeoutExpired):
+        print('DEVICE_COORDINATION_REFUSED', file=sys.stderr)
+        sys.exit(1)

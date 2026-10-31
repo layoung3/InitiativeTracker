@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\InitiativeTracker.Satellite\InitiativeTracker.Satellite.csproj" />
     <ProjectReference Include="..\InitiativeTracker.Web\InitiativeTracker.Web.csproj" />
     <ProjectReference Include="..\InitiativeTracker.Core\InitiativeTracker.Core.csproj" />
   </ItemGroup>

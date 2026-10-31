@@ -364,3 +364,7 @@ FodyWeavers.xsd
 
 # Initiative Tracker runtime data
 InitiativeTracker.Web/App_Data/
+# N8 local identity, credentials and agent runtime state
+InitiativeTracker.Satellite/App_Data/
+coordination/
+*.p12

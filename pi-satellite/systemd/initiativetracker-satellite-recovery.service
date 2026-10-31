@@ -1,0 +1,14 @@
+[Unit]
+Description=InitiativeTracker satellite independent network recovery
+After=NetworkManager.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/initiativetracker/initiativetracker-satellite-network tick
+User=root
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/initiativetracker-satellite-network /etc/NetworkManager/system-connections
+PrivateTmp=true
+TimeoutStartSec=100

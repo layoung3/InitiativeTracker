@@ -37,8 +37,9 @@ def execute(target_uuid, seconds):
         raise ValueError('invalid rollback interval')
     r = fields(run_command([RECOVERY, 'status']))
     s = fields(run_command([RETURN, 'status']))
-    if r.get('ACTIVE_PROFILE') != HOTSPOT or s.get('ACTIVE_PROFILE') != HOTSPOT:
-        raise RuntimeError('private hotspot is not active')
+    active = r.get('ACTIVE_PROFILE', '')
+    if active != s.get('ACTIVE_PROFILE') or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', active) or active in ('--', 'unknown'):
+        raise RuntimeError('active profile is unavailable or unsafe')
     if s.get('RETURN_SWITCH_ENABLED') != 'true':
         raise RuntimeError('return switching is not enabled')
     if s.get('RETURN_JOURNAL_STATE') == 'pending':
@@ -55,6 +56,7 @@ def execute(target_uuid, seconds):
 
     state = r.get('JOURNAL_STATE')
     if state == 'pending':
+        if active != HOTSPOT:raise RuntimeError('independent hotspot transition pending')
         if r.get('N64C_LIVE_ENABLED') != 'true':
             raise RuntimeError('hotspot controller cannot confirm pending transition')
         print('HANDOFF_ACTION=CONFIRM_HOTSPOT', flush=True)

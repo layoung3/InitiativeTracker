@@ -1,0 +1,9 @@
+[Unit]
+Description=Independent satellite transition recovery timer
+[Timer]
+OnBootSec=5s
+OnUnitInactiveSec=3s
+AccuracySec=1s
+Unit=initiativetracker-satellite-recovery.service
+[Install]
+WantedBy=timers.target

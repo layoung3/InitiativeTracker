@@ -12,6 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 
 builder.Services.AddSignalR();
+builder.Services.AddRateLimiter(options => options.AddPolicy("device-enrollment", context =>
+    System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ =>
+        new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })));
+
 
 var configuredDataDirectory =
     builder.Configuration[
@@ -33,6 +37,13 @@ var dataDirectory =
 
 Directory.CreateDirectory(
     dataDirectory);
+
+var coordinationCertificate = CoordinationEndpoints.Configure(builder, dataDirectory);
+builder.Services.AddSingleton<DmAuthenticationPolicy>();
+builder.Services.AddSingleton<ICoordinationNetwork, CoordinationNetworkBridge>();
+builder.Services.AddSingleton<DeviceCoordinationService>();
+builder.Services.AddSingleton<NetworkAdminAuthority>();
+builder.Services.AddHostedService<DeviceCoordinationWorker>();
 
 var dataProtectionDirectory =
     Path.Combine(
@@ -90,7 +101,14 @@ builder.Services.AddSingleton(
 
 builder.Services
     .AddAuthentication(
-        CookieAuthenticationDefaults.AuthenticationScheme)
+        DmAuthenticationPolicy.BrowserScheme)
+    .AddPolicyScheme(DmAuthenticationPolicy.BrowserScheme, null, options => options.ForwardDefaultSelector = context =>
+        context.Request.Cookies.ContainsKey(DmAuthenticationPolicy.SecureCookie)
+            ? DmAuthenticationPolicy.SecureScheme : CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(DmAuthenticationPolicy.SecureScheme, SecureDmCookie.Configure)
+    .AddPolicyScheme(DmAuthenticationPolicy.NetworkScheme, null, options => options.ForwardDefaultSelector = context =>
+        context.RequestServices.GetRequiredService<DmAuthenticationPolicy>().CoordinationEnabled
+            ? DmAuthenticationPolicy.SecureScheme : DmAuthenticationPolicy.BrowserScheme)
     .AddCookie(options =>
     {
         options.LoginPath =
@@ -116,6 +134,12 @@ builder.Services
 
         options.SlidingExpiration =
             true;
+        options.Events.OnCheckSlidingExpiration = context =>
+        {
+            if (context.Principal?.IsInRole("DM") == true && context.HttpContext.RequestServices.GetRequiredService<DmAuthenticationPolicy>().RequiresTrustedPin)
+                context.ShouldRenew = false; // Retire old gameplay tickets at their original expiry after opt-in.
+            return Task.CompletedTask;
+        };
 
         options.Events.OnRedirectToLogin =
             context =>
@@ -289,7 +313,9 @@ builder.Services
             };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, DeviceCertificateAuthentication>("DeviceCertificate", _ => { });
+builder.Services.AddAuthorization(options => options.AddPolicy(DmAuthenticationPolicy.NetworkPolicy,
+    policy => policy.AddAuthenticationSchemes(DmAuthenticationPolicy.NetworkScheme).RequireAuthenticatedUser().RequireRole("DM")));
 
 var app = builder.Build();
 
@@ -306,8 +332,10 @@ using (var db =
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    // HSTS is hostname-wide across ports: the new browser endpoint must not upgrade
+    // existing offline HTTP display/player URLs to an unavailable HTTPS port.
+    if (!builder.Configuration.GetValue<bool>("Coordination:Enabled") && string.IsNullOrWhiteSpace(builder.Configuration["BrowserTls:Certificate"]))
+        app.UseHsts();
 }
 
 if (builder.Configuration
@@ -317,9 +345,53 @@ if (builder.Configuration
     app.UseHttpsRedirection();
 }
 
+// Reject credential submissions before Razor model binding, including physical loopback.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var authentication = context.RequestServices.GetRequiredService<DmAuthenticationPolicy>();
+    if (string.Equals(path.Value?.TrimEnd('/'), "/dm/login", StringComparison.OrdinalIgnoreCase) && context.Request.Method == "POST" && !authentication.PinSubmissionAllowed(context))
+    { context.Response.StatusCode = 403; context.Response.Headers.CacheControl = "no-store"; return; }
+    if (path.StartsWithSegments("/display") && context.Request.Query["satellite"] == "1")
+        context.Response.Cookies.Append("InitiativeTracker.SatelliteUi", "1", new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Secure = context.Request.IsHttps, MaxAge = TimeSpan.FromDays(365 * 5) });
+    var devicePath = path.StartsWithSegments("/api/coordination") || path.StartsWithSegments("/hubs/device-coordination");
+    var coordinationPort = builder.Configuration.GetValue<int?>("Coordination:Port") ?? 5443;
+    if (devicePath && (!context.Request.IsHttps || coordinationCertificate is null))
+    { context.Response.StatusCode = 403; return; }
+    if (coordinationCertificate is not null && context.Connection.LocalPort == coordinationPort && !devicePath)
+    { context.Response.StatusCode = 404; return; }
+    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && !authentication.PhysicalScreen(context))
+    {
+        var handler = context.Request.Query["handler"].ToString().ToUpperInvariant();
+        if (handler is "APPROVEAGENT")
+        { context.Response.StatusCode = 403; return; }
+    }
+    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && context.Request.Query["handler"].ToString().ToUpperInvariant() is "PROVISION" or "VALIDATE" or "ROTATEHOTSPOTPASSWORD")
+    {
+        if (!authentication.TrustedHttps(context))
+        { context.Response.StatusCode = 403; return; }
+    }
+    if (devicePath && context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } bodySize)
+        bodySize.MaxRequestBodySize = 8192;
+    if (devicePath) { context.Response.Headers.CacheControl = "no-store"; context.Response.Headers["Referrer-Policy"] = "no-referrer"; }
+    await next();
+});
 app.UseRouting();
+app.UseRateLimiter();
 
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/dm/network") && context.Request.Method == "POST")
+    {
+        var authority = context.RequestServices.GetRequiredService<NetworkAdminAuthority>();
+        var authentication = context.RequestServices.GetRequiredService<DmAuthenticationPolicy>();
+        var unlock = string.Equals(context.Request.Query["handler"], "UnlockNetwork", StringComparison.OrdinalIgnoreCase);
+        if (unlock ? !authentication.SecureDm(context) : !authority.Allows(context))
+        { context.Response.StatusCode = 403; return; }
+    }
+    await next();
+});
 app.UseAuthorization();
 
 app.MapStaticAssets();
@@ -327,6 +399,7 @@ app.MapRazorPages()
    .WithStaticAssets();
 
 app.MapHub<EncounterHub>("/hubs/encounter");
+CoordinationEndpoints.Map(app);
 
 
 app.MapGet(

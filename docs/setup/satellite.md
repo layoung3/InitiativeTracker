@@ -223,3 +223,8 @@ window, then reboot/test). There is no remote fleet update or automatic satellit
 management mechanism in this repository. Protect the browser profile like a
 credential; do not commit or share it. Complete [satellite acceptance](acceptance.md)
 before removing the commissioning keyboard.
+
+
+## Optional N8 coordination agent
+
+The original display-only installer does not install the new agent. See [N8 installation and hardware validation](../N8-installation-and-validation.md) for the separate approval-gated agent, broker, independent timer, certificate/DNS prerequisites, recovery bundle and touchscreen/phone reassignment flow. No working satellite has been upgraded.

@@ -4,6 +4,8 @@
 Default is read-only. No Wi-Fi changes unless /etc/initiativetracker/network/live-switch.enabled
 exists, is root-owned, mode 0600, and contains ENABLE_N64C_LIVE=yes.
 """
+import pathlib
+import time
 import argparse
 import fcntl
 import json
@@ -96,11 +98,19 @@ def update(path, d, state, event):
     save(path, d)
 
 
+def clock_expired(d):
+    if not d: return False
+    clock = next((e.get('clock') for e in d.get('events', []) if isinstance(e, dict) and e.get('clock')), None)
+    if not clock: return False  # Existing pre-N8 journals retain their original wall deadline.
+    return (pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip() != clock['boot'] or
+            time.monotonic() >= clock['deadline'])
+
+
 def determine(d, active, now):
     if not d or d['state'] in FINAL: return 'NONE'
     if d['state'] == 'target_validated': return 'COMPLETE'
     if d['state'] in ('restore_previous','activate_recovery'): return 'RECOVER'
-    if now < parse(d['deadline_utc']): return 'WAIT'
+    if now < parse(d['deadline_utc']) and not clock_expired(d): return 'WAIT'
     if active == d['previous']: return 'RECOVERED_ALREADY'
     return 'RECOVER'
 
@@ -118,7 +128,7 @@ def begin(path, target, seconds):
     now = datetime.now(timezone.utc)
     d = {'format':1, 'id':str(uuid.uuid4()), 'previous':active, 'target':target,
          'created_utc':stamp(now),'deadline_utc':stamp(now+timedelta(seconds=seconds)),
-         'state':'pending','events':[{'at':stamp(now),'event':'armed_before_switch'}]}
+         'state':'pending','events':[{'at':stamp(now),'event':'armed_before_switch', 'clock': {'boot': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'deadline': time.monotonic()+seconds}}]}
     save(path,d)
     print('JOURNAL_ID='+d['id'],flush=True)
     # nmcli may disconnect the invoking SSH session; this worker continues under systemd.
@@ -162,9 +172,16 @@ def run(args):
         if args.action == 'status': print('EXECUTED_ACTION=NONE'); return
         if args.action == 'begin':
             if args.execute != 'CONFIRM_DISCONNECT': raise ValueError('explicit confirmation required')
-            begin(path,args.target,args.seconds); return
+            with (STATE/'activation.lock').open('a+b') as activation:
+                fcntl.flock(activation, fcntl.LOCK_EX)
+                # The saved-network controller can be pending even if this controller is terminal.
+                return_path = STATE/'return-transition.json'
+                if return_path.exists() and json.loads(return_path.read_text()).get('state') == 'pending':
+                    raise ValueError('saved-network transition pending')
+                begin(path,args.target,args.seconds)
+            return
         if args.action == 'confirm':
-            if not d or d['state']!='pending' or datetime.now(timezone.utc)>=parse(d['deadline_utc']) or active!=d['target']:
+            if not d or d['state']!='pending' or datetime.now(timezone.utc)>=parse(d['deadline_utc']) or clock_expired(d) or active!=d['target']:
                 raise ValueError('target not active or confirmation window expired')
             if not enabled(): raise PermissionError('live switching disabled')
             update(path,d,'completed','operator_confirmed_local_access')
@@ -175,7 +192,7 @@ def run(args):
                 update(path,d,'recovered','already_on_recovery_path'); print('EXECUTED_ACTION=MARK_RECOVERED'); return
             if decision == 'COMPLETE':
                 update(path,d,'completed','already_validated'); print('EXECUTED_ACTION=MARK_COMPLETE'); return
-            if not enabled(): print('EXECUTED_ACTION=BLOCKED_LIVE_DISABLED'); return
+            # A disabled new-switch gate must not disarm an already durable recovery plan.
             print('EXECUTED_ACTION='+recover(path,d)); return
 
 

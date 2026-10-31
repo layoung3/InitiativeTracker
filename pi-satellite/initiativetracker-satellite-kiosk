@@ -1,0 +1,37 @@
+#!/usr/bin/python3 -I
+"""Desktop-session launcher. Retains existing Chromium profile; reads public URL intent only."""
+import json
+import os
+import pathlib
+import signal
+import subprocess
+import time
+
+home = pathlib.Path.home()
+profile = home / '.local/share/initiativetracker-satellite/chromium'
+control = pathlib.Path('/run/initiativetracker-satellite/kiosk.json')
+process = None
+revision = None
+try:
+    while True:
+        try:
+            data = json.loads(control.read_text())
+            url, next_revision = data['url'], data['revision']
+            if not isinstance(url, str) or not url.startswith(('http://', 'https://')):
+                raise ValueError('invalid kiosk origin')
+        except (OSError, ValueError, KeyError, TypeError):
+            url, next_revision = 'http://127.0.0.1:5081/', 'setup'
+        if process is None or process.poll() is not None or revision != next_revision:
+            if process is not None and process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+            process = subprocess.Popen(['/usr/bin/chromium', '--kiosk', '--no-first-run', '--noerrdialogs',
+                                        '--disable-session-crashed-bubble', '--user-data-dir=' + str(profile), url], start_new_session=True)
+            revision = next_revision
+        time.sleep(3)
+finally:
+    if process is not None and process.poll() is None:
+        os.killpg(process.pid, signal.SIGTERM)
