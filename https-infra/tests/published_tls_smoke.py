@@ -2,6 +2,7 @@
 """Real published Kestrel + disposable, PROCESS-ONLY trust; no OS trust or DNS writes."""
 import argparse
 import importlib.util
+import http.client
 import json
 import os
 from pathlib import Path
@@ -166,6 +167,14 @@ def main():
             # Preserve an established TLS stream across cache eviction and >16 rotations.
             with socket.create_connection(('127.0.0.1', 5445), timeout=3) as held_raw:
                 with context.wrap_socket(held_raw, server_hostname=host) as held:
+                    def held_health():
+                        held.sendall(f'GET /system/health HTTP/1.1\r\nHost: {host}:5445\r\nConnection: keep-alive\r\n\r\n'.encode())
+                        response = http.client.HTTPResponse(held)
+                        response.begin()
+                        assert response.status == 200
+                        response.read()
+                        response.close()
+                    held_health()
                     for index in range(20):
                         generation = f'{index + 100:032x}'
                         directory = store / generation
@@ -174,6 +183,8 @@ def main():
                         (directory / 'bundle.pfx').chmod(0o640)
                         f.write_active(store, {'generation': generation})
                         f.wait_for_probe(probe, host, 5445, generation, f.leaf_fingerprint((root / 'first.pem').read_bytes()))
+                        if index % 5 == 0:
+                            held_health()
                     held.sendall(f'GET /system/health HTTP/1.0\r\nHost: {host}:5445\r\n\r\n'.encode())
                     assert held.recv(4096).startswith((b'HTTP/1.1 200', b'HTTP/1.0 200'))
             checks += 2

@@ -178,11 +178,16 @@ def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_
 def exported_paths(value):
     host, _, root, _, _ = settings(value)
     control_path(root / 'active.json', private=True)
+    if (root / 'active.json').stat().st_size > 1024:
+        raise f.Rejected('Issuer receipt exceeds limit')
     receipt = json.loads((root / 'active.json').read_text())
     if receipt['hostname'] != host or not re.fullmatch('[a-f0-9]{32}', receipt['snapshot']):
         raise f.Rejected('Invalid issuer export receipt')
     snapshot = root / 'exports' / receipt['snapshot']
-    return f.private_path(snapshot / 'fullchain.pem'), f.private_path(snapshot / 'privkey.pem')
+    chain, key = f.private_path(snapshot / 'fullchain.pem'), f.private_path(snapshot / 'privkey.pem')
+    if chain.stat().st_size > 131072 or key.stat().st_size > 32768:
+        raise f.Rejected('Issuer snapshot exceeds limit')
+    return chain, key
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
