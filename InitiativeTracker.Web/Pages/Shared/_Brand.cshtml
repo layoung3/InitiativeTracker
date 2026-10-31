@@ -1,0 +1,8 @@
+@inject InitiativeTracker.Web.Services.BrandingService Branding
+<div class="tracker-brand">
+    @if (Branding.LogoUrl is { } logo)
+    {
+        <img src="@logo" class="tracker-brand-logo" alt="Colophon" width="112" height="112" />
+    }
+    <div><span class="tracker-brand-name">@Branding.ApplicationName</span><span class="tracker-brand-tagline">Your table. Your story.</span></div>
+</div>

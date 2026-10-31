@@ -1,5 +1,6 @@
 ﻿@page "/join"
 @model InitiativeTracker.Web.Pages.Join.IndexModel
+@inject InitiativeTracker.Web.Services.BrandingService Branding
 
 @{
     ViewData["Title"] = "Join Game";
@@ -11,6 +12,11 @@
     <div class="card">
 
         <div class="card-body p-4">
+
+            @if (Branding.ShowApplicationLogo)
+            {
+                <div class="mb-4"><partial name="_Brand" /></div>
+            }
 
             @if (Model.JoinCompleted)
             {

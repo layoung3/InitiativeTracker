@@ -30,6 +30,8 @@
 
     <div class="card mb-3 character-header">
 
+        <img src="/images/default-banner.svg" class="tracker-banner" alt="" />
+
         <div class="card-body">
 
             <div class="d-flex
@@ -40,13 +42,7 @@
 
 
                 @* Portrait *@
-                <div class="character-portrait-placeholder">
-
-                    <span>
-                        @Model.Character.Name.Substring(0, 1).ToUpper()
-                    </span>
-
-                </div>
+                <img src="/images/default-character.svg" class="tracker-portrait tracker-portrait--sheet" alt="Portrait of @Model.Character.Name" width="112" height="112" />
 
 
                 @* Character identity *@

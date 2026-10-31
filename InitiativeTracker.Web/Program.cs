@@ -68,6 +68,7 @@ builder.Services.AddSingleton<TrackerUrlService>();
 builder.Services.AddSingleton<NetworkStatusService>();
 builder.Services.AddSingleton<NetworkCommandBridge>();
 builder.Services.AddSingleton<CharacterService>();
+builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<AppVersionService>();
 
 builder.Services.AddSingleton(

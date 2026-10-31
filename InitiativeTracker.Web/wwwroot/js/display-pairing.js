@@ -34,6 +34,8 @@ async function checkPairingStatus() {
         const result =
             await response.json();
 
+        statusElement.textContent = "Waiting for DM approval…";
+
 
         if (result.status === "approved") {
 
@@ -82,6 +84,8 @@ async function checkPairingStatus() {
 
     }
     catch (error) {
+
+        statusElement.textContent = "Hub connection unavailable. Retrying automatically…";
 
         console.error(
             "Pairing status check failed.",

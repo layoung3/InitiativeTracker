@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400" viewBox="0 0 1600 400" role="img" aria-labelledby="title">
+  <title id="title">Quiet mountain landscape</title>
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#192938"/><stop offset="1" stop-color="#526372"/></linearGradient></defs>
+  <path fill="url(#sky)" d="M0 0h1600v400H0Z"/>
+  <circle cx="1200" cy="111" r="48" fill="#aab7bf" opacity=".45"/>
+  <path d="m0 298 180-139 155 111 230-190 238 212 170-103 179 95 203-153 245 181v88H0Z" fill="#2a3e4b"/>
+  <path d="m0 370 255-142 237 104 306-114 273 128 229-97 300 104v47H0Z" fill="#1b2d38"/>
+  <path d="M0 390c300-47 550 15 800-4s500-26 800 0v14H0Z" fill="#12232d"/>
+</svg>

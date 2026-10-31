@@ -18,6 +18,8 @@
 <div class="initiative-display"
      id="initiativeDisplay">
 
+    <template id="displayBrandTemplate"><partial name="_Brand" /></template>
+
     <div class="display-backdrop"
          aria-hidden="true"></div>
 
@@ -130,10 +132,7 @@
         {
             <div class="empty-display">
 
-                <div class="empty-display-symbol"
-                     aria-hidden="true">
-                    ◇
-                </div>
+                <partial name="_Brand" />
 
                 <div class="empty-display-title">
                     Waiting for encounter

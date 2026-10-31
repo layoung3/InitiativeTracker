@@ -1,3 +1,4 @@
+@inject InitiativeTracker.Web.Services.BrandingService Branding
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,7 +6,7 @@
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0" />
 
-    <title>@ViewData["Title"] - Initiative Tracker</title>
+    <title>@ViewData["Title"] - @Branding.ApplicationName</title>
 
     <script type="importmap"></script>
 
@@ -20,6 +21,7 @@
           href="~/InitiativeTracker.Web.styles.css"
           asp-append-version="true" />
 
+    <link rel="stylesheet" href="~/css/branding.css" asp-append-version="true" />
     @await RenderSectionAsync("Styles", required: false)
 </head>
 

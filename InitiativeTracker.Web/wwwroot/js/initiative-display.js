@@ -541,19 +541,8 @@ document.addEventListener("DOMContentLoaded", () => {
             "empty-display";
 
 
-        const symbol =
-            document.createElement(
-                "div");
-
-        symbol.className =
-            "empty-display-symbol";
-
-        symbol.setAttribute(
-            "aria-hidden",
-            "true");
-
-        symbol.textContent =
-            "◇";
+        const symbol = document.getElementById("displayBrandTemplate")?.content.cloneNode(true)
+            ?? document.createTextNode("Initiative Tracker");
 
 
         const title =
