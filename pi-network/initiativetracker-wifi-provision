@@ -28,10 +28,11 @@ def validate(data):
 def create_keyfile(ssid, password, profile_uuid):
     c = configparser.ConfigParser(interpolation=None)
     c.optionxform = str
-    c['connection'] = {'id': ssid, 'uuid': profile_uuid,
+    label = re.sub(r'[^A-Za-z0-9_.-]', '-', ssid).strip('-')[:24]
+    c['connection'] = {'id': 'IT-WiFi-' + label + '-' + profile_uuid[:8], 'uuid': profile_uuid,
                        'type': 'wifi', 'autoconnect': 'false'}
-    c['wifi'] = {'mode': 'infrastructure', 'ssid': ssid}
-    c['wifi-security'] = {'key-mgmt': 'wpa-psk', 'psk': password}
+    c['wifi'] = {'mode': 'infrastructure', 'ssid': ''.join(str(b) + ';' for b in ssid.encode('utf-8'))}
+    c['wifi-security'] = {'key-mgmt': 'wpa-psk', 'psk': password.replace('\\', '\\\\').replace(' ', '\\s')}
     c['ipv4'] = {'method': 'auto'}
     c['ipv6'] = {'method': 'auto'}
     return c
