@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -23,20 +24,71 @@ public sealed class SecureGrantState
 public sealed record SecureEnrollment(Guid Id, string Reference, string Purpose, SecureIdentity Identity, string Browser,
     string Origin, DateTimeOffset Expires, string Code, int Attempts = 0, Guid? Approver = null, int ApproverGeneration = 0);
 public sealed record SecureAccessStorage(string Root, bool Persistent);
+public enum SecurePersistenceSync { StoreDirectory, ParentDirectory, FenceCreated, StateReplaced, FenceRemoved, FailureFence }
+
+internal static class LinuxDirectoryDurability
+{
+    [DllImport("libc", EntryPoint = "opendir", SetLastError = true)]
+    private static extern IntPtr OpenDirectory([MarshalAs(UnmanagedType.LPUTF8Str)] string path);
+    [DllImport("libc", EntryPoint = "dirfd", SetLastError = true)]
+    private static extern int DirectoryDescriptor(IntPtr directory);
+    [DllImport("libc", EntryPoint = "fsync", SetLastError = true)]
+    private static extern int Sync(int descriptor);
+    [DllImport("libc", EntryPoint = "closedir", SetLastError = true)]
+    private static extern int CloseDirectory(IntPtr directory);
+
+    public static void Synchronize(string path)
+    {
+        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException();
+        // opendir/dirfd avoid architecture-specific open flags on x64 and ARM64.
+        var directory = OpenDirectory(path);
+        if (directory == IntPtr.Zero) throw new IOException("Durable directory open failed.");
+        try
+        {
+            var descriptor = DirectoryDescriptor(directory);
+            if (descriptor < 0) throw new IOException("Durable directory descriptor unavailable.");
+            for (var attempt = 0; ; attempt++)
+            {
+                if (Sync(descriptor) == 0) break;
+                if (Marshal.GetLastPInvokeError() != 4 || attempt >= 63) // EINTR; bounded retry.
+                    throw new IOException("Durable directory synchronization failed.");
+            }
+        }
+        finally
+        {
+            if (CloseDirectory(directory) != 0) throw new IOException("Durable directory close failed.");
+        }
+    }
+}
 
 /// <summary>Protected durable state with a write-ahead fence. No automatic legacy enrollment or backup recovery.</summary>
 public class SecureGrantPersistence(SecureAccessStorage storage, IDataProtectionProvider protection)
 {
     private readonly IDataProtector protector = protection.CreateProtector("InitiativeTracker.SecureAccess.State.v1");
+    private bool durabilityReady;
+    private bool unavailable;
+    private static bool StorageFailure(Exception error) => error is IOException or UnauthorizedAccessException or CryptographicException or
+        InvalidOperationException or NotSupportedException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException or SecureAccessUnavailable;
+    protected virtual void SynchronizeDirectory(string directory, SecurePersistenceSync stage) => LinuxDirectoryDurability.Synchronize(directory);
+    private void EnsureDirectoryDurability()
+    {
+        if (durabilityReady) return;
+        // Flush from the store through its ancestors, including any newly created parents.
+        // Do not acknowledge an installation on a filesystem that cannot support this.
+        for (var directory = new DirectoryInfo(storage.Root); directory is not null; directory = directory.Parent)
+            SynchronizeDirectory(directory.FullName, directory.FullName == storage.Root ? SecurePersistenceSync.StoreDirectory : SecurePersistenceSync.ParentDirectory);
+        durabilityReady = true;
+    }
     public virtual SecureGrantState? Read()
     {
-        if (!storage.Persistent) return null;
+        if (!storage.Persistent || !OperatingSystem.IsLinux() || unavailable) return null;
         var path = Path.Combine(storage.Root, "state.bin");
         if (File.Exists(Path.Combine(storage.Root, "mutation.pending")) || !File.Exists(path)) return null;
         try
         {
             BrowserCertificateStore.CheckPath(storage.Root, true);
             BrowserCertificateStore.CheckPath(path, false);
+            EnsureDirectoryDurability();
             if (new FileInfo(path).Length > 1_048_576) return null;
             var plain = protector.Unprotect(File.ReadAllBytes(path));
             using var document = JsonDocument.Parse(plain);
@@ -48,29 +100,55 @@ public class SecureGrantPersistence(SecureAccessStorage storage, IDataProtection
                     g.Browser is { Length: 64 } && g.Identity.Stamp is { Length: 64 } && g.Identity.Role is "DM" or "Player" or "Display") &&
                 state.Grants.Select(g => g.Id).Distinct().Count() == state.Grants.Count ? state : null;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException or JsonException or InvalidOperationException)
+        catch (Exception e) when (StorageFailure(e) || e is JsonException)
         { return null; }
     }
     public virtual void Write(SecureGrantState state, bool recovery = false)
     {
-        if (!storage.Persistent || !OperatingSystem.IsLinux()) throw new SecureAccessUnavailable();
+        if (!storage.Persistent || !OperatingSystem.IsLinux() || unavailable && !recovery) throw new SecureAccessUnavailable();
         try
         {
             Directory.CreateDirectory(storage.Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             BrowserCertificateStore.CheckPath(storage.Root, true);
+            EnsureDirectoryDurability();
             var fence = Path.Combine(storage.Root, "mutation.pending");
             if (File.Exists(fence) && !recovery) throw new SecureAccessUnavailable();
             if (File.Exists(fence)) BrowserCertificateStore.CheckPath(fence, false);
-            using (var marker = PrivateFile(fence, FileMode.Create)) { marker.WriteByte(1); marker.Flush(true); }
+            WriteFence(fence);
+            SynchronizeDirectory(storage.Root, SecurePersistenceSync.FenceCreated);
             var bytes = protector.Protect(JsonSerializer.SerializeToUtf8Bytes(state));
             if (bytes.Length > 1_048_576) throw new SecureAccessUnavailable();
             var temporary = Path.Combine(storage.Root, ".state-" + Guid.NewGuid().ToString("N"));
             using (var output = PrivateFile(temporary, FileMode.CreateNew)) { output.Write(bytes); output.Flush(true); }
             File.Move(temporary, Path.Combine(storage.Root, "state.bin"), true);
+            SynchronizeDirectory(storage.Root, SecurePersistenceSync.StateReplaced);
             File.Delete(fence);
+            SynchronizeDirectory(storage.Root, SecurePersistenceSync.FenceRemoved);
+            unavailable = false;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException or InvalidOperationException)
-        { throw new SecureAccessUnavailable(); }
+        catch (Exception e) when (StorageFailure(e))
+        {
+            unavailable = true;
+            durabilityReady = false;
+            // A failed final sync may follow an unlink visible in memory. Re-establish a
+            // fence when storage permits it. Failure here remains explicitly unconfirmed.
+            try
+            {
+                BrowserCertificateStore.CheckPath(storage.Root, true);
+                var fence = Path.Combine(storage.Root, "mutation.pending");
+                if (File.Exists(fence)) BrowserCertificateStore.CheckPath(fence, false);
+                WriteFence(fence);
+                SynchronizeDirectory(storage.Root, SecurePersistenceSync.FailureFence);
+            }
+            catch (Exception failure) when (StorageFailure(failure)) { }
+            throw new SecureAccessUnavailable();
+        }
+    }
+    private static void WriteFence(string fence)
+    {
+        using var marker = PrivateFile(fence, FileMode.Create);
+        marker.WriteByte(1);
+        marker.Flush(true);
     }
     private static FileStream PrivateFile(string path, FileMode mode)
     {

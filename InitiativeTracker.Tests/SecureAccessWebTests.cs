@@ -54,13 +54,22 @@ public sealed class SecureAccessWebTests
             });
         };
     }
-    public sealed class FailureSwitch { public bool Enabled; }
+    public sealed class FailureSwitch { public bool Enabled; public SecurePersistenceSync? SyncStage; }
     public sealed class FaultPersistence : SecureGrantPersistence
     {
         private readonly SecureAccessStorage storage;
         private readonly FailureSwitch failure;
         public FaultPersistence(SecureAccessStorage storage, Microsoft.AspNetCore.DataProtection.IDataProtectionProvider protection, FailureSwitch failure)
             : base(storage, protection) { this.storage = storage; this.failure = failure; }
+        protected override void SynchronizeDirectory(string directory, SecurePersistenceSync stage)
+        {
+            if (failure.SyncStage == stage)
+            {
+                failure.SyncStage = null; // Single deterministic failure, including the final-unlink boundary.
+                throw new IOException("Fixture directory synchronization failure.");
+            }
+            base.SynchronizeDirectory(directory, stage);
+        }
         public override void Write(SecureGrantState state, bool recovery = false)
         {
             if (failure.Enabled)
@@ -576,6 +585,33 @@ public sealed class SecureAccessWebTests
         using var dm = host.Client(); await dm.Bootstrap(); await Enroll(player, dm);
         Assert.Equal(HttpStatusCode.OK, (await player.Send(page)).StatusCode);
         host.Delete();
+    }
+
+    [Theory]
+    [InlineData(SecurePersistenceSync.FenceCreated)]
+    [InlineData(SecurePersistenceSync.StateReplaced)]
+    [InlineData(SecurePersistenceSync.FenceRemoved)]
+    public async Task DirectorySyncFailureNeverAcknowledgesRevocationAndRestartRequiresPhysicalRecovery(SecurePersistenceSync stage)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "secure-sync-failure-" + Guid.NewGuid());
+        Dictionary<string, string> cookies;
+        using (var first = new Host(directory))
+        {
+            using var dm = first.Client(); await dm.Bootstrap();
+            var id = first.Access.Grants().Single().Id; cookies = new(dm.Cookies);
+            first.Failure.SyncStage = stage;
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await dm.Post("Revoke", ("id", id.ToString()))).StatusCode);
+            Assert.True(File.Exists(Path.Combine(directory, "secure-access", "mutation.pending")));
+            Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        }
+        using (var restarted = new Host(directory))
+        {
+            using var replay = restarted.Client(); foreach (var cookie in cookies) replay.Cookies[cookie.Key] = cookie.Value;
+            Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
+            await replay.Bootstrap();
+            Assert.Equal(HttpStatusCode.OK, (await replay.Send("/media/fixture")).StatusCode);
+        }
+        Directory.Delete(directory, true);
     }
 
 }

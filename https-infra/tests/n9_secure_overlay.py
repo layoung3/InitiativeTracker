@@ -28,7 +28,8 @@ def main():
             source.extractall(fixture, filter='data')
         for relative in ['InitiativeTracker.Web/Infrastructure', 'InitiativeTracker.Web/Pages/SecureAccess']:
             shutil.copytree(ROOT / relative, fixture / relative)
-        shutil.copy2(ROOT / 'InitiativeTracker.Tests/SecureAccessWebTests.cs', fixture / 'InitiativeTracker.Tests/SecureAccessWebTests.cs')
+        for name in ['SecureAccessWebTests.cs', 'SecureGrantDurabilityTests.cs']:
+            shutil.copy2(ROOT / 'InitiativeTracker.Tests' / name, fixture / 'InitiativeTracker.Tests' / name)
         shutil.copy2(ROOT / 'https-infra/tests/overlay/SecureN9OverlayTests.cs.template', fixture / 'InitiativeTracker.Tests/SecureN9OverlayTests.cs')
         program = fixture / 'InitiativeTracker.Web/Program.cs'
         text = program.read_text(encoding='utf-8-sig')
