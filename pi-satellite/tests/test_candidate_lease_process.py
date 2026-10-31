@@ -24,6 +24,11 @@ class CandidateLeaseProcessTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_broker(self, action, **values):
+        if action == 'rebind':
+            lease = self.state().get('provisioning')
+            values.setdefault('lease', lease['id'] if lease else None)
+            values.setdefault('intent', str(uuid.uuid4()))
+            values.setdefault('expires', time.time()+300)
         process = subprocess.run([sys.executable, '-I', str(ADAPTER), str(REPOSITORY), str(self.directory)],
                                  input=json.dumps({'action': action, **values}), capture_output=True, text=True, timeout=10)
         self.assertEqual(process.returncode, 0, process.stderr)

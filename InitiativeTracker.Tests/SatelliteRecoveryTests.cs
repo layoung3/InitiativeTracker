@@ -76,7 +76,7 @@ public sealed class SatelliteRecoveryTests
             var binding=new DeviceBinding(hubId,initial.Snapshot.DeviceId,enrollment.Generation,DeviceProtocol.Fingerprint(certificate),$"https://127.0.0.1:{port}","http://synthetic.invalid/display");
             var managed=Guid.NewGuid().ToString();var networkFile=Path.Combine(directory,"fake-network.json");
             await File.WriteAllTextAsync(networkFile,JsonSerializer.Serialize(new{active=managed,commands=Array.Empty<object>()}));
-            Assert.True((await RunBroker(new{action="rebind",generation=binding.Generation,recovery=new WifiProfile("synthetic-recovery","synthetic-only")})).GetProperty("ok").GetBoolean());
+            Assert.True((await RunBroker(new{action="rebind",generation=binding.Generation,recovery=new WifiProfile("synthetic-recovery","synthetic-only"),intent=Guid.NewGuid(),expires=DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds()/1000.0,lease=(string?)null})).GetProperty("ok").GetBoolean());
             await File.WriteAllTextAsync(networkFile,JsonSerializer.Serialize(new{active=(string?)null,commands=Array.Empty<object>()}));
             PrivateFile.Save(Path.Combine(directory,"agent.json"),initial.Snapshot with{Binding=binding});
             await using var agent=new SatelliteAgent(config,clock);

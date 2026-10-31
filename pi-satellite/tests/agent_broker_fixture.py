@@ -16,12 +16,29 @@ broker.ROOT.mkdir(mode=0o700, exist_ok=True)
 broker.PROFILES.mkdir(mode=0o700, exist_ok=True)
 network_path = directory/'fake-network.json'
 network = json.loads(network_path.read_text()) if network_path.exists() else {'active': None, 'commands': []}
+network.setdefault('profiles', [])
+if network['active'] and network['active'] not in network['profiles']:
+    network['profiles'].append(network['active'])
 
 
 def nm(*args):
     network['commands'].append(args)
     result = ''
-    if args[:3] == ('-g', 'GENERAL.CON-UUID', 'device'):
+    if args == ('-g', 'UUID', 'connection', 'show'):
+        result = '\n'.join(network['profiles'])
+    elif args[:2] == ('connection', 'load'):
+        profile = next(line[5:] for line in Path(args[2]).read_text().splitlines() if line.startswith('uuid='))
+        if profile not in network['profiles']:
+            network['profiles'].append(profile)
+    elif args[:2] == ('connection', 'delete'):
+        target = args[3]
+        if target not in network['profiles']:
+            raise RuntimeError('synthetic missing profile')
+        network['profiles'].remove(target)
+        (broker.PROFILES/('IT-N8-'+target+'.nmconnection')).unlink(missing_ok=True)
+        if network['active'] == target:
+            network['active'] = None
+    elif args[:3] == ('-g', 'GENERAL.CON-UUID', 'device'):
         result = network['active'] or '--'
     elif 'up' in args:
         target = args[args.index('uuid')+1]

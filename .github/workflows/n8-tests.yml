@@ -22,3 +22,9 @@ jobs:
         env:
           NODE_PATH: /tmp/n8-browser-tests/node_modules
       - run: git diff --check
+  real-networkmanager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f pi-satellite/tests/NetworkManager.Dockerfile -t it-n8-networkmanager .
+      - run: docker run --rm --network none it-n8-networkmanager

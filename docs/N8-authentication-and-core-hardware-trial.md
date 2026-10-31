@@ -4,6 +4,8 @@ N8-enabled hubs reject DM PIN submission over HTTP, including loopback, before R
 
 No working Pi has been accessed or changed. Installation, card swaps, test trust, credentials, radio changes, reboots and power interruptions require later approval. PR #4 stays unmerged. Do not treat this document as permission to execute.
 
+**Current inventory:** the owner has only the working hub and satellite, with no spare Pis, microSD cards or other spare Pi storage. No physical trial can run under the current constraints. No purchase is required now: development and automated tests continue independently. The optional later minimum uses the existing two Pis plus two separately obtained disposable cards and a reader, after approval. Buying two additional Pis is unnecessary. See [software evidence and the remaining physical cases](N8-software-validation-status.md); the cases below are a procedure for later approval, not unfinished CI tests.
+
 ## Compatibility and migration
 
 | State | Fresh DM PIN submission | Existing gameplay/display behavior | N8 administration |
@@ -32,7 +34,7 @@ The application does not globally redirect HTTP pages. Existing configured redir
 
 Readiness checks certificate key, validity, exact SAN and server-auth chain in the **server OS default trust store**, with supplied intermediates and no certificate downloads. Browser trust is independently required. An explicitly trusted isolated lab CA can satisfy these checks without a purchased domain or source bypass. There is no public-root allowlist or lab toggle. Malformed/unreadable configured PKCS#12 fails startup; expiry/untrusted state never enables HTTP authentication. Offline chain policy does not perform online revocation checks.
 
-## Hardware choices: existing Pis or additional hardware
+## Optional later hardware choices
 
 | Choice | Minimum | Risks and limits | Rollback |
 |---|---|---|---|
@@ -86,3 +88,5 @@ Natural bounds: commit switches about +10s and fixes recovery at commit+190s (ac
 6. Report final SHA/artifact hashes, device/card identities, approvals, non-secret state/timing and each case pass/fail/blocked. Never share raw keys, owner/AP files, NM keyfiles, protected journals, cookies, HAR or QR/setup screenshots.
 
 Phase 1 is ready for **procedure/installation approval**, not declared hardware-passed. Require C1–C7 and applicable failure cases, all failures investigated, matching restoration verified and no unexplained identity/network changes. Missing trusted browser bootstrap blocks fresh administration even though agent mTLS itself needs no domain. Present results and exact production proposal separately; do not merge, deploy or modify a working Pi without approval.
+
+C1–C7 combine automated assertions with device observations. Protocol ordering, replay, HTTP/TLS authorization, owner intent expiry and simulated interruption are already exercised in software; they do not independently require a radio. The later physical trial concentrates on actual NM/radio activation and error behavior, single-radio AP/STA/DHCP/mDNS routing, boot recovery on the Pi, Chromium process/profile restoration and actual peripherals. Phone provisioning/public certificate infrastructure is a separate phase. Abrupt-power tests additionally require explicit risk approval; a pass cannot establish general storage power safety.

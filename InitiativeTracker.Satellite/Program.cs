@@ -11,17 +11,19 @@ builder.Services.AddSingleton<SatelliteAgent>();
 builder.Services.AddHostedService<SatelliteWorker>();
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 var phoneCertificate = builder.Configuration["Satellite:PhoneCertificate"];
-var phoneName = builder.Configuration["Satellite:PhoneHost"];
-IProvisioningHttps phoneTls = new PublicCertificateHttps(phoneName, phoneCertificate, builder.Configuration["Satellite:PhoneCertificatePassword"]);
-builder.Services.AddSingleton(phoneTls);
-var phoneEnabled = phoneTls.Ready;
+var configuredPhoneName = builder.Configuration["Satellite:PhoneHost"];
+IProvisioningHttps configuredPhoneTls = new PublicCertificateHttps(configuredPhoneName, phoneCertificate, builder.Configuration["Satellite:PhoneCertificatePassword"]);
+builder.Services.AddSingleton(configuredPhoneTls);
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(5081);
     // A phone-trusted certificate is supplied only by the approval-gated installation workflow.
-    if (phoneEnabled) options.ListenAnyIP(5444, listen => listen.UseHttps(tls => { tls.ServerCertificate = phoneTls.Certificate; tls.ServerCertificateChain = phoneTls.Chain; }));
+    if (configuredPhoneTls.Ready) options.ListenAnyIP(5444, listen => listen.UseHttps(tls => { tls.ServerCertificate = configuredPhoneTls.Certificate; tls.ServerCertificateChain = configuredPhoneTls.Chain; }));
 });
 var app = builder.Build();
+var phoneTls = app.Services.GetRequiredService<IProvisioningHttps>();
+var phoneName = phoneTls.Host;
+var phoneEnabled = phoneTls.Ready;
 var agent = app.Services.GetRequiredService<SatelliteAgent>();
 var csrf = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 var authority = new OwnerSessionAuthority();
@@ -134,6 +136,6 @@ app.MapPost("/{action}", async (string action, HttpContext c, CancellationToken 
         return Results.Redirect("/");
     }
     catch (Exception ex) when (ex is IOException or HttpRequestException or InvalidOperationException or System.Net.Sockets.SocketException)
-    { return Results.Content(Page("<h1>Setup deferred</h1><p>Network operation failed or destination approval is missing. Existing pairing is retained. Check the physical hub and retry within the current setup window.</p><a href='/'>Return to setup</a>"), "text/html", statusCode: 409); }
+    { return Results.Content(Page("<h1>Setup deferred</h1><p>The operation is pending or could not complete. Check status here and the destination hub before retrying. Authorized recovery continues automatically.</p><a href='/'>Return to setup</a>"), "text/html", statusCode: 409); }
 });
 app.Run();

@@ -40,6 +40,17 @@ class SatelliteNetworkTests(unittest.TestCase):
 
     def nm(self, *args):
         self.calls.append(args)
+        if args == ('-g', 'UUID', 'connection', 'show'):
+            profiles = [p.name.removeprefix('IT-N8-').removesuffix('.nmconnection') for p in self.profiles.glob('*.nmconnection')]
+            return '\n'.join(profiles)
+        if args[:2] == ('connection', 'delete'):
+            profile = args[3]
+            path = self.profiles / ('IT-N8-' + profile + '.nmconnection')
+            if not path.exists():
+                raise RuntimeError('synthetic missing profile')
+            path.unlink()
+            if self.active == profile:
+                self.active = '--'
         if args[:3] == ('-g', 'GENERAL.CON-UUID', 'device'):
             return self.active
         if 'down' in args:
@@ -53,6 +64,11 @@ class SatelliteNetworkTests(unittest.TestCase):
         return ''
 
     def run_action(self, action, **kwargs):
+        if action == 'rebind':
+            lease = m.load().get('provisioning')
+            kwargs.setdefault('lease', lease['id'] if lease else None)
+            kwargs.setdefault('intent', str(uuid.uuid4()))
+            kwargs.setdefault('expires', time.time()+300)
         return m.execute({'action': action, **kwargs})
 
     def prepare(self, **kwargs):
@@ -75,6 +91,16 @@ class SatelliteNetworkTests(unittest.TestCase):
         self.assertIn('psk=synthetic-secret\\\\\\s', content)
         self.assertEqual(next(self.profiles.glob('*')).stat().st_mode & 0o777, 0o600)
         self.assertNotIn(self.profile['password'], str(self.calls))
+
+    def test_later_adopted_profile_is_not_deleted_by_older_cleanup(self):
+        state = m.load()
+        recovery = state['recovery']
+        m.defer_cleanup(state, [recovery])
+        m.save(state)
+        m.cleanup_one(m.load())
+        self.assertIn(recovery, m.load()['owned'])
+        self.assertIsNone(m.load()['cleanup'])
+        self.assertTrue((self.profiles / ('IT-N8-' + recovery + '.nmconnection')).exists())
 
     def test_destination_security_is_preserved_instead_of_downgrading_wpa3(self):
         profile = str(uuid.uuid4())
@@ -114,7 +140,7 @@ class SatelliteNetworkTests(unittest.TestCase):
         self.assertEqual(m.load()['transition']['phase'], 'recovered')
         count = len(self.calls)
         m.tick()
-        self.assertEqual(len(self.calls), count)
+        self.assertFalse(any('up' in command or 'down' in command for command in self.calls[count:]))
 
     def test_reboot_and_clock_rollback_force_recovery(self):
         self.prepare()
@@ -339,6 +365,129 @@ class SatelliteNetworkTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.prepare()
         self.assertEqual(before, (self.root/'state.json').read_bytes())
+
+
+    def rebind_request(self, **values):
+        request = {'action': 'rebind', 'generation': str(uuid.uuid4()), 'intent': str(uuid.uuid4()),
+                   'expires': time.time()+60, 'recovery': self.profile, 'lease': None}
+        request.update(values)
+        return request
+
+    def test_rebind_rejects_expired_authorization_before_and_after_blocking_nm(self):
+        now = time.time()
+        for boundary in ('before', 'stage', 'active'):
+            with self.subTest(boundary=boundary), patch.object(m.time, 'time', return_value=now) as clock:
+                request = self.rebind_request(expires=now+10)
+                original_stage, original_nm = m.stage_profile, self.nm
+                def stage(*args):
+                    original_stage(*args)
+                    if boundary == 'stage':
+                        clock.return_value = now+11
+                def nm(*args):
+                    result = original_nm(*args)
+                    if boundary == 'active' and args[:3] == ('-g', 'GENERAL.CON-UUID', 'device'):
+                        clock.return_value = now+11
+                    return result
+                if boundary == 'before':
+                    clock.return_value = now+11
+                with patch.object(m, 'stage_profile', stage), patch.object(m, 'nm', nm), self.assertRaises(ValueError):
+                    m.execute(request)
+                self.assertEqual(m.load()['generation'], self.generation)
+
+    def test_committed_rebind_retry_after_expiry_is_read_only_and_conflicting_retry_rejected(self):
+        request = self.rebind_request()
+        previous = self.active
+        reply = m.execute(request)
+        self.assertEqual(reply['binding']['intent'], request['intent'])
+        snapshot = (self.root/'state.json').read_bytes()
+        self.active = str(uuid.uuid4())
+        with patch.object(m.time, 'time', return_value=request['expires']+1):
+            self.assertEqual(m.execute(request), reply)
+            with self.assertRaises(ValueError):
+                m.execute({**request, 'recovery': {**self.profile, 'password': 'different-synthetic'}})
+        self.assertEqual((self.root/'state.json').read_bytes(), snapshot)
+        self.assertEqual(m.load()['preferred'], previous)
+
+    def test_rebind_crash_before_commit_preserves_old_binding_and_profiles_then_retries(self):
+        request = self.rebind_request()
+        old_recovery = m.load()['recovery']
+        original_save = m.save
+        def fail_commit(state):
+            if state.get('binding_change', {}).get('phase') == 'committed':
+                raise OSError('synthetic loss before commit write')
+            original_save(state)
+        with patch.object(m, 'save', fail_commit), self.assertRaises(OSError):
+            m.execute(request)
+        self.assertEqual(m.load()['generation'], self.generation)
+        self.assertTrue((self.profiles/('IT-N8-'+old_recovery+'.nmconnection')).exists())
+        self.assertEqual(m.load()['binding_change']['phase'], 'prepared')
+        self.assertTrue(m.execute(request)['ok'])
+        self.assertEqual(m.load()['generation'], request['generation'])
+
+    def test_rebind_lost_reply_after_durable_commit_is_recoverable_without_live_authorization(self):
+        request = self.rebind_request()
+        original_save = m.save
+        def lose_reply(state):
+            original_save(state)
+            if state.get('binding_change', {}).get('phase') == 'committed':
+                raise OSError('synthetic lost response after fsync')
+        with patch.object(m, 'save', lose_reply), self.assertRaises(OSError):
+            m.execute(request)
+        self.assertEqual(m.load()['generation'], request['generation'])
+        with patch.object(m.time, 'time', return_value=request['expires']+1):
+            self.assertTrue(m.execute(request)['ok'])
+
+    def test_cleanup_restarts_after_nm_deleted_profile_before_journal_progress(self):
+        old_recovery = m.load()['recovery']
+        m.execute(self.rebind_request())
+        with patch.object(m, 'save', side_effect=OSError('synthetic interruption')), self.assertRaises(OSError):
+            m.tick()
+        self.assertFalse((self.profiles/('IT-N8-'+old_recovery+'.nmconnection')).exists())
+        m.tick()
+        self.assertIsNone(m.load()['cleanup'])
+        self.assertNotIn(old_recovery, m.load()['owned'])
+
+    def test_aborted_prepared_binding_cannot_be_resurrected_or_overlap_other_radio_work(self):
+        request = self.rebind_request()
+        with patch.object(m, 'stage_profile', side_effect=RuntimeError('synthetic load failure')), self.assertRaises(RuntimeError):
+            m.execute(request)
+        with self.assertRaises(ValueError):
+            self.prepare()
+        self.assertIsNone(self.run_action('abort-rebind', intent=request['intent'])['binding'])
+        with self.assertRaises(ValueError):
+            m.execute(request)
+        self.assertEqual(m.load()['generation'], self.generation)
+
+    def test_expired_owner_reset_does_not_need_old_hub_and_cleanup_is_restartable(self):
+        self.prepare()
+        self.commit(switchAt=time.time()-1, deadline=time.time()+99)
+        with self.assertRaises(ValueError):
+            self.run_action('reset')
+        state = m.load()
+        state['transition']['mono_deadline'] = time.monotonic()-1
+        m.save(state)
+        self.failed_profiles.update([state['transition']['previous'], state['recovery']])
+        self.assertTrue(self.run_action('reset')['ok'])
+        self.assertIsNone(m.load()['generation'])
+        self.assertTrue(self.run_action('reset')['ok'])
+        for _ in range(5):
+            m.tick()
+        self.assertIsNone(m.load()['cleanup'])
+        self.assertFalse(list(self.profiles.glob('*.nmconnection')))
+
+    def test_successful_switches_reclaim_old_managed_profiles_without_losing_boot_target(self):
+        for revision in range(1, 6):
+            self.identity = str(uuid.uuid4())
+            self.prepare(revision=revision)
+            self.commit(switchAt=time.time()-1, deadline=time.time()+99)
+            m.tick()
+            target = self.active
+            self.run_action('finalize', id=self.identity)
+            for _ in range(5):
+                m.tick()
+            self.assertEqual(self.active, target)
+            self.assertEqual(m.load()['preferred'], target)
+            self.assertLessEqual(len(m.load()['owned']), 2)
 
 
 if __name__ == '__main__':

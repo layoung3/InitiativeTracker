@@ -9,9 +9,11 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace InitiativeTracker.Satellite;
 
-public sealed record Candidate(string Url, string Pin, Guid HubId, Guid Generation, string DisplayUrl, string Name, DateTimeOffset ExpiresUtc, Guid IntentId);
+public sealed record Candidate(string Url, string Pin, Guid HubId, Guid Generation, string DisplayUrl, string Name, DateTimeOffset ExpiresUtc, Guid IntentId, Guid? LeaseId = null);
+public sealed record BindingCommit(DeviceBinding Binding, WifiProfile Recovery, Guid IntentId, DateTimeOffset ExpiresUtc, Guid? LeaseId = null);
 public sealed record AgentState(Guid DeviceId, DeviceBinding? Binding, Candidate? Candidate, long LastRevision, Transition? Transition,
-    DateTimeOffset? UnavailableSince, int Failures, DateTimeOffset? NextRecoveryUtc, int RecoveryAttempts, string OwnerHash);
+    DateTimeOffset? UnavailableSince, int Failures, DateTimeOffset? NextRecoveryUtc, int RecoveryAttempts, string OwnerHash,
+    BindingCommit? PendingBinding = null, bool ForgetRequested = false);
 
 public sealed class SatelliteAgent : IAsyncDisposable
 {
@@ -87,10 +89,12 @@ public sealed class SatelliteAgent : IAsyncDisposable
         await gate.WaitAsync(ct);
         try
         {
+            RequireNoPendingBinding();
             url = Origin(url); pin = pin.ToUpperInvariant();
             if (state.Binding?.HubPin == pin) throw new InvalidOperationException("This hub is already paired; use recovery or explicitly forget it before requesting a new association.");
+            var authorization = await CandidateAuthorization(ct);
             Save(state with { Candidate = new(url, pin, Guid.Empty, Guid.Empty,
-                new UriBuilder(url) { Scheme = "http", Port = configuration.GetValue<int?>("Satellite:DisplayPort") ?? 5000, Path = "/display", Query = "satellite=1" }.Uri.ToString(), name, time.GetUtcNow().AddMinutes(10), Guid.NewGuid()) });
+                new UriBuilder(url) { Scheme = "http", Port = configuration.GetValue<int?>("Satellite:DisplayPort") ?? 5000, Path = "/display", Query = "satellite=1" }.Uri.ToString(), name, authorization.Expires, Guid.NewGuid(), authorization.Lease) });
             await AdvanceCandidate(ct);
             Message = "Request sent. Approve this satellite certificate at the destination hub's physical DM screen, then finish pairing here.";
         }
@@ -104,36 +108,107 @@ public sealed class SatelliteAgent : IAsyncDisposable
     }
     private async Task FinishPairingCore(CancellationToken ct)
     {
+            if (state.ForgetRequested) throw new InvalidOperationException("Owner reset is pending");
+            if (state.PendingBinding is not null) { await ResumeBinding(ct); return; }
             var candidate = state.Candidate ?? throw new InvalidOperationException("Request pairing first");
+            RequireFreshCandidate(candidate);
             using var client = Client(candidate.Pin);
             var status = await client.GetFromJsonAsync<DeviceStatus>(candidate.Url + "/api/coordination/status", ct) ?? throw new IOException();
+            RequireFreshCandidate(candidate);
             if (status.Version != DeviceProtocol.Version || status.Generation != candidate.Generation || status.HubId == Guid.Empty) throw new IOException("Hub approval missing");
             var bootstrap = await client.GetFromJsonAsync<JsonElement>(candidate.Url + "/api/coordination/recovery", ct);
+            RequireFreshCandidate(candidate);
             if (bootstrap.GetProperty("generation").GetGuid() != candidate.Generation) throw new IOException("Binding changed");
             var recovery = bootstrap.GetProperty("recovery").Deserialize<WifiProfile>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
-            // Owner explicitly authorized replacement, and new DM approval is now authenticated.
-            // Preserve old agent binding until the broker has durably committed the new generation.
-            await Broker(new { action = "rebind", generation = candidate.Generation, recovery }, ct);
             var stableUrl = string.IsNullOrWhiteSpace(status.MdnsHost) ? candidate.Url : new UriBuilder(candidate.Url) { Host = status.MdnsHost }.Uri.GetLeftPart(UriPartial.Authority);
             var displayUrl = new UriBuilder(candidate.DisplayUrl) { Host = new Uri(stableUrl).Host }.Uri.ToString();
-            Save(state with { Binding = new(status.HubId, state.DeviceId, status.Generation, candidate.Pin, stableUrl, displayUrl),
-                Candidate = null, Transition = null, LastRevision = 0, UnavailableSince = null, Failures = 0, RecoveryAttempts = 0 });
-            SetupOwnerCredential = null;
-            await Disconnect(); Show(displayUrl);
-            Message = "Paired network agent. Approve the existing display pairing request separately if this is a new hub.";
+            var binding = new DeviceBinding(status.HubId, state.DeviceId, status.Generation, candidate.Pin, stableUrl, displayUrl);
+            // This private intent contains the authenticated approval and is durable BEFORE root mutation.
+            Save(state with { PendingBinding = new(binding, recovery, candidate.IntentId, candidate.ExpiresUtc, candidate.LeaseId) });
+            await ResumeBinding(ct);
+    }
+
+    private void RequireNoPendingBinding()
+    {
+        if (state.PendingBinding is not null || state.ForgetRequested)
+            throw new InvalidOperationException("Finish recovering the existing binding operation first");
+    }
+    private async Task<(DateTimeOffset Expires, Guid? Lease)> CandidateAuthorization(CancellationToken ct)
+    {
+        var root = (await Broker(new { action = "status" }, ct)).GetProperty("state");
+        var expires = time.GetUtcNow().AddMinutes(10);
+        if (!root.TryGetProperty("provisioning", out var lease) || lease.ValueKind == JsonValueKind.Null) return (expires, null);
+        var deadline = DateTimeOffset.FromUnixTimeMilliseconds((long)(lease.GetProperty("deadline").GetDouble() * 1000));
+        if (deadline <= time.GetUtcNow()) throw new InvalidOperationException("Provisioning authorization expired");
+        return (deadline < expires ? deadline : expires, lease.GetProperty("id").GetGuid());
+    }
+    private void RequireFreshCandidate(Candidate candidate)
+    {
+        if (candidate.IntentId == Guid.Empty || candidate.Generation == Guid.Empty || time.GetUtcNow() >= candidate.ExpiresUtc ||
+            state.Candidate != candidate) throw new InvalidOperationException("Pairing authorization expired or changed");
+    }
+    private static bool RootCommitted(JsonElement root, BindingCommit pending)
+    {
+        if (!root.TryGetProperty("binding_change", out var change) || change.ValueKind == JsonValueKind.Null) return false;
+        return change.GetProperty("phase").GetString() == "committed" &&
+            change.GetProperty("intent").GetGuid() == pending.IntentId && change.GetProperty("generation").GetGuid() == pending.Binding.Generation &&
+            root.GetProperty("generation").GetGuid() == pending.Binding.Generation;
+    }
+    private async Task<bool> ResumeBinding(CancellationToken ct, bool cancel = false)
+    {
+        var pending = state.PendingBinding ?? throw new IOException("Missing pending binding");
+        var candidate = state.Candidate;
+        if (candidate is null || candidate.IntentId != pending.IntentId || candidate.Generation != pending.Binding.Generation ||
+            candidate.Pin != pending.Binding.HubPin || state.DeviceId != pending.Binding.DeviceId || pending.ExpiresUtc != candidate.ExpiresUtc || pending.LeaseId != candidate.LeaseId)
+            throw new IOException("Pending binding identity mismatch");
+        var root = (await Broker(new { action = "status" }, ct)).GetProperty("state");
+        if (RootCommitted(root, pending))
+        {
+            await CompleteBinding(pending, ct);
+            return true; // Reconcile the already committed operation even after its former approval deadline.
+        }
+        var rootGeneration = root.GetProperty("generation").ValueKind == JsonValueKind.Null ? (Guid?)null : root.GetProperty("generation").GetGuid();
+        if (rootGeneration != state.Binding?.Generation) throw new IOException("Root binding changed unexpectedly");
+        if (cancel || time.GetUtcNow() >= pending.ExpiresUtc)
+        {
+            var aborted = await Broker(new { action = "abort-rebind", intent = pending.IntentId }, ct);
+            if (aborted.TryGetProperty("binding", out var committed) && committed.ValueKind != JsonValueKind.Null)
+                throw new IOException("Binding committed during cancellation; retry reconciliation");
+            await Broker(new { action = "close-provisioning" }, ct);
+            Save(state with { Candidate = null, PendingBinding = null });
+            if (state.Binding is { } previous) Show(previous.DisplayUrl);
+            Message = "Uncommitted reassignment ended. Previous association retained.";
+            return false;
+        }
+        var reply = await Broker(new { action = "rebind", generation = pending.Binding.Generation, recovery = pending.Recovery,
+            intent = pending.IntentId, expires = pending.ExpiresUtc.ToUnixTimeMilliseconds() / 1000.0, lease = pending.LeaseId }, ct);
+        if (!reply.TryGetProperty("binding", out var binding) || binding.GetProperty("intent").GetGuid() != pending.IntentId ||
+            binding.GetProperty("generation").GetGuid() != pending.Binding.Generation) throw new IOException("Missing durable binding receipt");
+        await CompleteBinding(pending, ct);
+        return true;
+    }
+    private async Task CompleteBinding(BindingCommit pending, CancellationToken ct)
+    {
+        Save(state with { Binding = pending.Binding, Candidate = null, PendingBinding = null, Transition = null, LastRevision = 0,
+            UnavailableSince = null, Failures = 0, RecoveryAttempts = 0, NextRecoveryUtc = null });
+        SetupOwnerCredential = null;
+        await Disconnect(); Show(pending.Binding.DisplayUrl);
+        Message = "Paired network agent. Approve the existing display pairing request separately if this is a new hub.";
     }
     public async Task BeginReassignment(string url, string pin, string name, string? ssid, string? password, CancellationToken ct)
     {
         await gate.WaitAsync(ct);
         try
         {
+            RequireNoPendingBinding();
             url = Origin(url); pin = pin.ToUpperInvariant();
             if (state.Binding?.HubPin == pin) throw new InvalidOperationException("This hub is already paired; use recovery or explicitly forget it before requesting a new association.");
             if (pin.Length != 64 || !pin.All(char.IsAsciiHexDigit) || string.IsNullOrWhiteSpace(name) || name.Length > 64)
                 throw new InvalidOperationException("Invalid destination identity");
             await Broker(new { action = "open-provisioning" }, ct);
+            var authorization = await CandidateAuthorization(ct);
             var display = new UriBuilder(url) { Scheme = "http", Port = configuration.GetValue<int?>("Satellite:DisplayPort") ?? 5000, Path = "/display", Query = "satellite=1" }.Uri.ToString();
-            Save(state with { Candidate = new(url, pin, Guid.Empty, Guid.Empty, display, name, time.GetUtcNow().AddMinutes(10), Guid.NewGuid()) });
+            Save(state with { Candidate = new(url, pin, Guid.Empty, Guid.Empty, display, name, authorization.Expires, Guid.NewGuid(), authorization.Lease) });
             if (!string.IsNullOrWhiteSpace(ssid)) await ConfigureNetwork(ssid, password ?? "", ct);
             Message = "Reassignment authorized for the specified hub fingerprint only. Approve the satellite fingerprint in that hub's DM interface; setup then finishes automatically.";
         }
@@ -141,6 +216,7 @@ public sealed class SatelliteAgent : IAsyncDisposable
     }
     private async Task AdvanceCandidate(CancellationToken ct)
     {
+        if (state.PendingBinding is not null) { await ResumeBinding(ct); return; }
         var candidate = state.Candidate!;
         if (candidate.IntentId == Guid.Empty || time.GetUtcNow() >= candidate.ExpiresUtc)
         {
@@ -160,7 +236,18 @@ public sealed class SatelliteAgent : IAsyncDisposable
     public async Task CancelCandidate(CancellationToken ct)
     {
         await gate.WaitAsync(ct);
-        try { Save(state with { Candidate = null }); await Broker(new { action = "close-provisioning" }, ct); if (state.Binding is { } b) Show(b.DisplayUrl); }
+        try
+        {
+            if (state.ForgetRequested) throw new InvalidOperationException("Owner reset is pending");
+            if (state.PendingBinding is not null)
+            {
+                if (await ResumeBinding(ct, cancel: true)) throw new InvalidOperationException("Binding already committed; use an explicit owner reset");
+                return;
+            }
+            await Broker(new { action = "close-provisioning" }, ct);
+            Save(state with { Candidate = null });
+            if (state.Binding is { } b) Show(b.DisplayUrl);
+        }
         finally { gate.Release(); }
     }
     public async Task Forget(CancellationToken ct)
@@ -168,11 +255,17 @@ public sealed class SatelliteAgent : IAsyncDisposable
         await gate.WaitAsync(ct);
         try
         {
-            await Broker(new { action = "reset" }, ct);
-            Save(state with { Binding = null, Candidate = null, Transition = null, LastRevision = 0 });
-            await Disconnect(); Show("http://127.0.0.1:5081/");
+            Save(state with { ForgetRequested = true });
+            await CompleteForget(ct);
         }
         finally { gate.Release(); }
+    }
+    private async Task CompleteForget(CancellationToken ct)
+    {
+        await Broker(new { action = "reset" }, ct);
+        Save(state with { Binding = null, Candidate = null, PendingBinding = null, ForgetRequested = false, Transition = null,
+            LastRevision = 0, UnavailableSince = null, Failures = 0, NextRecoveryUtc = null, RecoveryAttempts = 0 });
+        await Disconnect(); Show("http://127.0.0.1:5081/");
     }
     public async Task OpenSetup(CancellationToken ct)
     {
@@ -299,6 +392,20 @@ public sealed class SatelliteAgent : IAsyncDisposable
         if (!await gate.WaitAsync(0, ct)) return;
         try
         {
+            if (state.ForgetRequested)
+            {
+                try { await CompleteForget(ct); }
+                catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or OperationCanceledException)
+                { Message = "Owner reset is pending independent recovery or root cleanup."; }
+                return;
+            }
+            if (state.PendingBinding is not null)
+            {
+                try { await ResumeBinding(ct); }
+                catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or OperationCanceledException)
+                { Message = "Recovering the already authorized binding operation."; }
+                return;
+            }
             if (state.Candidate is not null)
             {
                 try { await AdvanceCandidate(ct); }

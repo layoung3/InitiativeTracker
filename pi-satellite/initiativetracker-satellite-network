@@ -146,6 +146,116 @@ def remember_restoration(state, profile):
         state['restoration'] = {'profile': profile, 'attempts': 0, 'next': time.time() + 30}
 
 
+def defer_cleanup(state, profiles, reset=False):
+    old = state.get('cleanup') or {'profiles': [], 'reset': False}
+    state['cleanup'] = {'profiles': sorted(set(old['profiles']) | set(profiles)), 'reset': reset or old['reset']}
+
+
+def cleanup_one(state):
+    work = state.get('cleanup')
+    if not work or not work['profiles']:
+        state['cleanup'] = None
+        save(state)
+        return
+    profile = guid(work['profiles'][0])
+    if not work['reset'] and profile in (state.get('preferred'), state.get('recovery')):
+        # A later successful operation may adopt a previously abandoned profile.
+        work['profiles'].remove(profile)
+        if not work['profiles']:
+            state['cleanup'] = None
+        save(state)
+        return
+    if not work['reset'] and profile == active_optional():
+        work['profiles'].append(work['profiles'].pop(0))
+        save(state)
+        return  # Never disconnect a later active connection for background garbage collection.
+    available = {guid(value) for value in nm('-g', 'UUID', 'connection', 'show').splitlines() if value}
+    if profile in available:
+        nm('connection', 'delete', 'uuid', profile)
+    # A crash after NM deletion but before this save is safe: absence is a successful retry.
+    work['profiles'].remove(profile)
+    if profile in state['owned']:
+        state['owned'].remove(profile)
+    if not work['profiles']:
+        state['cleanup'] = None
+    save(state)
+
+
+def abort_rebind(state):
+    change = state['binding_change']
+    change['phase'] = 'aborted'
+    if change['recovery'] != state['recovery']:
+        defer_cleanup(state, [change['recovery']])
+    save(state)
+
+
+def rebind_lease(state, request):
+    lease = state.get('provisioning')
+    identity = guid(request['lease']) if request['lease'] is not None else None
+    if identity != (lease['id'] if lease else None):
+        raise ValueError('provisioning authorization no longer current')
+    if lease and (lease.get('phase', 'active') != 'active' or expired(lease) or active_safe() == lease['profile']):
+        raise ValueError('join destination within the original provisioning lease')
+    return lease
+
+
+def rebind(state, request):
+    generation, intent = guid(request['generation']), guid(request['intent'])
+    credentials(request['recovery'])
+    signature = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+    change = state.get('binding_change')
+    if change and change['intent'] == intent:
+        if change['signature'] != signature:
+            raise ValueError('conflicting binding retry')
+        if change['phase'] == 'committed':
+            if state['generation'] != generation or state['recovery'] != change['recovery']:
+                raise ValueError('binding no longer current')
+            return {'ok': True, 'binding': {'intent': intent, 'generation': generation}}
+        if change['phase'] != 'prepared' or expired(change):
+            if change['phase'] == 'prepared':
+                abort_rebind(state)
+            raise ValueError('binding authorization expired')
+    else:
+        if change and change['phase'] == 'prepared':
+            if not expired(change):
+                raise ValueError('another binding pending')
+            abort_rebind(state)
+        if pending(state) or state.get('cleanup') and state['cleanup']['reset']:
+            raise ValueError('wait for recovery or reset cleanup')
+        if state['generation'] == generation:
+            raise ValueError('different intent for current generation')
+        rebind_lease(state, request)
+        deadline = request['expires']
+        if type(deadline) not in (float, int) or not time.time() < deadline <= time.time() + 600:
+            raise ValueError('binding authorization expired')
+        profile = str(uuid.uuid5(uuid.UUID(generation), 'recovery'))
+        change = {'intent': intent, 'generation': generation, 'signature': signature, 'phase': 'prepared',
+                  'recovery': profile, 'created': time.time(), 'deadline': deadline, 'boot': boot(),
+                  'mono_deadline': time.monotonic() + deadline - time.time()}
+        state['binding_change'] = change
+        if profile not in state['owned']:
+            state['owned'].append(profile)
+        save(state)
+    lease = rebind_lease(state, request)
+    stage_profile(change['recovery'], request['recovery'])
+    if expired(change):
+        abort_rebind(state)
+        raise ValueError('binding authorization expired during provisioning')
+    current = active_optional()
+    if expired(change) or lease and expired(lease):
+        abort_rebind(state)
+        raise ValueError('binding authorization expired before commit')
+    previous_owned = set(state['owned']) - {current, change['recovery']}
+    # Association and the exact committed operation become durable BEFORE destructive cleanup.
+    # Retrying an already committed operation never stages credentials or resets preferred Wi-Fi.
+    change['phase'] = 'committed'
+    state.update(generation=generation, recovery=change['recovery'], revision=0, transition=None,
+                 provisioning=None, preferred=current, boot_seen=boot(), restoration=None, last_trial=None)
+    defer_cleanup(state, previous_owned)
+    save(state)
+    return {'ok': True, 'binding': {'intent': intent, 'generation': generation}}
+
+
 def recover(state):
     journal = state['transition']
     if journal is None or journal['phase'] not in ('committed', 'recovering'):
@@ -170,6 +280,7 @@ def recover(state):
             else:
                 up(journal['recovery'])
     journal['phase'] = 'recovered'
+    defer_cleanup(state, set(state['owned']) - {state.get('preferred'), state['recovery']})
     save(state)
 
 
@@ -218,6 +329,8 @@ def close_lease(state):
         raise RuntimeError('temporary network teardown not confirmed')
     state['provisioning'] = None
     state['last_trial'] = None  # End this bounded AP cycle; the next attempt resumes hub recovery.
+    if lease.get('candidate') in state['owned']:
+        defer_cleanup(state, [lease['candidate']])
     save(state)
 
 
@@ -228,29 +341,33 @@ def execute(request):
     action = request['action']
     if action == 'status' and set(request) == {'action'}:
         return {'ok': True, 'active': active_safe(), 'state': state}
-    if action in ('bootstrap', 'rebind') and set(request) == {'action', 'generation', 'recovery'}:
+    if action == 'abort-rebind' and set(request) == {'action', 'intent'}:
+        intent = guid(request['intent'])
+        change = state.get('binding_change')
+        if change and change['intent'] == intent:
+            if change['phase'] == 'committed':
+                return {'ok': True, 'binding': {'intent': intent, 'generation': change['generation']}}
+            if change['phase'] == 'prepared':
+                abort_rebind(state)
+        elif change and change['phase'] == 'prepared':
+            raise ValueError('different binding pending')
+        return {'ok': True, 'binding': None}
+    if action == 'rebind' and set(request) == {'action', 'generation', 'recovery', 'intent', 'expires', 'lease'}:
+        return rebind(state, request)
+    change = state.get('binding_change')
+    if change and change['phase'] == 'prepared' and action not in ('reset', 'provisioning-info'):
+        if expired(change):
+            abort_rebind(state)
+        else:
+            raise ValueError('binding change owns the radio')
+    if state.get('cleanup') and state['cleanup']['reset'] and action not in ('reset', 'provisioning-info', 'close-provisioning'):
+        raise ValueError('reset cleanup pending')
+    if action == 'bootstrap' and set(request) == {'action', 'generation', 'recovery'}:
         generation = guid(request['generation'])
-        if action == 'bootstrap' and state['generation'] not in (None, generation):
+        if state['generation'] not in (None, generation):
             raise ValueError('local reset required before reassignment')
-        if action == 'rebind' and state.get('provisioning') and active_safe() == state['provisioning']['profile']:
-            raise ValueError('join destination network before finalizing reassignment')
-        if action == 'rebind' and state['transition'] and state['transition']['phase'] in ('committed', 'recovering'):
-            raise ValueError('wait for coordinated recovery before reassignment')
         profile = str(uuid.uuid5(uuid.UUID(generation), 'recovery'))
         stage_profile(profile, request['recovery'])
-        if action == 'rebind' and state['generation'] != generation:
-            for old_profile in list(state['owned']):
-                if old_profile != active_safe() and old_profile != profile:
-                    nm('connection', 'delete', 'uuid', guid(old_profile))
-                    state['owned'].remove(old_profile)
-            state['provisioning'] = None
-            state['revision'] = 0
-            state['transition'] = None
-        if action == 'rebind':
-            state['last_trial'] = None
-            state['preferred'] = active_optional()
-            state['boot_seen'] = boot()
-            state['restoration'] = None
         state['generation'] = generation
         state['recovery'] = profile
         if profile not in state['owned']:
@@ -321,12 +438,14 @@ def execute(request):
         state['last_trial'] = None
         state['boot_seen'] = boot()
         state['restoration'] = None
+        defer_cleanup(state, set(state['owned']) - {state['preferred'], state['recovery']})
         save(state)
         return {'ok': True}
     if action == 'abandon' and set(request) == {'action', 'id'}:
         journal = state['transition']
         if journal and journal['id'] == guid(request['id']) and journal['phase'] == 'prepared':
             journal['phase'] = 'expired'
+            defer_cleanup(state, [journal['target']])
             save(state)
             return {'ok': True}
         raise ValueError('committed transitions cannot be cancelled')
@@ -399,19 +518,29 @@ def execute(request):
         return {'ok': True}
     if action == 'reset' and set(request) == {'action'}:
         if state['transition'] and state['transition']['phase'] in ('committed', 'recovering'):
-            recover(state)
-        for profile in state['owned']:
-            nm('connection', 'delete', 'uuid', guid(profile))
+            if not expired(state['transition']):
+                raise ValueError('armed recovery deadline has not passed')
+            # Explicit owner reset after the recovery deadline cannot require the unreachable old hub.
         lease = state.get('provisioning')
         if lease and lease['previous'] in state['owned']:
             lease['previous'] = None
-        save({'format': 1, 'generation': None, 'revision': 0, 'owned': [], 'transition': None, 'recovery': None, 'provisioning': lease})
+        if lease:
+            lease['reset_ap'] = True
+        old_cleanup = state.get('cleanup')
+        profiles = set(state['owned']) | set(old_cleanup['profiles'] if old_cleanup else [])
+        state = {'format': 1, 'generation': None, 'revision': 0, 'owned': [], 'transition': None,
+                 'recovery': None, 'provisioning': lease, 'binding_change': None}
+        defer_cleanup(state, profiles, reset=True)
+        save(state)
         return {'ok': True}
     raise ValueError('unsupported operation')
 
 
 def tick():
     state = load()
+    change = state.get('binding_change')
+    if change and change['phase'] == 'prepared' and expired(change):
+        abort_rebind(state)
     lease = state.get('provisioning')
     if pending(state):
         if lease:
@@ -421,10 +550,17 @@ def tick():
     elif lease:
         if expired(lease) or lease.get('phase') == 'restoring':
             close_lease(state)
+        elif state.get('cleanup') and state['cleanup']['reset']:
+            cleanup_one(state)
+        elif lease.get('reset_ap'):
+            up(lease['profile'])  # Owner reset restores setup access only inside its original fixed lease.
+            lease.pop('reset_ap')
+            save(state)
         return
     journal = state['transition']
     if journal and journal['phase'] == 'prepared' and time.time() >= journal['expires']:
         journal['phase'] = 'expired'
+        defer_cleanup(state, [journal['target']])
         save(state)
     elif journal and (journal['phase'] == 'recovering' or journal['phase'] == 'committed' and expired(journal)):
         recover(state)
@@ -453,6 +589,8 @@ def tick():
                 restoration['attempts'] += 1
                 restoration['next'] = time.time() + min(900, 30 * 2 ** min(restoration['attempts'], 5))
             save(state)
+        if not state.get('provisioning') and state.get('cleanup'):
+            cleanup_one(state)
 
 
 def serve():
