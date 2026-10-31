@@ -26,7 +26,7 @@ Other-player/display GET reuses `GetDisplayState()` membership, including existi
 
 Personal/campaign reads use PNG, `nosniff`, `private, no-store`, without original filenames or filesystem paths. Missing authorized assets fall back to neutral defaults. Revocation cannot erase pixels already viewed or captured. Application logo is intentionally public on entry pages and `/branding/logo`; UI labels this before upload. The campaign banner is shared with joined players/paired displays, not anonymous visitors. No arbitrary URL fetching or HTML/CSS branding setting is accepted. Names are bounded/encoded; client refresh uses `textContent` and fixed local routes.
 
-Production private reads and appearance mutations reject HTTP (426); Development is an explicit software-fixture exception. N9 does not include unmerged N8 agent/certificate infrastructure. Future commissioning must supply trusted HTTPS and protect the existing authentication origin. No trust bypass, warning suppression or HTTP fallback is added.
+Production private reads and appearance mutations fail closed without the enabled shared trusted HTTPS origin and fresh matching secure grants; HTTPS transport alone is insufficient. Development is an explicit software-fixture exception. Final writes serialize with revoke/cancel through shared CommitAuthorized; current ownership/reference predicates remain inside the final SQLite transaction. N9 does not include unmerged N8 agent/certificate infrastructure. Future commissioning must supply trusted HTTPS and protect the existing authentication origin. No trust bypass, warning suppression or HTTP fallback is added.
 
 ## Persistence and recovery
 

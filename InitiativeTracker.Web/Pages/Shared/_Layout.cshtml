@@ -40,6 +40,13 @@
 
         <main class="app-main"
               role="main">
+            @inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
+            @if (SecureOrigin.Enabled && User.Identity?.IsAuthenticated == true)
+            {
+                <nav class="container py-2 small" aria-label="Private feature authorization">
+                    <a href="@(SecureOrigin.Origin + "/secure-access")">Secure authorization for private images and character changes</a>
+                </nav>
+            }
             @RenderBody()
         </main>
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Extend the real shared Kestrel fixture with actual N9 media/settings routes.
 
-Trust is confined to the parent fixture's SSLContext. No certificate installation,
-DNS mutation, browser warning bypass or production data is involved.
+Trust is confined to the fixture SSLContext and, when enabled, an isolated Chromium
+process home/NSS database. Existing user/OS trust is never modified; no certificate
+warning bypass, DNS mutation or production data is involved.
 """
 import argparse
 import hashlib
@@ -11,6 +12,10 @@ from http.cookies import SimpleCookie
 from html import unescape
 from pathlib import Path
 import re
+import os
+import ssl
+import subprocess
+import tempfile
 import socket
 import struct
 import sys
@@ -39,6 +44,26 @@ def request(host, context, cookies, path, body=None, content_type=None, origin=T
 
 
 def verify_n9(host, context, cookies, auth_request, auth_post):
+    if os.environ.get('N9_TRUSTED_BROWSER') == '1':
+        # Chromium's supported Linux NSS store, scoped to a new disposable child
+        # process home. Never call update-ca-certificates or touch existing trust.
+        with tempfile.TemporaryDirectory(prefix='n9-browser-trust-') as directory:
+            sandbox = Path(directory)
+            ca = sandbox / 'fixture-ca.pem'
+            ca.write_text(''.join(ssl.DER_cert_to_PEM_cert(cert) for cert in context.get_ca_certs(binary_form=True)))
+            nss = sandbox / 'browser-home/.pki/nssdb'
+            nss.mkdir(parents=True, mode=0o700)
+            subprocess.run(['certutil', '-N', '-d', 'sql:' + str(nss), '--empty-password'], check=True, capture_output=True)
+            subprocess.run(['certutil', '-A', '-d', 'sql:' + str(nss), '-n', 'Disposable N9 test root', '-t', 'C,,', '-i', str(ca)], check=True, capture_output=True)
+            (sandbox / 'disposable-n9-browser-fixture').write_text('loopback only')
+            browser_env = os.environ | {'N9_APP_URL': 'https://' + host + ':5445', 'N9_TLS_SANDBOX': str(sandbox)}
+            subprocess.run(['node', '--test', str(Path(__file__).with_name('n9-live-ui.test.cjs'))], env=browser_env, check=True, timeout=240)
+        # Browser physical recovery intentionally replaced the earlier Python
+        # grant. Obtain fresh physical proof for this separate fixture browser.
+        assert auth_post('BeginDm', {'recovery': 'true'})[0] == 302
+        status, screen = auth_request('/secure-access/physical'); assert status == 200
+        proof = re.search(r'data-physical-code="([^"]+)"', screen)[1]
+        assert auth_post('Redeem', {'Code': proof})[0] == 302
     editor = '/appearance/application/00000000-0000-0000-0000-000000000000'
     banner = '/media/application/00000000-0000-0000-0000-000000000000/banner'
     def token():

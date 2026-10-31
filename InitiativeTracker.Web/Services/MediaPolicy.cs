@@ -1,3 +1,4 @@
+using InitiativeTracker.Web.Infrastructure;
 using System.Security.Claims;
 using InitiativeTracker.Web.Data;
 using Microsoft.EntityFrameworkCore;
@@ -18,11 +19,12 @@ public static class MediaPaths
 }
 
 public sealed class MediaPolicy(IDbContextFactory<InitiativeTrackerDbContext> factory, EncounterStateService encounter,
-    GameSessionService session, PlayerRegistryService players, DeviceRegistryService devices)
+    GameSessionService session, PlayerRegistryService players, DeviceRegistryService devices, IHttpContextAccessor contexts)
 {
     // Null is an intentional uniform denial: unauthorized IDs disclose no existence.
     public MediaSubject? Subject(ClaimsPrincipal user, string scope, Guid id, bool write)
     {
+        if (!N9PresentationAuthority.HasCurrent(contexts.HttpContext)) return null;
         if (user.Identity?.IsAuthenticated != true) return null;
         if (!Guid.TryParse(user.FindFirstValue("session_id"), out var sessionId) || sessionId != session.CurrentSession.SessionId)
             return null;

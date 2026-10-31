@@ -364,3 +364,10 @@ FodyWeavers.xsd
 
 # Initiative Tracker runtime data
 InitiativeTracker.Web/App_Data/
+# HTTPS private runtime material (never release or commit)
+*.pfx
+*.p12
+*.key
+*.pem
+.nuget-test/
+https-infra/**/__pycache__/

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Optional compatibility wrapper. Main settings use the built-in Python adapter directly.
+# REVIEW ONLY: installing backend/plugin/credentials and invoking --apply need approval.
+set -eu
+exec /usr/bin/python3 /usr/local/lib/initiativetracker-https/certbot_adapter.py renew \
+    --config /etc/initiativetracker-https/settings.json --apply

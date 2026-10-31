@@ -1,0 +1,13 @@
+@page "/secure-access/physical"
+@model InitiativeTracker.Web.Pages.SecureAccess.PhysicalModel
+@{ Layout = null; }
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Physical DM proof</title>
+<style>body{font:1.2rem system-ui;background:#111827;color:#eee;padding:2rem;max-width:55rem;margin:auto}section{overflow-wrap:anywhere;padding:1rem;border:1px solid #456;margin:1rem 0}.code{font:2rem monospace;overflow-wrap:anywhere}</style></head><body>
+<h1>Physical DM authorization</h1><p>Approve only a browser you control. Match its reference before entering its code over trusted HTTPS. Recovery revokes every previous secure approval.</p>
+@foreach (var request in Model.Requests) {
+<section data-request="@request.Id"><p>Browser reference <strong>@request.Reference</strong> · @request.Purpose</p><p class="code" data-physical-code="@request.Code">@request.Code</p><p>Expires @request.Expires.ToString("u"). One use only.</p></section>
+}
+@if (Model.Requests.Count == 0) { <p>No pending DM requests. Start a request at the hub's HTTPS /secure-access page on the browser you want to authorize.</p> }
+<form method="post" asp-page-handler="ClearRequests"><button>Clear pending requests and expired attempts</button></form>
+<p>This screen is available only through trusted HTTPS over loopback. It does not display agent enrollment credentials or change network trust.</p>
+</body></html>

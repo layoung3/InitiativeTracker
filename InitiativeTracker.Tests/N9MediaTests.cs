@@ -29,7 +29,13 @@ public sealed class N9MediaTests : IDisposable
     public N9MediaTests()
     {
         app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
-            .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory));
+            .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory)
+            .ConfigureServices(services =>
+            {
+                // Pruning is invoked explicitly in these storage tests; do not race a timer.
+                foreach(var hosted in services.Where(item=>item.ServiceType==typeof(Microsoft.Extensions.Hosting.IHostedService) && item.ImplementationType==typeof(MediaMaintenanceService)).ToArray())
+                    services.Remove(hosted);
+            }));
         client = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
     }
 
@@ -269,16 +275,16 @@ public sealed class N9MediaTests : IDisposable
         var file=new FormFile(source,0,input.Length,"Upload","photo.png");
         bool authorized=true;
         MediaSubject? Authorize() => authorized ? new("Fixture",owner) : null;
-        var first=Store.ReplaceAsync("character",id,"portrait",file,Authorize);
+        var first=Store.ReplaceAsync("character",id,"portrait",file,Authorize, action => action());
         await source.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Assert.ThrowsAsync<MediaBusyException>(() => Store.ReplaceAsync("character",id,"banner",file,Authorize));
+        await Assert.ThrowsAsync<MediaBusyException>(() => Store.ReplaceAsync("character",id,"banner",file,Authorize, action => action()));
         authorized=false;
         source.Release.TrySetResult();
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => first);
         Assert.Empty(Directory.GetFiles(Store.DirectoryPath));
         authorized=true;
         using var valid=new MemoryStream(input);
-        await Store.ReplaceAsync("character",id,"portrait",new FormFile(valid,0,input.Length,"Upload","photo.png"),Authorize);
+        await Store.ReplaceAsync("character",id,"portrait",new FormFile(valid,0,input.Length,"Upload","photo.png"),Authorize, action => action());
         Assert.NotNull(Store.Read("character",id,"portrait"));
     }
 
@@ -303,6 +309,51 @@ public sealed class N9MediaTests : IDisposable
         Assert.Single(Directory.GetFiles(Store.DirectoryPath));
     }
 
+    [Theory]
+    [InlineData("replace")]
+    [InlineData("remove")]
+    [InlineData("settings")]
+    public async Task RejectedCommitRollsBackAndNeverPrunesReferencedImages(string operation)
+    {
+        var owner=Guid.NewGuid(); var id=Character(owner); SignIn("Player",owner);
+        await Upload(id,Raster(),await Token(id));
+        var settings=app.Services.GetRequiredService<BrandingService>();
+        settings.Save("Original",true, action=>action());
+        Guid previous;
+        Guid inactiveId;
+        using(var db=Factory.CreateDbContext())
+        {
+            previous=db.PresentationAssets.Single().BlobId;
+            var inactive=new PlayerCharacter{PlayerProfileId=owner,Name="Inactive art",IsActive=false};
+            var old=new PresentationAsset{Scope="character",SubjectId=inactive.Id,Kind="portrait",BlobId=Guid.NewGuid(),OwnerProfileId=owner,Length=3};
+            db.AddRange(inactive,old); db.SaveChanges(); inactiveId=inactive.Id;
+            File.WriteAllBytes(Path.Combine(Store.DirectoryPath,old.BlobId.ToString("N")+".png"),new byte[]{1,2,3});
+        }
+        var files=Directory.GetFiles(Store.DirectoryPath).ToDictionary(path=>Path.GetFileName(path),File.ReadAllBytes);
+        int Deny(Func<int> commit)
+        {
+            using var check=Factory.CreateDbContext();
+            Assert.Equal(previous,check.PresentationAssets.Single(x=>x.SubjectId==id).BlobId);
+            Assert.Equal("Original",settings.ApplicationName);
+            throw new UnauthorizedAccessException();
+        }
+        if(operation=="replace")
+        {
+            var input=Raster(200,100); using var stream=new MemoryStream(input);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>Store.ReplaceAsync("character",id,"portrait",new FormFile(stream,0,input.Length,"Upload","fixture.png"),()=>new("Unit storage fixture",owner),Deny));
+        }
+        if(operation=="remove") await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>Store.RemoveAsync("character",id,"portrait",()=>new("Unit storage fixture",owner),Deny));
+        if(operation=="settings") Assert.Throws<UnauthorizedAccessException>(()=>settings.Save("Rejected",false,Deny));
+        using(var check=Factory.CreateDbContext())
+        {
+            Assert.Equal(previous,check.PresentationAssets.Single(x=>x.SubjectId==id).BlobId);
+            Assert.Single(check.PresentationAssets.Where(x=>x.SubjectId==inactiveId));
+            Assert.Equal("Original",check.PresentationSettings.Single().ApplicationName);
+        }
+        Assert.Equal(files.Keys.Order(),Directory.GetFiles(Store.DirectoryPath).Select(Path.GetFileName).Order());
+        foreach(var file in files) Assert.Equal(file.Value,File.ReadAllBytes(Path.Combine(Store.DirectoryPath,file.Key)));
+    }
+
     [Fact]
     public async Task ProductionPrivateMediaRequiresHttps()
     {
@@ -315,7 +366,7 @@ public sealed class N9MediaTests : IDisposable
         Assert.Equal((HttpStatusCode)426,(await http.GetAsync(MediaPaths.CharacterPortrait(id))).StatusCode);
         using var https=production.CreateClient(new WebApplicationFactoryClientOptions{AllowAutoRedirect=false,BaseAddress=new Uri("https://localhost")});
         https.DefaultRequestHeaders.Add("Cookie",client.DefaultRequestHeaders.GetValues("Cookie"));
-        Assert.Equal(HttpStatusCode.OK,(await https.GetAsync(MediaPaths.CharacterPortrait(id))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,(await https.GetAsync(MediaPaths.CharacterPortrait(id))).StatusCode); // HTTPS without the configured foundation grants nothing.
         // TestServer exercises transport policy; this is not actual certificate/TLS validation.
     }
 

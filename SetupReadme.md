@@ -98,3 +98,7 @@ certificates, browser profiles and private keys out of Git, screenshots and PRs.
 Store private backups separately from release artifacts. Read only selected
 configuration metadata when diagnosing; never use `nmcli --show-secrets` in a
 shared transcript.
+
+## Optional shared trusted HTTPS checkpoint
+
+The disabled-by-default [shared HTTPS foundation](docs/https/architecture-security.md) provides direct browser TLS, protected certificate activation/renewal orchestration and local DNS preflight. Read the [certificate/DNS setup guide](docs/https/certificate-dns-setup.md), [staged migration/rollback plan](docs/https/migration-rollback.md) and [validation limits](docs/https/validation.md) before requesting any installation. It does not choose a domain, install a DNS/ACME backend, change either Pi, enable redirects or merge N8/N9.

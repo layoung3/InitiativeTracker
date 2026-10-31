@@ -1,0 +1,53 @@
+name: Shared HTTPS foundation
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  software:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Certificate and local DNS tests (no public issuance)
+        run: python3 -m unittest discover -s https-infra/tests -v
+      - name: Existing network regression tests
+        run: python3 -m unittest discover -s pi-network/tests
+      - name: Install isolated browser test tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/https-browser-tests" playwright@1.58.2
+          "$RUNNER_TEMP/https-browser-tests/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Existing browser script checks
+        env:
+          NODE_PATH: ${{ runner.temp }}/https-browser-tests/node_modules
+        run: node --test scripts/tests/n7-ui.test.cjs
+      - name: Application and TLS contract tests
+        run: dotnet test -c Release --logger 'trx;LogFileName=https-checkpoint.trx'
+      - name: Direct and transitive dependency audit
+        run: |
+          dotnet restore InitiativeTracker.slnx --force -p:NuGetAudit=true -p:NuGetAuditMode=all -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904
+          dotnet list InitiativeTracker.slnx package --vulnerable --include-transitive --format json > dependency-audit.json
+          python3 -c 'import json; d=json.load(open("dependency-audit.json")); assert not any(f.get("topLevelPackages") or f.get("transitivePackages") for p in d["projects"] for f in p.get("frameworks", [])), "Dependency audit findings"; assert not d.get("problems"), "Audit feed failure"'
+      - name: Publish Linux ARM64 without private material
+        run: |
+          dotnet publish InitiativeTracker.Web -c Release -r linux-arm64 --self-contained true -o "$RUNNER_TEMP/https-arm64"
+          test -x "$RUNNER_TEMP/https-arm64/InitiativeTracker.Web"
+          test -z "$(find "$RUNNER_TEMP/https-arm64" -type f \( -name '*.pfx' -o -name '*.key' -o -name '*.pem' \) -print)"
+      - name: Publish app for executable TLS verification
+        run: dotnet publish InitiativeTracker.Web -c Release -o "$RUNNER_TEMP/https-publish"
+      - name: Real Kestrel rotation and rollback with disposable process trust
+        run: python3 https-infra/tests/published_tls_smoke.py --publish "$RUNNER_TEMP/https-publish"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: https-checkpoint-test-evidence
+          path: |
+            **/TestResults/*.trx
+            dependency-audit.json

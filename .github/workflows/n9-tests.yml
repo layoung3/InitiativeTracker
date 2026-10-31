@@ -12,10 +12,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet test --configuration Release
+      - name: Actual integrated application and security tests
+        env:
+          N9_INTEGRATION_HTML_DIRECTORY: ${{ runner.temp }}/n9-integrated-html
+        run: dotnet test --configuration Release --logger 'trx;LogFileName=n9-integrated.trx' --results-directory "$RUNNER_TEMP/n9-integrated-results"
       - name: Audit direct and transitive NuGet dependencies
         run: |
           dotnet list package --include-transitive --vulnerable --format json > /tmp/n9-nuget-audit.json
@@ -59,39 +63,38 @@ jobs:
           $manifest = Get-ChildItem /tmp/n9-release -Recurse -Filter '*.manifest.json' | Select-Object -First 1
           if (!$manifest) { throw 'No release manifest produced' }
           ./scripts/Test-InitiativeTrackerRelease.ps1 -ManifestPath $manifest.FullName
-      - name: Disposable N9 and shared HTTPS integration
-        env:
-          N9_INTEGRATION_HTML_DIRECTORY: ${{ runner.temp }}/n9-integrated-html
-        run: |
-          python3 scripts/tests/n9-https-integration.py --fixture "$RUNNER_TEMP/n9-integrated-source" --evidence "$RUNNER_TEMP/n9-integrated-results"
       - name: Responsive integrated Razor responses
         env:
           NODE_PATH: /tmp/n9-ui/node_modules
           N9_INTEGRATION_HTML_DIRECTORY: ${{ runner.temp }}/n9-integrated-html
-          N9_INTEGRATION_SOURCE_DIRECTORY: ${{ runner.temp }}/n9-integrated-source
+          N9_INTEGRATION_SOURCE_DIRECTORY: ${{ github.workspace }}
         run: node --test scripts/tests/n9-integrated-ui.integration.cjs
-      - name: Published composite Kestrel TLS and restart checks
+      - name: Isolated Chromium certificate test tooling
+        run: sudo apt-get update && sudo apt-get install -y libnss3-tools
+      - name: Published integrated Kestrel TLS and trusted-browser checks
+        env:
+          NODE_PATH: /tmp/n9-ui/node_modules
+          N9_TRUSTED_BROWSER: '1'
+          N9_SCREENSHOTS: ${{ runner.temp }}/n9-trusted-browser-screenshots
         run: |
-          dotnet publish "$RUNNER_TEMP/n9-integrated-source/InitiativeTracker.Web" -c Release -o "$RUNNER_TEMP/n9-integrated-publish"
-          python3 scripts/tests/n9-published-https.py --fixture "$RUNNER_TEMP/n9-integrated-source" --publish "$RUNNER_TEMP/n9-integrated-publish"
+          dotnet publish InitiativeTracker.Web -c Release -o "$RUNNER_TEMP/n9-integrated-publish"
+          python3 scripts/tests/n9-published-https.py --fixture . --publish "$RUNNER_TEMP/n9-integrated-publish"
+      - name: Bind candidate package receipt to source
+        run: git rev-parse HEAD > /tmp/n9-release/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n9-0.1.6-linux-arm64-candidate
+          path: |
+            /tmp/n9-release/**/*.tar.gz
+            /tmp/n9-release/**/*.manifest.json
+            /tmp/n9-release/source-commit.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: n9-shared-https-composite-evidence
-          path: ${{ runner.temp }}/n9-integrated-results/*.trx
-  composite-installer:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Prepare pinned composite source without merging branches
-        run: python3 scripts/tests/n9-https-integration.py --prepare-only --fixture "$RUNNER_TEMP/n9-installer-composite"
-      - name: Resolved private-media and secure-rollback installer fixtures
-        run: |
-          docker build -f "$RUNNER_TEMP/n9-installer-composite/scripts/installation/tests/Dockerfile" -t n9-shared-installer "$RUNNER_TEMP/n9-installer-composite"
-          docker run --rm --network none n9-shared-installer
-          docker run --rm --network none n9-shared-installer shellcheck scripts/install.sh scripts/install-hub.sh scripts/install-satellite.sh hub-updater/runtime/* hub-bootstrap/install-hub-release.sh hub-bootstrap/initiativetracker-sync-hostname
+          name: n9-integrated-evidence
+          path: |
+            ${{ runner.temp }}/n9-integrated-results/*.trx
+            ${{ runner.temp }}/n9-trusted-browser-screenshots/*.png
   arm64-native:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
@@ -99,6 +102,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'

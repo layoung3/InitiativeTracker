@@ -32,7 +32,7 @@ public sealed class MediaStore
     }
 
     public async Task ReplaceAsync(string scope, Guid subjectId, string kind, IFormFile upload,
-        Func<MediaSubject?> authorize, CancellationToken cancellationToken = default)
+        Func<MediaSubject?> authorize, Func<Func<int>,int> commitAuthorized, CancellationToken cancellationToken = default)
     {
         if (!MediaPaths.IsAllowed(scope, kind) || authorize() is null) throw new UnauthorizedAccessException();
         if (!AllowsPersistentWrites) throw new MediaValidationException("Configure persistent Tracker:DataDirectory outside the application directory before changing images.");
@@ -59,19 +59,22 @@ public sealed class MediaStore
             var image = normalizer.Normalize(input, kind);
             cancellationToken.ThrowIfCancellationRequested();
             var subject = authorize() ?? throw new UnauthorizedAccessException();
-            using var db = factory.CreateDbContext();
-            Prune(db);
-            var row = db.PresentationAssets.Find(scope, subjectId, kind);
-            var previousId = row?.BlobId;
-            var previousPath = previousId.HasValue ? BlobPath(previousId.Value) : null;
-            var previousBytes = previousPath is not null && File.Exists(previousPath)
-                && !File.GetAttributes(previousPath).HasFlag(FileAttributes.ReparsePoint) ? new FileInfo(previousPath).Length : 0;
-            var rows = db.PresentationAssets.AsNoTracking().ToList();
-            var owned = rows.Where(x => x.OwnerProfileId == subject.OwnerProfileId).ToList();
-            if ((row is null && (rows.Count >= MaxAssets || (subject.OwnerProfileId.HasValue && owned.Count >= MaxProfileAssets)))
-                || (subject.OwnerProfileId.HasValue && owned.Sum(x => x.Length) - (row?.Length ?? 0) + image.Bytes.Length > MaxProfileBytes)
-                || StoredBytes() - previousBytes + image.Bytes.Length > MaxStorageBytes)
-                throw new MediaValidationException("Image storage limit reached. Remove an unused portrait or banner first.");
+            PresentationAsset? previous;
+            using (var snapshot = factory.CreateDbContext())
+            {
+                LimitDatabaseWait(snapshot);
+                previous = snapshot.PresentationAssets.AsNoTracking().SingleOrDefault(x => x.Scope == scope && x.SubjectId == subjectId && x.Kind == kind);
+                var rows = snapshot.PresentationAssets.AsNoTracking().ToList();
+                var owned = rows.Where(x => x.OwnerProfileId == subject.OwnerProfileId).ToList();
+                var oldPath = previous is null ? null : BlobPath(previous.BlobId);
+                var oldBytes = oldPath is not null && File.Exists(oldPath)
+                    && !File.GetAttributes(oldPath).HasFlag(FileAttributes.ReparsePoint) ? new FileInfo(oldPath).Length : 0;
+                if ((previous is null && (rows.Count >= MaxAssets || (subject.OwnerProfileId.HasValue && owned.Count >= MaxProfileAssets)))
+                    || (subject.OwnerProfileId.HasValue && owned.Sum(x => x.Length) - (previous?.Length ?? 0) + image.Bytes.Length > MaxProfileBytes)
+                    || StoredBytes() - oldBytes + image.Bytes.Length > MaxStorageBytes)
+                    throw new MediaValidationException("Image storage limit reached. Remove an unused portrait or banner first.");
+            }
+            var previousId = previous?.BlobId;
             var blobId = Guid.NewGuid();
             var temporary = Path.Combine(DirectoryPath, blobId.ToString("N") + ".tmp");
             var destination = BlobPath(blobId);
@@ -85,23 +88,40 @@ public sealed class MediaStore
                     output.Flush(flushToDisk: true);
                 }
                 File.Move(temporary, destination);
-                if (row is null)
+                cancellationToken.ThrowIfCancellationRequested();
+                // No write transaction is held while waiting for the shared gate.
+                // Only bounded database ownership/CAS checks and the atomic write run inside.
+                commitAuthorized(() =>
                 {
-                    row = new PresentationAsset { Scope = scope, SubjectId = subjectId, Kind = kind };
-                    db.PresentationAssets.Add(row);
-                }
-                row.BlobId = blobId;
-                row.OwnerProfileId = subject.OwnerProfileId;
-                row.Width = image.Width;
-                row.Height = image.Height;
-                row.Length = image.Bytes.Length;
-                row.UpdatedAtUtc = DateTime.UtcNow;
-                db.SaveChanges();
+                    using var db = factory.CreateDbContext();
+                    LimitDatabaseWait(db);
+                    using var transaction = db.Database.BeginTransaction();
+                    DemandOwnership(db, scope, subjectId, subject.OwnerProfileId);
+                    var row = db.PresentationAssets.Find(scope, subjectId, kind);
+                    if (row?.BlobId != previousId || row?.OwnerProfileId != previous?.OwnerProfileId)
+                        throw new UnauthorizedAccessException();
+                    if (row is null)
+                    {
+                        row = new PresentationAsset { Scope = scope, SubjectId = subjectId, Kind = kind };
+                        db.PresentationAssets.Add(row);
+                    }
+                    row.BlobId = blobId;
+                    row.OwnerProfileId = subject.OwnerProfileId;
+                    row.Width = image.Width;
+                    row.Height = image.Height;
+                    row.Length = image.Bytes.Length;
+                    row.UpdatedAtUtc = DateTime.UtcNow;
+                    var changed = db.SaveChanges();
+                    transaction.Commit();
+                    return changed;
+                });
             }
             catch
             {
+                // Transaction disposal precedes this handler. An ambiguous provider
+                // failure must never cause deletion of a referenced candidate.
                 TryDelete(temporary);
-                TryDelete(destination);
+                DeleteCandidateIfUnreferenced(blobId);
                 throw;
             }
             if (previousId.HasValue) TryDelete(BlobPath(previousId.Value));
@@ -109,21 +129,36 @@ public sealed class MediaStore
         finally { gate.Release(); }
     }
 
-    public async Task RemoveAsync(string scope, Guid id, string kind, Func<MediaSubject?> authorize, CancellationToken cancellationToken = default)
+    public async Task RemoveAsync(string scope, Guid id, string kind, Func<MediaSubject?> authorize, Func<Func<int>,int> commitAuthorized, CancellationToken cancellationToken = default)
     {
         if (!MediaPaths.IsAllowed(scope, kind) || authorize() is null) throw new UnauthorizedAccessException();
         if (!AllowsPersistentWrites) throw new MediaValidationException("Configure persistent Tracker:DataDirectory outside the application directory before changing images.");
         if (!await gate.WaitAsync(0, cancellationToken)) throw new MediaBusyException();
         try
         {
-            if (authorize() is null) throw new UnauthorizedAccessException();
-            using var db = factory.CreateDbContext();
-            var row = db.PresentationAssets.Find(scope, id, kind);
-            if (row is null) return;
-            db.Remove(row);
-            db.SaveChanges();
-            TryDelete(BlobPath(row.BlobId));
-            Prune(db);
+            var subject = authorize() ?? throw new UnauthorizedAccessException();
+            PresentationAsset? previous;
+            using (var snapshot = factory.CreateDbContext())
+            {
+                LimitDatabaseWait(snapshot);
+                previous = snapshot.PresentationAssets.AsNoTracking().SingleOrDefault(x => x.Scope == scope && x.SubjectId == id && x.Kind == kind);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            commitAuthorized(() =>
+            {
+                using var db = factory.CreateDbContext();
+                LimitDatabaseWait(db);
+                using var transaction = db.Database.BeginTransaction();
+                DemandOwnership(db, scope, id, subject.OwnerProfileId);
+                var row = db.PresentationAssets.Find(scope, id, kind);
+                if (row?.BlobId != previous?.BlobId || row?.OwnerProfileId != previous?.OwnerProfileId)
+                    throw new UnauthorizedAccessException();
+                var changed = 0;
+                if (row is not null) { db.Remove(row); changed = db.SaveChanges(); }
+                transaction.Commit();
+                return changed;
+            });
+            if (previous is not null) TryDelete(BlobPath(previous.BlobId));
         }
         finally { gate.Release(); }
     }
@@ -179,6 +214,39 @@ public sealed class MediaStore
             var extension = Path.GetExtension(path);
             if (extension is not (".png" or ".tmp") || !Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out var id)) continue;
             if (extension == ".tmp" || !referenced.Contains(id)) TryDelete(path);
+        }
+    }
+
+    private static void DemandOwnership(InitiativeTrackerDbContext db, string scope, Guid id, Guid? owner)
+    {
+        var matches = scope switch
+        {
+            "character" => owner.HasValue && db.PlayerCharacters.AsNoTracking().Any(x => x.Id == id && x.IsActive && x.PlayerProfileId == owner.Value),
+            "profile" => owner == id && db.PlayerProfiles.AsNoTracking().Any(x => x.Id == id),
+            "application" => id == Guid.Empty && owner is null,
+            _ => false
+        };
+        if (!matches) throw new UnauthorizedAccessException();
+    }
+
+    private static void LimitDatabaseWait(InitiativeTrackerDbContext db)
+    {
+        db.Database.SetCommandTimeout(1);
+        if (db.Database.GetDbConnection() is Microsoft.Data.Sqlite.SqliteConnection sqlite)
+            sqlite.DefaultTimeout = 1;
+    }
+
+    private void DeleteCandidateIfUnreferenced(Guid id)
+    {
+        try
+        {
+            using var check = factory.CreateDbContext();
+            LimitDatabaseWait(check);
+            if (!check.PresentationAssets.AsNoTracking().Any(x => x.BlobId == id)) TryDelete(BlobPath(id));
+        }
+        catch (Exception exception) when (exception is System.Data.Common.DbException or IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Candidate cleanup deferred because its reference could not be confirmed.");
         }
     }
 

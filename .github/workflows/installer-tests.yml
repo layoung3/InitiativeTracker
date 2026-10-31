@@ -7,6 +7,8 @@ on:
       - 'hub-updater/**'
       - 'hub-bootstrap/**'
       - 'pi-network/**'
+      - 'https-infra/**'
+      - 'docs/https/**'
       - '.github/workflows/installer-tests.yml'
       - 'docs/N9-*.md'
   workflow_dispatch:
@@ -19,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - run: python3 -m unittest discover -s pi-network/tests
       - run: docker build -f scripts/installation/tests/Dockerfile -t initiativetracker-installer-tests .
       - run: docker run --rm --network none initiativetracker-installer-tests

@@ -11,8 +11,9 @@
     </div>
     @if (TempData["AppearanceNotice"] is string notice) { <p class="alert alert-success" role="status">@notice</p> }
     <div asp-validation-summary="All" class="text-danger mb-3" role="alert"></div>
-    @if (Model.RequiresHttps) { <p class="alert alert-warning">Image changes require a trusted HTTPS connection. Open the hub's configured HTTPS address.</p> }
+    @if (Model.RequiresHttps) { <p class="alert alert-warning">Private images and changes require configured trusted HTTPS and fresh browser approval through Secure authorization. HTTPS alone and ordinary game sign-in do not grant permission.</p> }
     @if (!Model.HasPersistentStorage) { <p class="alert alert-warning">Configure a persistent data directory outside the application directory before saving images or branding.</p> }
+    <p class="small text-muted">Private images and changes require fresh Secure authorization on the trusted HTTPS origin; ordinary game sign-in or HTTPS alone is insufficient.</p>
     <p>PNG or JPEG, up to 5 MiB, 4096 pixels per side and 12 million total pixels. Images are resized and saved without embedded metadata.</p>
     <p class="small text-muted">@(Model.Scope == "profile" ? "Player portraits are private to you and the DM." : Model.Scope == "character" ? "Character art is private to its owner and the DM until the character is visible in the current encounter." : "The logo is public on application entry pages. The campaign banner is shared with joined players and paired displays on this hub; this setting applies to one installation.")</p>
     @if (Model.Scope == "application")
@@ -21,7 +22,7 @@
             <label asp-for="ApplicationName" class="form-label">Application name</label>
             <input asp-for="ApplicationName" maxlength="80" required class="form-control mb-3" />
             <label class="form-check mb-3"><input asp-for="ShowApplicationLogo" class="form-check-input" /> Show branding on application entry pages</label>
-            <button type="submit" class="btn btn-primary align-self-start" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Save branding</button>
+            <button type="submit" class="btn btn-primary align-self-start" disabled="@(Model.RequiresHttps || Model.RequiresSecureAuthorization || !Model.HasPersistentStorage)">Save branding</button>
         </form>
     }
     <div class="tracker-media-grid">
@@ -35,11 +36,11 @@
                     <input type="hidden" name="kind" value="@kind" />
                     <label class="form-label" for="upload-@kind">Choose @kind</label>
                     <input type="file" name="Upload" id="upload-@kind" accept="image/png,image/jpeg" required class="form-control mb-3" />
-                    <button type="submit" class="btn btn-primary" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Upload @kind</button>
+                    <button type="submit" class="btn btn-primary" disabled="@(Model.RequiresHttps || Model.RequiresSecureAuthorization || !Model.HasPersistentStorage)">Upload @kind</button>
                 </form>
                 <form method="post" asp-page-handler="Remove">
                     <input type="hidden" name="kind" value="@kind" />
-                    <button type="submit" class="btn btn-outline-secondary" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Restore default @kind</button>
+                    <button type="submit" class="btn btn-outline-secondary" disabled="@(Model.RequiresHttps || Model.RequiresSecureAuthorization || !Model.HasPersistentStorage)">Restore default @kind</button>
                 </form>
             </section>
         }

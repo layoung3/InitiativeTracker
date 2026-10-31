@@ -1,4 +1,5 @@
 using InitiativeTracker.Web.Services;
+using InitiativeTracker.Web.Infrastructure;
 using InitiativeTracker.Web.Hubs;
 using InitiativeTracker.Web.Data;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ if (args is ["--media-self-test"])
 }
 
 var builder = WebApplication.CreateBuilder(args);
+BrowserTls.Configure(builder);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -84,6 +86,8 @@ builder.Services.AddSingleton<NetworkCommandBridge>();
 builder.Services.AddSingleton<CharacterService>();
 builder.Services.AddSingleton<BrandingService>();
 builder.Services.AddSingleton<ImageNormalizer>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<N9PresentationCommitter>();
 builder.Services.AddSingleton<MediaPolicy>();
 builder.Services.AddSingleton(provider => new MediaStore(
     provider.GetRequiredService<IDbContextFactory<InitiativeTrackerDbContext>>(),
@@ -312,6 +316,7 @@ builder.Services
             };
     });
 
+SecureAccess.Configure(builder, dataDirectory);
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
@@ -330,7 +335,8 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    // HSTS is deliberately deferred during the dual-origin HTTPS migration.
+    if (!app.Services.GetRequiredService<BrowserTlsSettings>().Enabled) app.UseHsts();
 }
 
 if (builder.Configuration
@@ -340,9 +346,12 @@ if (builder.Configuration
     app.UseHttpsRedirection();
 }
 
+app.Use(BrowserTls.Guard);
+
 app.UseRouting();
 
 app.UseAuthentication();
+app.Use(SecureAccess.Guard);
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -611,5 +620,11 @@ app.MapPost(
         policy =>
             policy.RequireRole(
                 "Player"));
+
+app.MapGet("/system/https-status", (HttpContext context, BrowserCertificateStore certificates) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Json(new { ready = certificates.TrustedRequest(context), generation = certificates.Generation, expiresAtUtc = certificates.ExpiresAtUtc });
+}).AllowAnonymous();
 
 app.Run();

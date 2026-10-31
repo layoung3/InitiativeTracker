@@ -555,6 +555,60 @@ transaction_done=false
 service_stopped=false
 activated=false
 
+# Fence backup-era browser grants before any restored app can authenticate them.
+# shellcheck disable=SC2317
+fence_restored_secure_access()
+{
+    /usr/bin/python3 -I - "$1" <<'PY_SECURE_FENCE'
+# BEGIN SECURE ROLLBACK FENCE
+import os
+from pathlib import Path
+import secrets
+import sys
+
+root = Path(sys.argv[1])
+if not root.is_absolute():
+    raise SystemExit('Rollback data path must be absolute.')
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+root_fd = os.open(root, flags)
+try:
+    owner = os.fstat(root_fd)
+    try:
+        os.mkdir('secure-access', 0o700, dir_fd=root_fd)
+    except FileExistsError:
+        pass
+    secure_fd = os.open('secure-access', flags, dir_fd=root_fd)
+    try:
+        os.fchmod(secure_fd, 0o700)
+        os.fchown(secure_fd, owner.st_uid, owner.st_gid)
+        temporary = '.rollback-fence-' + secrets.token_hex(16)
+        marker = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         0o600, dir_fd=secure_fd)
+        try:
+            os.fchown(marker, owner.st_uid, owner.st_gid)
+            os.write(marker, b'rollback-requires-fresh-physical-recovery\n')
+            os.fsync(marker)
+        finally:
+            os.close(marker)
+        # Replacement never follows a stale marker symlink or truncates a hardlink.
+        os.replace(temporary, 'mutation.pending', src_dir_fd=secure_fd, dst_dir_fd=secure_fd)
+        os.fsync(secure_fd)
+    finally:
+        os.close(secure_fd)
+    os.fsync(root_fd)
+finally:
+    os.close(root_fd)
+# Persist the restored directory entry, including any freshly created ancestors.
+for parent in root.parents:
+    descriptor = os.open(parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+# END SECURE ROLLBACK FENCE
+PY_SECURE_FENCE
+}
+
 # Invoked by cleanup through the EXIT trap after activation.
 # shellcheck disable=SC2317
 rollback()
@@ -567,6 +621,7 @@ rollback()
     install -d -o initiativetracker -g initiativetracker -m 0750 "$restored" || return 1
     tar -xzf "$backup_path" -C "$restored" || return 1
     chown -R initiativetracker:initiativetracker "$restored" || return 1
+    fence_restored_secure_access "$restored" || return 1
     # Prepare/verify the complete restored tree before moving the failed data.
     mv "$DATA_DIRECTORY" "$failed_data_directory" || return 1
     if ! mv "$restored" "$DATA_DIRECTORY"; then

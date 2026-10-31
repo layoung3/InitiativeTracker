@@ -1,3 +1,4 @@
+using InitiativeTracker.Web.Infrastructure;
 using InitiativeTracker.Web.Hubs;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +14,7 @@ namespace InitiativeTracker.Web.Pages.Appearance;
 [RequestSizeLimit(6 * 1024 * 1024)]
 [RequestFormLimits(MultipartBodyLengthLimit = 5 * 1024 * 1024 + 65536)]
 public sealed class IndexModel(MediaPolicy policy, MediaStore store, BrandingService branding,
-    IWebHostEnvironment environment, IHubContext<EncounterHub> hub, ILogger<IndexModel> logger) : PageModel
+    IWebHostEnvironment environment, IHubContext<EncounterHub> hub, ILogger<IndexModel> logger, N9PresentationCommitter commits) : PageModel
 {
     public string Scope { get; private set; } = "";
     public Guid SubjectId { get; private set; }
@@ -21,6 +22,7 @@ public sealed class IndexModel(MediaPolicy policy, MediaStore store, BrandingSer
     public string[] Kinds => Scope == "application" ? ["logo", "banner"] : Scope == "profile" ? ["portrait"] : ["portrait", "banner"];
     public bool RequiresHttps => !Request.IsHttps && !environment.IsDevelopment();
     public bool HasPersistentStorage => store.AllowsPersistentWrites;
+    public bool RequiresSecureAuthorization => !N9PresentationAuthority.HasCurrent(HttpContext);
     [BindProperty] public IFormFile? Upload { get; set; }
     [BindProperty] public string? ApplicationName { get; set; }
     [BindProperty] public bool ShowApplicationLogo { get; set; }
@@ -56,7 +58,7 @@ public sealed class IndexModel(MediaPolicy policy, MediaStore store, BrandingSer
         {
             if (Upload is null) throw new MediaValidationException("Choose a PNG or JPEG image.");
             await store.ReplaceAsync(scope, subjectId, kind, Upload,
-                () => policy.Subject(User, scope, subjectId, write: true), cancellationToken);
+                () => policy.Subject(User, scope, subjectId, write: true), commits.Commit, cancellationToken);
             return await Changed(scope, subjectId);
         }
         catch (UnauthorizedAccessException) { return NotFound(); }
@@ -75,13 +77,13 @@ public sealed class IndexModel(MediaPolicy policy, MediaStore store, BrandingSer
         if (!Load(scope, subjectId) || !MediaPaths.IsAllowed(scope, kind)) return NotFound();
         try
         {
-            await store.RemoveAsync(scope, subjectId, kind, () => policy.Subject(User, scope, subjectId, write: true), cancellationToken);
+            await store.RemoveAsync(scope, subjectId, kind, () => policy.Subject(User, scope, subjectId, write: true), commits.Commit, cancellationToken);
             return await Changed(scope, subjectId);
         }
         catch (UnauthorizedAccessException) { return NotFound(); }
         catch (MediaBusyException exception) { return Failure(exception.Message, 429); }
         catch (MediaValidationException exception) { return Failure(exception.Message, 400); }
-        catch (Exception exception) when (exception is IOException or Microsoft.EntityFrameworkCore.DbUpdateException)
+        catch (Exception exception) when (exception is IOException or Microsoft.Data.Sqlite.SqliteException or Microsoft.EntityFrameworkCore.DbUpdateException)
         {
             logger.LogWarning(exception, "Image removal could not be saved.");
             return Failure("Image could not be removed. Try again.",503);
@@ -93,8 +95,13 @@ public sealed class IndexModel(MediaPolicy policy, MediaStore store, BrandingSer
         if (RequiresHttps) return StatusCode(426);
         if (!Load(scope, subjectId) || scope != "application") return NotFound();
         if (!HasPersistentStorage) return Failure("Configure persistent Tracker:DataDirectory outside the application directory before saving branding.",400);
-        try { branding.Save(ApplicationName ?? "", ShowApplicationLogo); return await Changed(scope, subjectId); }
+        try { branding.Save(ApplicationName ?? "", ShowApplicationLogo, commits.Commit); return await Changed(scope, subjectId); }
         catch (MediaValidationException exception) { return Failure(exception.Message, 400); }
+        catch (Exception exception) when (exception is IOException or Microsoft.Data.Sqlite.SqliteException or Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            logger.LogWarning(exception, "Branding could not be saved.");
+            return Failure("Branding could not be saved. Try again.", 503);
+        }
     }
 
     private IActionResult Failure(string message, int status)
