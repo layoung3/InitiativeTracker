@@ -29,6 +29,8 @@ class CertbotAdapterTests(unittest.TestCase):
     def setUp(self):
         self.temp_case = tempfile.TemporaryDirectory(prefix='it-acme-case-')
         self.root = Path(self.temp_case.name)
+        self.ambient_patch = patch.object(a, 'ambient_config_paths', return_value=[self.root / 'ambient.ini'])
+        self.ambient_patch.start()
         self.backend = self.root / 'fake-certbot'
         # A real process implements the CLI fixture, without Certbot/plugin/CA/DNS access.
         self.backend.write_text('''#!/usr/bin/python3
@@ -80,6 +82,7 @@ finally:
                                'scope_reviewed': True, 'terms_approved': True}}
 
     def tearDown(self):
+        self.ambient_patch.stop()
         self.temp_case.cleanup()
 
     def execute(self, action, **kw):
@@ -235,6 +238,15 @@ finally:
         ambient = self.root / 'ambient.ini'
         ambient.symlink_to(self.root / 'missing')
         with patch.object(a, 'ambient_config_paths', return_value=[ambient]):
+            with self.assertRaises(a.f.Rejected):
+                self.execute('issue', apply=True)
+        self.assertFalse((self.root / 'argv.json').exists())
+
+    def test_writable_ambient_parent_is_rejected_even_when_config_absent(self):
+        directory = self.root / 'untrusted-default'
+        directory.mkdir(mode=0o700)
+        directory.chmod(0o770)
+        with patch.object(a, 'ambient_config_paths', return_value=[directory / 'cli.ini']):
             with self.assertRaises(a.f.Rejected):
                 self.execute('issue', apply=True)
         self.assertFalse((self.root / 'argv.json').exists())

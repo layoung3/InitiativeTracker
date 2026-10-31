@@ -152,6 +152,12 @@ def reject_ambient_config():
     for path in ambient_config_paths():
         if os.path.lexists(path):
             raise f.Rejected('Ambient Certbot configuration requires an isolated issuer environment')
+        # Prevent an untrusted account creating a default file after this check.
+        # Trusted administrator changes during the run remain outside this boundary.
+        for parent in path.parents:
+            if os.path.lexists(parent):
+                control_path(parent, directory=True)
+                break
 
 
 def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_certificate):
