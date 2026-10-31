@@ -54,6 +54,8 @@
                 align-items-center">
 
                 <div>
+                    <img src="@InitiativeTracker.Web.Services.MediaPaths.ProfilePortrait(profile.ProfileId)" class="tracker-portrait" data-tracker-media alt="Player portrait" />
+                    <a href="/appearance/profile/@profile.ProfileId" class="btn btn-sm btn-outline-secondary">Player portrait</a>
                     <strong>
                         @profile.PlayerName
                     </strong>
@@ -111,6 +113,8 @@
                             align-items-center">
 
                             <div>
+                                <img src="@InitiativeTracker.Web.Services.MediaPaths.CharacterPortrait(character.CharacterId)" class="tracker-portrait" data-tracker-media alt="Character portrait" />
+                                <a href="/appearance/character/@character.CharacterId" class="btn btn-sm btn-outline-secondary">Portrait &amp; banner</a>
                                 @character.CharacterName
 
                                 @if (character.IsInEncounter)

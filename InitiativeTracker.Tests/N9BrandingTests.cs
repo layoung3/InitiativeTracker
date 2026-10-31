@@ -6,6 +6,25 @@ namespace InitiativeTracker.Tests;
 
 public sealed class N9BrandingTests
 {
+    [Fact]
+    public async Task SuppliedOriginalLogoIsServedUnchanged()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "n9-logo-" + Guid.NewGuid());
+        try
+        {
+            using var app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+                .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory));
+            using var client = app.CreateClient();
+            var bytes = await client.GetByteArrayAsync("/images/colophon.png");
+            Assert.Equal(73110, bytes.Length);
+            Assert.Equal("17822fd1b2b7f54f3b084ce19b24d51f50f30e0495529ba8679586145def40b1",
+                Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)));
+            var html = await client.GetStringAsync("/join");
+            Assert.Contains("src=\"/branding/logo\"", html);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
     [Theory]
     [InlineData(null, "Initiative Tracker")]
     [InlineData("  Table of Stars  ", "Table of Stars")]
@@ -43,7 +62,7 @@ public sealed class N9BrandingTests
                 .UseSetting("Branding:ShowApplicationLogo", "false"));
             using var client = app.CreateClient();
             var html = await client.GetStringAsync("/join");
-            Assert.DoesNotContain("tracker-brand-name", html);
+            Assert.Matches("data-optional-brand[^>]*hidden", html);
             Assert.Contains("Join Game", html);
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }

@@ -76,11 +76,15 @@ def main():
     settings = json.loads(Path(sys.argv[1]).read_text())
     home = Path.home()
     state = home / '.local/state' / ('initiativetracker-' + settings['role'])
-    lock = (state / 'kiosk.lock').open('a')
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return 0
+    with (state / 'kiosk.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        return supervise(settings, home)
+
+
+def supervise(settings, home):
     child = None
 
     def stop(signum, frame):

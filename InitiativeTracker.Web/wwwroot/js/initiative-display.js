@@ -504,6 +504,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
 
+        const retainedPortraits = new Map(Array.from(initiativeList.querySelectorAll(".initiative-row"), row =>
+            [row.dataset.combatantId, row.querySelector(".tracker-display-portrait")]));
+
         initiativeList
             .replaceChildren();
 
@@ -523,7 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             initiativeList.appendChild(
                 createCombatantRow(
-                    combatant));
+                    combatant, retainedPortraits.get(String(combatant.id))));
         }
 
 
@@ -578,7 +581,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     function createCombatantRow(
-        combatant) {
+        combatant, retainedPortrait) {
 
         const row =
             document.createElement(
@@ -628,6 +631,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
         name.className =
             "combatant-name";
+
+        const portraitUrl = /^\/media\/character\/[0-9a-f-]{36}\/portrait$/i.test(combatant.portraitUrl ?? "")
+            ? combatant.portraitUrl : "/images/default-character.svg";
+        const portrait = retainedPortrait?.dataset.portraitResource === portraitUrl ? retainedPortrait : document.createElement("img");
+        portrait.width = 48;
+        portrait.height = 48;
+        portrait.className = "tracker-portrait tracker-portrait--combat tracker-display-portrait";
+        portrait.alt = `Portrait of ${combatant.name}`;
+        portrait.dataset.trackerMedia = "";
+        if (portrait.dataset.portraitResource !== portraitUrl) portrait.src = portraitUrl;
+        portrait.dataset.portraitResource = portraitUrl;
+        name.appendChild(portrait);
 
 
         const nameText =

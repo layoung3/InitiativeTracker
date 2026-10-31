@@ -10,17 +10,46 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - run: dotnet test --configuration Release
+      - name: Audit direct and transitive NuGet dependencies
+        run: |
+          dotnet list package --include-transitive --vulnerable --format json > /tmp/n9-nuget-audit.json
+          python3 - <<'PY'
+          import json
+          report=json.load(open('/tmp/n9-nuget-audit.json'))
+          assert report.get('projects'), 'No project audit results'
+          assert not [item for item in report.get('logs',[]) if item.get('level','').lower()=='error' or item.get('code') in ('NU1900','NU1905')], report.get('logs')
+          vulnerable=[]
+          for project in report.get('projects',[]):
+              for framework in project.get('frameworks',[]):
+                  for group in ('topLevelPackages','transitivePackages'):
+                      vulnerable += [p for p in framework.get(group,[]) if p.get('vulnerabilities')]
+          print('Vulnerable direct/transitive packages:',len(vulnerable))
+          assert not vulnerable, vulnerable
+          PY
       - run: python3 -m unittest discover -s pi-network/tests
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --prefix /tmp/n9-ui playwright@1.58.2
+      - run: npm audit --prefix /tmp/n9-ui --audit-level=low
       - run: /tmp/n9-ui/node_modules/.bin/playwright install --with-deps chromium
-      - run: node --test scripts/tests/*.test.cjs
+      - name: Chromium fixtures and actual responsive Razor pages
+        run: |
+          ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --configuration Release --no-launch-profile --project InitiativeTracker.Web --Kestrel:Endpoints:LanHttp:Url=http://127.0.0.1:5189 --Tracker:DataDirectory=/tmp/n9-browser-data --Logging:LogLevel:Default=Warning >/tmp/n9-browser-app.log 2>&1 &
+          n9_app_pid=$!
+          trap 'kill "$n9_app_pid" 2>/dev/null || true; wait "$n9_app_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5189/system/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:5189/system/health >/dev/null
+          N9_APP_URL=http://127.0.0.1:5189 node --test scripts/tests/*.test.cjs
         env:
           NODE_PATH: /tmp/n9-ui/node_modules
       - name: Build and validate self-contained ARM64 release
@@ -30,3 +59,21 @@ jobs:
           $manifest = Get-ChildItem /tmp/n9-release -Recurse -Filter '*.manifest.json' | Select-Object -First 1
           if (!$manifest) { throw 'No release manifest produced' }
           ./scripts/Test-InitiativeTrackerRelease.ps1 -ManifestPath $manifest.FullName
+  arm64-native:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute the published ARM64 native image pipeline
+        run: |
+          test "$(uname -m)" = aarch64
+          dotnet publish InitiativeTracker.Web -c Release -r linux-arm64 --self-contained true -o /tmp/n9-arm64
+          file /tmp/n9-arm64/InitiativeTracker.Web /tmp/n9-arm64/libSkiaSharp.so
+          test -f /tmp/n9-arm64/ThirdPartyNotices/SkiaSharp/LICENSE.txt
+          test -f /tmp/n9-arm64/ThirdPartyNotices/SkiaSharp/THIRD-PARTY-NOTICES.txt
+          /tmp/n9-arm64/InitiativeTracker.Web --media-self-test

@@ -13,10 +13,7 @@
 
         <div class="card-body p-4">
 
-            @if (Branding.ShowApplicationLogo)
-            {
-                <div class="mb-4"><partial name="_Brand" /></div>
-            }
+            <div class="mb-4" data-optional-brand hidden="@(!Branding.ShowApplicationLogo)"><partial name="_Brand" /></div>
 
             <h1 class="h3 mb-3">
                 DM Access

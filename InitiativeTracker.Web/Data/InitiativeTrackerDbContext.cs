@@ -4,6 +4,8 @@ namespace InitiativeTracker.Web.Data;
 
 public class InitiativeTrackerDbContext : DbContext
 {
+    public DbSet<PresentationAsset> PresentationAssets => Set<PresentationAsset>();
+    public DbSet<PresentationSettings> PresentationSettings => Set<PresentationSettings>();
     public InitiativeTrackerDbContext(
         DbContextOptions<InitiativeTrackerDbContext> options)
         : base(options)
@@ -74,6 +76,20 @@ public class InitiativeTrackerDbContext : DbContext
         ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<PresentationAsset>(entity =>
+        {
+            entity.HasKey(x => new { x.Scope, x.SubjectId, x.Kind });
+            entity.Property(x => x.Scope).HasMaxLength(20);
+            entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.HasIndex(x => x.BlobId).IsUnique();
+            entity.HasIndex(x => x.OwnerProfileId);
+        });
+        modelBuilder.Entity<PresentationSettings>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ApplicationName).HasMaxLength(80);
+        });
 
         modelBuilder.Entity<ApplicationSettingsRecord>(
             entity =>

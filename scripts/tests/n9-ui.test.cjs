@@ -56,3 +56,35 @@ test('pairing reports unavailable hub, retries automatically, then preserves exp
         assert.equal(await page.getByRole('status').innerText(), 'Pairing request expired.');
     } finally {await page.close();}
 });
+
+for (const terminal of ['expired', 'rejected']) {
+    test(`pairing serializes slow response bodies and keeps ${terminal} terminal status`, async () => {
+        const page = await browser.newPage();
+        try {
+            await page.route('http://n9.test/', route => route.fulfill({contentType:'text/html',body:'<div id="pairingStatus" role="status">Waiting</div><form id="restartPairingForm" class="d-none"><button>Try Again</button></form><style>.d-none{display:none}</style>'}));
+            await page.goto('http://n9.test/');
+            await page.evaluate(() => {
+                window.calls = 0;
+                window.setInterval = callback => {window.retryPairing = callback;};
+                window.fetch = async () => {
+                    window.calls++;
+                    return {ok:true,json:() => new Promise(resolve => {window.releaseBody = resolve;})};
+                };
+            });
+            await page.addScriptTag({content:source('js/display-pairing.js')});
+            await page.waitForFunction(() => !!window.releaseBody);
+            await page.evaluate(async () => {await window.retryPairing(); await window.retryPairing();});
+            assert.equal(await page.evaluate(() => window.calls), 1, 'slow response must not create overlapping polls');
+            await page.evaluate(terminal => window.releaseBody({status:terminal}), terminal);
+            const expected = terminal === 'expired' ? 'Pairing request expired.' : 'Pairing request was rejected.';
+            await page.getByRole('status').filter({hasText:expected}).waitFor();
+            await page.evaluate(async () => {
+                window.fetch = async () => {window.calls++; throw new Error('late failure');};
+                await window.retryPairing();
+            });
+            assert.equal(await page.evaluate(() => window.calls), 1);
+            assert.equal(await page.getByRole('status').innerText(), expected);
+            assert(await page.getByRole('button', {name:'Try Again'}).isVisible());
+        } finally {await page.close();}
+    });
+}

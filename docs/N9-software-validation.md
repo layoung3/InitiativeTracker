@@ -1,40 +1,31 @@
-# N9 development checkpoint
+# N9 software validation and acceptance boundaries
 
-N9 is **incomplete and not release-ready**. Branch `n9-branding-customization` starts directly from verified remote master `d584b7963ca6bb7916f21d9ee94082f9f2821f34`. PR #4 was read-only verified draft/unmerged with head `93e93d37ffa5dfdc809434751f6b641087d7913c`; no N8 commit was merged or cherry-picked. Neither Pi was accessed.
+N9 is delivered through **draft PR #5**, branch `n9-branding-customization`, based directly on verified remote master `d584b7963ca6bb7916f21d9ee94082f9f2821f34`. N8 PR #4 remains separate, draft/unmerged at `93e93d37ffa5dfdc809434751f6b641087d7913c`. No N8 merge/cherry-pick, Pi access, live migration, trust installation, reboot, merge or deployment occurred. Parent independent review and final exact-head CI evidence belong in the PR description before handoff; neither is replaced by the earlier checkpoint's passing runs.
 
-## Completed independent work
+## Implemented behavior
 
-- Bounded/encoded configurable application name, optional entry-page branding, Setup and pairing brand component, branded empty encounter template.
-- Neutral cloaked-adventurer portrait and quiet mountain banner, distinct from the product logo, on player list/sheet.
-- Automatic unavailable/retry/expiry feedback on pairing. No pairing approval rule changed.
-- Local hub startup feedback while preserving health → graphical checker/updater → health → persistent Chromium, including alternate home and failure exits.
-- Satellite local inert waiting page with independent Chromium profile, bounded process cleanup and existing health/identity probe. No certificate bypass, HTTP fallback or network-controller changes.
-- [Optional boot splash investigation](N9-optional-boot-splash.md), [release/rollback guide](N9-release-rollback.md), [decoder proposal](N9-dependency-proposal.md).
+- The unchanged owner-supplied Colophon PNG appears on Setup, pairing/encounter waiting and optional application entry branding; fresh desktop recipes copy it into local hub/satellite startup assets. [Provenance and checksum](N9-assets.md).
+- A separate neutral fantasy-adventurer silhouette and mountain banner supply missing/default media. The phoenix is never a default character portrait.
+- Players manage their own private profile portrait and character portrait/banner. DM manages any profile/character plus one installation-wide campaign banner and public application logo/name. This is explicitly **one installation**, not multi-campaign management.
+- Real PNG/JPEG decoding, full raster validation, orientation, resizing and fresh PNG encoding; EXIF/GPS/source metadata discarded. Private generated storage survives versioned app updates. Quotas, cleanup and failure-preserving replacement are enforced. [Security review](N9-asset-security-review.md).
+- Personal/campaign reads recheck current authentication and the existing public encounter projection. Private images never enter public static storage; application logo is intentionally public. SignalR refresh contains no character/profile identifiers, and updates images without reloading character forms. Display turn updates reuse portrait elements.
+- Production personal-image reads and all image/settings changes require HTTPS. Development fixtures may use loopback HTTP. Production writes require explicit persistent `Tracker:DataDirectory` outside the application directory. N9 does not install certificates or weaken TLS/identity checks.
+- Hub startup retains health → graphical checker/updater → health → persistent Chromium. Waiting dialogs close before checker/browser and on signals/failure. Satellite waiting uses a separate profile and is reaped before the paired display opens. Existing profiles, Labwc integration and network controllers are preserved.
 
-## Current local results
+## Automated evidence
 
-| Evidence | Result | Scope/limits |
-| --- | --- | --- |
-| .NET Release suite | **81 passed** | Actual Razor/SQLite/authentication tests, including encoded configured branding and optional entry branding. Existing nullable/stackalloc warnings remain. |
-| Hub network suite | **195 passed** | Existing software fixtures; no radio access. |
-| Installer/updater/startup host discovery | **50 discovered: 30 passed, 20 skipped** | Includes 9 new startup/process tests. Existing 20 real-sudo/root tests require disposable container. |
-| Chromium suites | **12 passed** | Eight existing combat/UI tests plus three new responsive branding/default-media fixtures and automatic pairing-error recovery. These are synthetic fixtures, not a claim that uploads exist. |
-| Actual Kestrel page checks | **9 viewport/page checks passed** | Setup, Join, Pair at 390×800, 844×800, 1280×800. Screenshots inspected internally from a disposable database. Current artwork is absent; these establish text-branding layout only. |
-| Shell parse / git whitespace | Passed | `bash -n` launcher and `git diff --check`. Full ShellCheck remains CI. |
-| Self-contained Linux ARM64 publish | Passed | Actual `dotnet publish -r linux-arm64 --self-contained true`; executable identified as ELF AArch64. No ARM64 execution or final package-manifest validation claimed locally. |
+The .NET Release suite includes original combat/network/privacy tests plus native PNG/JPEG, eight EXIF orientations, metadata stripping, CRC/truncation/animated/unsupported input rejection, decompression budgets, CSRF/ownership/stale/revoked access, hidden/off-encounter reads and old URLs, replacement faults, quota/persistence/orphan cleanup, symlink rejection and production HTTPS policy. TestServer transport tests do not prove actual TLS certificate trust.
 
-Docker build fetched the pinned base image but failed during APT because `deb.debian.org` could not resolve inside the build. No privileged-container pass is claimed locally. The existing installer workflow must provide that evidence on the exact final head. A new N9 workflow runs Release .NET, network and Chromium tests plus the existing ARM64 release Build/Test scripts. CI links/results must be added after the final approved feature head exists.
+Browser suites cover existing combat scrolling/visibility/exhaustion behavior, responsive branding/default media, slow pairing-response serialization and actual Kestrel pages. The live flow creates a synthetic player/character, obtains DM display approval, uploads and replaces portraits, verifies changed pixels on the connected display without losing pairing, and changes banners. Actual Setup/Join/Pair, editor, character sheet, DM and display layouts are checked at 390/844/1280 pixels. Screenshots from disposable fixtures are inspected internally, not published as personal-data artifacts.
 
-The SDK was installed under `/tmp` solely for development. Application fixtures use disposable `/tmp` data. No production database migration, service/desktop change, boot edit, trust installation, merge or deployment occurred.
+Installer/startup discovery includes **55 tests**: 35 run on the ordinary host and 20 privileged/root/sudo tests require a disposable container. Persistent dialog processes verify teardown ordering and signal cleanup; supervisor tests cover paired-profile handoff and shutdown while waiting. Container updater tests back up and restore private `Media/` data together with database/identity/key material. Existing shell checks remain required.
 
-## Explicit outstanding implementation blockers
+N9 CI runs full Release tests, direct/transitive NuGet audit, pinned Playwright audit/browser suites, existing ARM64 release Build/Test scripts, and a separate **`ubuntu-24.04-arm` native execution job**. That job verifies AArch64, publishes native assets/notices, and runs `--media-self-test` on the published executable: real PNG/JPEG decode, resize and PNG re-encode without server startup or database/network access. A passing ARM64 job is Linux ARM64 software evidence, not proof of Pi OS/desktop compatibility.
 
-1. **Artwork bytes unavailable.** Library ID `libfile_bb802a9ca6cc8191b96b8dbca3fc208c`, filename `colophon image.png`, reported PNG/73,110 bytes/300×300. Consumer-local materialization and the bounded explicit-destination retry both returned `library file transfer failed: download failed`. No image bytes have been inspected or committed. Do not claim Colophon artwork integration; current component intentionally falls back to text. Do not substitute another phoenix.
-2. **Decoder dependency approval pending.** Proposed `SkiaSharp` + `SkiaSharp.NativeAssets.Linux.NoDependencies` 4.154.0 (MIT). No references added. The task explicitly gates major dependencies. Approval request and exact tradeoffs are in the linked proposal.
-3. **Secure upload/storage/read authorization not implemented yet.** Pending dependency approval, implement actual PNG/JPEG decode/re-encode, orientation/metadata handling, byte/pixel/concurrency limits, generated safe storage under DataDirectory, quota/cleanup/atomic replacement, CSRF and ownership checks. No client-only/MIME-only substitute is acceptable.
-4. **Custom profile/character portraits and character/campaign banners still pending.** The repository has no campaign collection; use an explicitly documented one-installation campaign presentation setting rather than silently claiming multi-campaign support. Default media rendering is only the independent first step.
-5. **Media security and realtime regression matrix still pending.** Owner/DM private access; nonowners/Display only current visible encounter assets using the exact existing public projection. Recheck reads after hide/remove/revoke/session reset, avoid profile enumeration, and test malformed/oversized/animated images, failure-preserving replacements, storage/restart, and live refresh.
+Final local validation passed 112 .NET Release tests, 195 network tests and 24 Chromium tests (14 fixtures plus 10 actual-page/integration tests). Use the final PR's exact-head CI links to corroborate these results and native ARM64 execution. Existing nullable/stackalloc warnings outside N9 remain. Local Docker APT DNS failed, so privileged container evidence comes from GitHub CI; no local privileged-container pass is claimed.
 
-## Physical/infrastructure limits
+## Remaining acceptance limits
 
-All actual Wi-Fi/boot/desktop/touch behavior remains unverified on hardware. Native Zenity image rendering and Labwc handoff require a suitable disposable full-desktop test or later approved cards. No extra Pis are required; the owner currently has no spare cards. A later two-card trial uses full powered-off restoration of the original cards, as documented. OS splash remains optional and separately approval-gated.
+Real Pi/monitor/touch, Zenity artwork rendering, Labwc/Chromium handoff, cold boot and offline/network recovery remain physical/full-desktop integration checks. No spare cards or Pis are currently owned; no purchase is required now. A later approved trial can use the existing two Pis with two disposable microSD cards, reader/private backup storage and full powered-off restoration of original cards. No additional Pis are required.
+
+Trusted HTTPS issuance/configuration and desktop-component installation are separate deployment dependencies. App releases do not replace home-local startup scripts/assets or alter firmware/Plymouth. Optional true OS splash remains an [approval-gated investigation](N9-optional-boot-splash.md). See the [release/rollback guide](N9-release-rollback.md) for later approved trials.

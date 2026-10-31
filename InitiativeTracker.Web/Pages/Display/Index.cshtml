@@ -21,7 +21,7 @@
     <template id="displayBrandTemplate"><partial name="_Brand" /></template>
 
     <div class="display-backdrop"
-         aria-hidden="true"></div>
+         aria-hidden="true"><img src="@InitiativeTracker.Web.Services.MediaPaths.CampaignBanner" class="tracker-campaign-backdrop" data-tracker-media alt="" /></div>
 
     <header class="initiative-header">
 
@@ -165,6 +165,8 @@
 
 
                     <div class="combatant-name">
+
+                        <img src="@combatant.PortraitUrl" class="tracker-portrait tracker-portrait--combat tracker-display-portrait" data-tracker-media data-portrait-resource="@combatant.PortraitUrl" width="48" height="48" alt="Portrait of @combatant.Name" />
 
                         <div class="combatant-name-text">
                             @combatant.Name

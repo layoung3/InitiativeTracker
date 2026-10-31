@@ -784,6 +784,66 @@ namespace InitiativeTracker.Web.Migrations
                     b.ToTable("PlayerProfile", (string)null);
                 });
 
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PresentationAsset", b =>
+                {
+                    b.Property<string>("Scope")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BlobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Length")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("OwnerProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Scope", "SubjectId", "Kind");
+
+                    b.HasIndex("BlobId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerProfileId");
+
+                    b.ToTable("PresentationAssets");
+                });
+
+            modelBuilder.Entity("InitiativeTracker.Web.Data.PresentationSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicationName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ShowApplicationLogo")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PresentationSettings");
+                });
+
             modelBuilder.Entity("InitiativeTracker.Web.Data.RegisteredDevice", b =>
                 {
                     b.Property<Guid>("Id")

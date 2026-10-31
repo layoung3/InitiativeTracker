@@ -30,7 +30,7 @@
 
     <div class="card mb-3 character-header">
 
-        <img src="/images/default-banner.svg" class="tracker-banner" alt="" />
+        <img src="@InitiativeTracker.Web.Services.MediaPaths.CharacterBanner(Model.Character.Id)" class="tracker-banner" data-tracker-media alt="" />
 
         <div class="card-body">
 
@@ -42,7 +42,7 @@
 
 
                 @* Portrait *@
-                <img src="/images/default-character.svg" class="tracker-portrait tracker-portrait--sheet" alt="Portrait of @Model.Character.Name" width="112" height="112" />
+                <img src="@InitiativeTracker.Web.Services.MediaPaths.CharacterPortrait(Model.Character.Id)" class="tracker-portrait tracker-portrait--sheet" data-tracker-media alt="Portrait of @Model.Character.Name" width="112" height="112" />
 
 
                 @* Character identity *@
@@ -80,6 +80,7 @@
 
 
                 <div class="character-header-actions">
+                    <a href="/appearance/character/@Model.Character.Id" class="btn btn-outline-secondary">Portrait &amp; banner</a>
 
                     <a href="/player"
                        class="btn

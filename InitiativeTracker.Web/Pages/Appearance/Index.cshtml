@@ -1,0 +1,47 @@
+@page "/appearance/{scope}/{subjectId:guid}"
+@model InitiativeTracker.Web.Pages.Appearance.IndexModel
+@using InitiativeTracker.Web.Services
+@{
+    ViewData["Title"] = "Portraits and branding";
+}
+<div class="container py-4" style="max-width:1050px">
+    <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between mb-4">
+        <div><h1 class="h3">Portraits and branding</h1><p class="text-muted mb-0">@Model.SubjectName</p></div>
+        <a href="@(User.IsInRole("DM") ? "/dm" : "/player")" class="btn btn-outline-secondary">Back to table</a>
+    </div>
+    @if (TempData["AppearanceNotice"] is string notice) { <p class="alert alert-success" role="status">@notice</p> }
+    <div asp-validation-summary="All" class="text-danger mb-3" role="alert"></div>
+    @if (Model.RequiresHttps) { <p class="alert alert-warning">Image changes require a trusted HTTPS connection. Open the hub's configured HTTPS address.</p> }
+    @if (!Model.HasPersistentStorage) { <p class="alert alert-warning">Configure a persistent data directory outside the application directory before saving images or branding.</p> }
+    <p>PNG or JPEG, up to 5 MiB, 4096 pixels per side and 12 million total pixels. Images are resized and saved without embedded metadata.</p>
+    <p class="small text-muted">@(Model.Scope == "profile" ? "Player portraits are private to you and the DM." : Model.Scope == "character" ? "Character art is private to its owner and the DM until the character is visible in the current encounter." : "The logo is public on application entry pages. The campaign banner is shared with joined players and paired displays on this hub; this setting applies to one installation.")</p>
+    @if (Model.Scope == "application")
+    {
+        <form method="post" asp-page-handler="Settings" class="card card-body mb-4">
+            <label asp-for="ApplicationName" class="form-label">Application name</label>
+            <input asp-for="ApplicationName" maxlength="80" required class="form-control mb-3" />
+            <label class="form-check mb-3"><input asp-for="ShowApplicationLogo" class="form-check-input" /> Show branding on application entry pages</label>
+            <button type="submit" class="btn btn-primary align-self-start" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Save branding</button>
+        </form>
+    }
+    <div class="tracker-media-grid">
+        @foreach (var kind in Model.Kinds)
+        {
+            var url = kind == "logo" ? "/branding/logo" : MediaPaths.Url(Model.Scope, Model.SubjectId, kind);
+            <section class="card card-body">
+                <h2 class="h5 text-capitalize">@(Model.Scope == "application" && kind == "banner" ? "Campaign banner" : kind)</h2>
+                <img src="@url" alt="Current @kind" class="tracker-media-preview" data-tracker-media />
+                <form method="post" enctype="multipart/form-data" asp-page-handler="Upload" class="mb-3">
+                    <input type="hidden" name="kind" value="@kind" />
+                    <label class="form-label" for="upload-@kind">Choose @kind</label>
+                    <input type="file" name="Upload" id="upload-@kind" accept="image/png,image/jpeg" required class="form-control mb-3" />
+                    <button type="submit" class="btn btn-primary" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Upload @kind</button>
+                </form>
+                <form method="post" asp-page-handler="Remove">
+                    <input type="hidden" name="kind" value="@kind" />
+                    <button type="submit" class="btn btn-outline-secondary" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Restore default @kind</button>
+                </form>
+            </section>
+        }
+    </div>
+</div>

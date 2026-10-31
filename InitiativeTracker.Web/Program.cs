@@ -5,11 +5,25 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.RateLimiting;
+
+if (args is ["--media-self-test"])
+{
+    ImageSmokeTest.Run();
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddConcurrencyLimiter("media-forms", limiter => { limiter.PermitLimit = 1; limiter.QueueLimit = 0; });
+    options.OnRejected = async (context, token) =>
+        await context.HttpContext.Response.WriteAsync("Another image request is in progress. Try again shortly.", token);
+});
 
 builder.Services.AddSignalR();
 
@@ -69,6 +83,14 @@ builder.Services.AddSingleton<NetworkStatusService>();
 builder.Services.AddSingleton<NetworkCommandBridge>();
 builder.Services.AddSingleton<CharacterService>();
 builder.Services.AddSingleton<BrandingService>();
+builder.Services.AddSingleton<ImageNormalizer>();
+builder.Services.AddSingleton<MediaPolicy>();
+builder.Services.AddSingleton(provider => new MediaStore(
+    provider.GetRequiredService<IDbContextFactory<InitiativeTrackerDbContext>>(),
+    provider.GetRequiredService<ImageNormalizer>(), provider.GetRequiredService<ILogger<MediaStore>>(), dataDirectory,
+    allowWrites: builder.Environment.IsDevelopment() || (!string.IsNullOrWhiteSpace(configuredDataDirectory)
+        && MediaStore.OutsideApplicationDirectory(dataDirectory, builder.Environment.ContentRootPath))));
+builder.Services.AddHostedService<MediaMaintenanceService>();
 builder.Services.AddSingleton<AppVersionService>();
 
 builder.Services.AddSingleton(
@@ -322,12 +344,28 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapStaticAssets();
 app.MapRazorPages()
    .WithStaticAssets();
 
 app.MapHub<EncounterHub>("/hubs/encounter");
+
+// Product branding is intentionally public; personal/campaign media uses the authorized Razor endpoint.
+app.MapGet("/branding/logo", (HttpContext context, MediaStore media, IWebHostEnvironment environment) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    var custom = media.Read("application", Guid.Empty, "logo");
+    return custom is not null ? Results.File(custom, "image/png")
+        : Results.File(Path.Combine(environment.WebRootPath, "images", "colophon.png"), "image/png");
+}).AllowAnonymous();
+app.MapGet("/branding/info", (BrandingService branding, HttpContext context) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Json(new { name = branding.ApplicationName, showApplicationLogo = branding.ShowApplicationLogo });
+}).AllowAnonymous();
 
 
 app.MapGet(

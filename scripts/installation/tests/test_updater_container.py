@@ -39,6 +39,10 @@ class UpdaterLifecycleTests(unittest.TestCase):
         self.data.mkdir(mode=0o750)
         for name, content in [('database', 'old-database'), ('DataProtection-Keys', 'fixture-key'), ('identity', 'fixture-guid')]:
             (self.data / name).write_text(content)
+        (self.data / 'Media').mkdir(mode=0o700)
+        self.media = self.data / 'Media/0123456789abcdef0123456789abcdef.png'
+        self.media.write_bytes(b'private-old-image-fixture')
+        self.media.chmod(0o600)
         self.manifest = self.incoming / 'new.manifest.json'
         package = self.incoming / 'InitiativeTracker-0.1.6-linux-arm64.tar.gz'
         with tarfile.open(package, 'w:gz') as archive:
@@ -74,6 +78,7 @@ if operation=='stop' and (mode=='stopfail-initial' or (mode=='stopfail-rollback'
     sys.exit(1)
 if operation=='start' and active.startswith('0.1.6'):
     (base/'data/database').write_text('migrated-database')
+    (base/'data/Media/0123456789abcdef0123456789abcdef.png').write_bytes(b'private-new-image-fixture')
     if mode=='startfail-new': sys.exit(1)
 sys.exit(0)
 ''')
@@ -125,6 +130,7 @@ Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps({'status':'he
         with tarfile.open(backup) as archive:
             self.assertEqual(archive.extractfile('./database').read(), b'old-database')
             self.assertEqual(archive.extractfile('./DataProtection-Keys').read(), b'fixture-key')
+            self.assertEqual(archive.extractfile('./Media/0123456789abcdef0123456789abcdef.png').read(), b'private-old-image-fixture')
         result = subprocess.run(['sudo', '-u', 'initiativetracker', 'test', '-x', str(self.app / 'current/InitiativeTracker.Web')])
         self.assertEqual(result.returncode, 0)
         self.assertEqual(stat.S_IMODE((self.app / 'current').resolve().stat().st_mode), 0o755)
@@ -138,6 +144,8 @@ Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps({'status':'he
                 self.assertEqual((self.data / 'database').read_text(), 'old-database')
                 self.assertEqual((self.data / 'identity').read_text(), 'fixture-guid')
                 self.assertEqual((self.data / 'DataProtection-Keys').read_text(), 'fixture-key')
+                self.assertEqual(self.media.read_bytes(), b'private-old-image-fixture')
+                self.assertEqual(stat.S_IMODE(self.media.stat().st_mode), 0o600)
                 failed = next(self.base.glob('data.failed-*'))
                 self.assertEqual((failed / 'database').read_text(), 'migrated-database')
                 shutil.rmtree(self.app / 'releases/0.1.6-linux-arm64')
