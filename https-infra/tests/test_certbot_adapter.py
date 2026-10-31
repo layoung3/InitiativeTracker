@@ -133,6 +133,19 @@ finally:
         self.assertFalse((self.root / 'fixture-challenge').exists())
         self.assertTrue((self.root / 'cleanup-completed').exists())
 
+    def test_shared_orchestrator_uses_real_adapter_export_and_activation(self):
+        self.execute('issue', apply=True)
+        original_execute, original_activate = a.execute, a.f.activate
+        with tempfile.TemporaryDirectory(prefix='it-browser-store-') as browser:
+            value = self.value | {'store': browser, 'port': 5445}
+            with patch.object(a, 'execute', side_effect=lambda v, action, **kw: original_execute(v, action, **kw,
+                    _validator=lambda h, c, k: a.f.validate_certificate(h, c, k, _test_ca=self.fixture / 'root.pem'))), \
+                 patch.object(a.f, 'activate', side_effect=lambda v, c, k, **kw: original_activate(v, c, k, **kw,
+                    _test_ca=self.fixture / 'root.pem', _probe=lambda *args: None)):
+                result = a.f.renew(value, apply=True)
+            self.assertTrue(result['changed'])
+            self.assertTrue((Path(browser) / result['generation'] / 'bundle.pfx').is_file())
+
     def test_missing_initial_lineage_does_not_invoke_renew(self):
         with self.assertRaises(a.f.Rejected):
             self.execute('renew', apply=True)
