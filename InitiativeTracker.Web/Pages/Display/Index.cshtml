@@ -453,3 +453,9 @@
     <script src="~/js/initiative-display.js"
             asp-append-version="true"></script>
 }
+
+@if (Request.Query["satellite"] == "1")
+{
+    <a href="http://127.0.0.1:5081/" aria-label="Satellite setup or reassignment"
+       style="position:fixed;bottom:8px;right:8px;z-index:9999;background:#20252b;color:white;padding:12px;border-radius:8px;font:18px system-ui">Satellite Setup</a>
+}

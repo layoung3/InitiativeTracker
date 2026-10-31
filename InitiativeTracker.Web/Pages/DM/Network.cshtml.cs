@@ -1,4 +1,5 @@
 using InitiativeTracker.Core.Networking;
+using InitiativeTracker.Core.Coordination;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,8 +8,38 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace InitiativeTracker.Web.Pages.Dm;
 
 [Authorize(Roles = "DM")]
-public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands) : PageModel
+public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBridge networkCommands, DeviceCoordinationService coordination, IConfiguration configuration, IWebHostEnvironment environment, IProvisioningHttps browserTls) : PageModel
 {
+    public bool CoordinationEnabled => coordination.Enabled;
+    public bool LocalCredentials => CoordinationEndpoints.Local(HttpContext);
+    public bool CanSubmitSecrets => Request.IsHttps && browserTls.Ready && Request.Host.Host == browserTls.Host;
+    public DeviceCoordinationService.Journal Coordination => coordination.Snapshot;
+    public bool Online(Guid id) => coordination.Online(id);
+    public string? HubPin => LocalCredentials && CoordinationEnabled
+        ? DeviceProtocol.Fingerprint(DeviceProtocol.Certificate(Path.Combine(CoordinationEndpoints.DataDirectory(configuration, environment), "coordination", "hub.pfx"), "InitiativeTracker Hub", true)) : null;
+    [BindProperty] public Guid TransitionId { get; set; }
+    [BindProperty] public string TargetKind { get; set; } = "wifi";
+    [BindProperty] public Guid[] LeaveBehind { get; set; } = [];
+    [BindProperty] public Guid AgentId { get; set; }
+    [BindProperty] public string VerifiedPin { get; set; } = "";
+    public Task<IActionResult> OnPostPrepareAsync(CancellationToken ct) => Coordinate(() => coordination.PrepareAsync(TargetKind, TargetKind == "wifi" ? SavedUuid : null, ct), ct);
+    public Task<IActionResult> OnPostCommitAsync(CancellationToken ct) => Coordinate(() => { coordination.Commit(TransitionId, LeaveBehind, DateTimeOffset.UtcNow); return Task.CompletedTask; }, ct);
+    public Task<IActionResult> OnPostPostponeAsync(CancellationToken ct) => Coordinate(() => { coordination.Postpone(TransitionId); return Task.CompletedTask; }, ct);
+    public Task<IActionResult> OnPostConfirmCoordinatedAsync(CancellationToken ct) => Coordinate(() => coordination.ConfirmAsync(TransitionId, ct), ct);
+    public Task<IActionResult> OnPostApproveAgentAsync(CancellationToken ct) => Coordinate(() =>
+    {
+        if (!LocalCredentials) throw new InvalidOperationException("Approve from the physical hub screen");
+        coordination.Approve(AgentId, VerifiedPin, DateTimeOffset.UtcNow); return Task.CompletedTask;
+    }, ct);
+    public Task<IActionResult> OnPostRevokeAgentAsync(CancellationToken ct) => Coordinate(() => { coordination.Revoke(AgentId); return Task.CompletedTask; }, ct);
+    private async Task<IActionResult> Coordinate(Func<Task> operation, CancellationToken ct)
+    {
+        SetSensitiveResponseHeaders();
+        try { await operation(); CommandResult = "Coordination operation saved."; }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Net.Sockets.SocketException or OperationCanceledException)
+        { ModelState.AddModelError(string.Empty, ex is InvalidOperationException ? ex.Message : "Network bridge unavailable; inspect local status before retrying."); }
+        Status = await networkStatus.GetAsync(ct); return Page();
+    }
     public NetworkStatusService.Snapshot Status { get; private set; } = null!;
     [BindProperty] public string? SelectedSsid { get; set; }
     [BindProperty] public string? HiddenSsid { get; set; }
@@ -28,6 +59,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostValidateAsync(CancellationToken cancellationToken)
     {
+        if (!CanSubmitSecrets) return StatusCode(403);
         SetSensitiveResponseHeaders();
         Status = await networkStatus.GetAsync(cancellationToken);
         var ssid = UseHiddenSsid ? HiddenSsid : SelectedSsid;
@@ -52,6 +84,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostProvisionAsync(CancellationToken cancellationToken)
     {
+        if (!CanSubmitSecrets) return StatusCode(403);
         SetSensitiveResponseHeaders();
         // Clear secret from bound model before rendering any HTML response.
         var ssid = HiddenSsid;
@@ -78,6 +111,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostRotateHotspotPasswordAsync(CancellationToken cancellationToken)
     {
+        if (!CanSubmitSecrets) return StatusCode(403);
         SetSensitiveResponseHeaders();
         var password = NewHotspotPassword;
         var confirmation = ConfirmHotspotPassword;
@@ -101,6 +135,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostBeginReturnAsync(CancellationToken cancellationToken)
     {
+        if (CoordinationEnabled) return BadRequest("Use coordinated switching and confirmation.");
         SetSensitiveResponseHeaders();
         Status = await networkStatus.GetAsync(cancellationToken);
         if (Status.Connection != "InitiativeTracker-Recovery")
@@ -118,6 +153,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostConfirmReturnAsync(CancellationToken cancellationToken)
     {
+        if (CoordinationEnabled) return BadRequest("Use coordinated switching and confirmation.");
         SetSensitiveResponseHeaders();
         Status = await networkStatus.GetAsync(cancellationToken);
         var result = await networkCommands.RunAsync("confirm-return", null, cancellationToken);
@@ -128,6 +164,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostBeginHotspotAsync(CancellationToken cancellationToken)
     {
+        if (CoordinationEnabled) return BadRequest("Use coordinated switching and confirmation.");
         SetSensitiveResponseHeaders();
         Status = await networkStatus.GetAsync(cancellationToken);
         if (!Status.IsConnected || Status.Connection is "InitiativeTracker-Recovery" or "Unavailable")
@@ -143,6 +180,7 @@ public class NetworkModel(NetworkStatusService networkStatus, NetworkCommandBrid
 
     public async Task<IActionResult> OnPostConfirmHotspotAsync(CancellationToken cancellationToken)
     {
+        if (CoordinationEnabled) return BadRequest("Use coordinated switching and confirmation.");
         SetSensitiveResponseHeaders();
         Status = await networkStatus.GetAsync(cancellationToken);
         if (Status.Connection != "InitiativeTracker-Recovery")

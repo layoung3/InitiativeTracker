@@ -21,6 +21,12 @@ def parse_request(data):
     if not isinstance(obj, dict) or set(obj) != {'action', 'uuid'}:
         raise ValueError('unexpected fields')
     action, value = obj['action'], obj['uuid']
+    if action == 'coordination-confirm' and isinstance(value, str) and UUID.fullmatch(value):
+        return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'confirm', value]
+    if action == 'coordination-profiles' and (value is None or isinstance(value, str) and UUID.fullmatch(value)):
+        return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'profiles'] + ([value] if value else [])
+    if action == 'coordination-schedule' and isinstance(value, dict):
+        return ['/usr/local/libexec/initiativetracker/initiativetracker-device-coordination', 'schedule']
     if action == 'hotspot-join-qr' and value is None:
         return ['hotspot-join-qr']
     if action == 'rotate-hotspot-password':
@@ -80,7 +86,13 @@ def handle(conn):
     args = parse_request(data[:-1].decode('utf-8', errors='strict'))
     if args[0] == 'hotspot-join-qr':
         return {'ok': True, 'wifiQr': private_hotspot_payload()}
-    if args[0].endswith(('initiativetracker-wifi-provision', 'initiativetracker-hotspot-password')):
+    if args[0].endswith('initiativetracker-device-coordination'):
+        if args[1] == 'profiles':
+            result = subprocess.run(args, capture_output=True, text=True, timeout=20)
+            if result.returncode: return {'ok': False}
+            return {'ok': True, **json.loads(result.stdout)}
+        result = subprocess.run(args, input=json.dumps(json.loads(data[:-1])['uuid']) if args[1] == 'schedule' else None, capture_output=True, text=True, timeout=40)
+    elif args[0].endswith(('initiativetracker-wifi-provision', 'initiativetracker-hotspot-password')):
         # Credentials are passed only via protected local Unix socket and subprocess stdin.
         payload = json.loads(data[:-1].decode('utf-8'))['uuid']
         result = subprocess.run(args, input=json.dumps(payload), capture_output=True,

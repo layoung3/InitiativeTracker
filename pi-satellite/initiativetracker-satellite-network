@@ -1,0 +1,392 @@
+#!/usr/bin/python3 -I
+"""N8 root broker and independent rollback timer. Fixed operations; no shell or password argv."""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import pathlib
+import pwd
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+ROOT = pathlib.Path('/var/lib/initiativetracker-satellite-network')
+PROFILES = pathlib.Path('/etc/NetworkManager/system-connections')
+SOCKET = '/run/initiativetracker-satellite/network.sock'
+DEVICE = 'wlan0'
+ACCOUNT = 'initiativetracker-satellite'
+
+
+def atomic(path, value):
+    if path.is_symlink():
+        raise ValueError('unsafe state path')
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.n8-')
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            stream.write(value if isinstance(value, str) else json.dumps(value, sort_keys=True))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def guid(value):
+    if not isinstance(value, str) or str(uuid.UUID(value)) != value.lower():
+        raise ValueError('invalid UUID')
+    return value.lower()
+
+
+def credentials(value):
+    if not isinstance(value, dict) or set(value) != {'ssid', 'password'}:
+        raise ValueError('invalid Wi-Fi profile')
+    ssid, password = value['ssid'], value['password']
+    if not isinstance(ssid, str) or not 1 <= len(ssid.encode()) <= 32 or any(ord(c) < 32 for c in ssid):
+        raise ValueError('invalid SSID')
+    if not isinstance(password, str) or not 8 <= len(password.encode()) <= 63 or any(ord(c) < 32 for c in password):
+        raise ValueError('invalid passphrase')
+    return ssid, password
+
+
+def nm(*args):
+    result = subprocess.run(['/usr/bin/nmcli', *args], capture_output=True, text=True, timeout=40)
+    if result.returncode:
+        raise RuntimeError('NetworkManager operation failed')
+    return result.stdout.strip()
+
+
+def active():
+    return guid(nm('-g', 'GENERAL.CON-UUID', 'device', 'show', DEVICE))
+
+
+def up(profile):
+    nm('--wait', '25', 'connection', 'up', 'uuid', guid(profile), 'ifname', DEVICE)
+
+
+def stage_profile(profile, value):
+    ssid, password = credentials(value)
+    # GLib keyfile escaping. SSID byte-list avoids keyfile injection and preserves exact UTF-8 bytes.
+    escaped = password.replace('\\', '\\\\').replace(' ', '\\s')
+    content = ('[connection]\nid=IT-N8-' + profile + '\nuuid=' + profile +
+               '\ntype=wifi\nautoconnect=false\n[wifi]\nmode=infrastructure\nssid=' +
+               ''.join(str(b) + ';' for b in ssid.encode()) + '\n[wifi-security]\nkey-mgmt=wpa-psk\npsk=' +
+               escaped + '\n[ipv4]\nmethod=auto\n[ipv6]\nmethod=auto\n')
+    path = PROFILES / ('IT-N8-' + profile + '.nmconnection')
+    atomic(path, content)
+    nm('connection', 'load', str(path))
+
+
+def boot():
+    return pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def expired(journal):
+    # A reboot or backwards wall-clock step cannot extend an armed transition.
+    return (journal['boot'] != boot() or time.time() < journal['created'] - 5 or
+            time.time() >= journal['deadline'] or time.monotonic() >= journal['mono_deadline'])
+
+
+def save(journal):
+    atomic(ROOT / 'state.json', journal)
+
+
+def load():
+    path = ROOT / 'state.json'
+    if path.is_symlink():
+        raise ValueError('unsafe journal')
+    if not path.exists():
+        return {'format': 1, 'generation': None, 'revision': 0, 'owned': [], 'transition': None, 'recovery': None, 'provisioning': None}
+    if path.stat().st_size > 32768:
+        raise ValueError('oversized journal')
+    data = json.loads(path.read_text())
+    if data.get('format') != 1 or not isinstance(data.get('owned'), list):
+        raise ValueError('invalid journal')
+    return data
+
+
+def recover(state):
+    journal = state['transition']
+    if journal is None or journal['phase'] not in ('committed', 'recovering'):
+        return
+    journal['phase'] = 'recovering'
+    save(state)  # Recover intent before any effect, retry at most once per timer interval.
+    if active_safe() not in (journal['previous'], journal['recovery']):
+        try:
+            up(journal['previous'])
+        except (RuntimeError, subprocess.TimeoutExpired):
+            up(journal['recovery'])
+    journal['phase'] = 'recovered'
+    save(state)
+
+
+def active_safe():
+    try:
+        return active()
+    except (ValueError, RuntimeError):
+        return None
+
+
+def execute(request):
+    if not isinstance(request, dict) or not isinstance(request.get('action'), str):
+        raise ValueError('invalid request')
+    state = load()
+    action = request['action']
+    if action == 'status' and set(request) == {'action'}:
+        return {'ok': True, 'active': active_safe(), 'state': state}
+    if action in ('bootstrap', 'rebind') and set(request) == {'action', 'generation', 'recovery'}:
+        generation = guid(request['generation'])
+        if action == 'bootstrap' and state['generation'] not in (None, generation):
+            raise ValueError('local reset required before reassignment')
+        if action == 'rebind' and state['transition'] and state['transition']['phase'] in ('committed', 'recovering'):
+            raise ValueError('wait for coordinated recovery before reassignment')
+        profile = str(uuid.uuid5(uuid.UUID(generation), 'recovery'))
+        stage_profile(profile, request['recovery'])
+        if action == 'rebind' and state['generation'] != generation:
+            for old_profile in list(state['owned']):
+                if old_profile != active_safe() and old_profile != profile:
+                    nm('connection', 'delete', 'uuid', guid(old_profile))
+                    state['owned'].remove(old_profile)
+            state['provisioning'] = None
+            state['revision'] = 0
+            state['transition'] = None
+        state['generation'] = generation
+        state['recovery'] = profile
+        if profile not in state['owned']:
+            state['owned'].append(profile)
+        save(state)
+        return {'ok': True}
+    if action == 'prepare' and set(request) == {'action', 'generation', 'id', 'revision', 'expires', 'target'}:
+        generation, identity = guid(request['generation']), guid(request['id'])
+        revision = request['revision']
+        if generation != state['generation'] or state['recovery'] is None or not isinstance(revision, int):
+            raise ValueError('binding mismatch')
+        credentials(request['target'])
+        signature = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+        old = state['transition']
+        if old and old['id'] == identity:
+            if old['signature'] != signature or old['phase'] != 'prepared' or time.time() >= old['expires']:
+                raise ValueError('conflicting or expired duplicate')
+            # Retrying after a process interruption reloads the deterministic profile before acknowledging.
+            stage_profile(old['target'], request['target'])
+            return {'ok': True}
+        if revision <= state['revision'] or old and old['phase'] in ('prepared', 'committed', 'recovering'):
+            raise ValueError('replay or transition pending')
+        if not isinstance(request['expires'], (float, int)) or not time.time() < request['expires'] <= time.time() + 180:
+            raise ValueError('preparation expired')
+        target = str(uuid.uuid5(uuid.UUID(identity), 'target'))
+        previous = active()
+        state['transition'] = {'id': identity, 'revision': revision, 'signature': signature,
+                               'phase': 'prepared', 'expires': request['expires'], 'target': target,
+                               'previous': previous, 'recovery': state['recovery']}
+        state['revision'] = revision
+        if target not in state['owned']:
+            state['owned'].append(target)
+        save(state)
+        stage_profile(target, request['target'])
+        return {'ok': True}
+    if action == 'commit' and set(request) == {'action', 'id', 'switchAt', 'deadline'}:
+        journal = state['transition']
+        if not journal or journal['id'] != guid(request['id']):
+            raise ValueError('missing preparation')
+        if journal['phase'] == 'committed':
+            if journal['switchAt'] == request['switchAt'] and journal['deadline'] == request['deadline']:
+                return {'ok': True}
+            raise ValueError('conflicting commit')
+        if journal['phase'] != 'prepared' or time.time() >= journal['expires']:
+            raise ValueError('preparation expired')
+        switch_at, deadline = request['switchAt'], request['deadline']
+        if not all(isinstance(x, (float, int)) for x in (switch_at, deadline)) or not time.time() - 15 < switch_at <= time.time() + 15 or not switch_at < deadline <= switch_at + 180 or time.time() >= deadline:
+            raise ValueError('invalid fixed deadline')
+        journal.update(phase='committed', switchAt=switch_at, deadline=deadline, created=time.time(),
+                       boot=boot(), mono_switch=time.monotonic() + max(0, switch_at - time.time()),
+                       mono_deadline=time.monotonic() + deadline - time.time(), switched=False)
+        save(state)
+        return {'ok': True}
+    if action == 'finalize' and set(request) == {'action', 'id'}:
+        journal = state['transition']
+        if not journal or journal['id'] != guid(request['id']):
+            raise ValueError('missing transition')
+        if journal['phase'] == 'finalized':
+            return {'ok': True}
+        if journal['phase'] != 'committed' or expired(journal) or active() != journal['target']:
+            raise ValueError('not connected to target within deadline')
+        journal['phase'] = 'finalized'
+        save(state)
+        return {'ok': True}
+    if action == 'abandon' and set(request) == {'action', 'id'}:
+        journal = state['transition']
+        if journal and journal['id'] == guid(request['id']) and journal['phase'] == 'prepared':
+            journal['phase'] = 'expired'
+            save(state)
+            return {'ok': True}
+        raise ValueError('committed transitions cannot be cancelled')
+    if action == 'activate' and set(request) == {'action', 'profile'}:
+        target = guid(request['profile'])
+        journal = state['transition']
+        if journal and journal['phase'] in ('prepared', 'committed', 'recovering'):
+            raise ValueError('coordinated transition pending')
+        if target not in state['owned']:
+            raise ValueError('profile not owned by agent')
+        up(target)
+        return {'ok': True}
+    if action == 'recover-profile' and set(request) == {'action'}:
+        old = state['transition']
+        if old and old['phase'] in ('prepared', 'committed', 'recovering'):
+            raise ValueError('transition pending')
+        if state['recovery'] is None or state.get('provisioning'):
+            raise ValueError('no recovery profile or local setup active')
+        previous = active()
+        if previous == state['recovery']:
+            raise ValueError('already on paired private hotspot')
+        now = time.time()
+        state['transition'] = {'id': str(uuid.uuid4()), 'phase': 'committed', 'previous': previous,
+                               'target': state['recovery'], 'recovery': state['recovery'], 'switchAt': now,
+                               'deadline': now + 50, 'created': now, 'boot': boot(), 'mono_switch': time.monotonic(),
+                               'mono_deadline': time.monotonic() + 50, 'switched': False, 'automatic': True}
+        save(state)
+        return {'ok': True}
+    if action == 'open-provisioning' and set(request) == {'action'}:
+        if state.get('provisioning'):
+            return {'ok': True}  # No unauthenticated/unbounded lease extension.
+        if state['transition'] and state['transition']['phase'] in ('prepared', 'committed', 'recovering'):
+            raise ValueError('transition pending')
+        material = ROOT / 'provisioning.json'
+        if material.exists():
+            access = json.loads(material.read_text())
+        else:
+            import secrets
+            access = {'ssid': 'IT-Setup-' + secrets.token_hex(4), 'password': secrets.token_urlsafe(24), 'uuid': str(uuid.uuid4())}
+            atomic(material, access)
+        profile = access['uuid']
+        stage_profile(profile, {'ssid': access['ssid'], 'password': access['password']})
+        # Profile changes carry no secret on argv. Stable per-device WPA access supports owner-held headless bundles.
+        nm('connection', 'modify', 'uuid', profile, '802-11-wireless.mode', 'ap', 'ipv4.method', 'shared',
+           'ipv4.addresses', '10.85.0.1/24', 'ipv6.method', 'disabled')
+        now = time.time()
+        state['provisioning'] = {'previous': active_safe(), 'profile': profile, 'created': now,
+                                 'deadline': now + 600, 'boot': boot(), 'mono_deadline': time.monotonic() + 600}
+        save(state)
+        up(profile)
+        return {'ok': True}
+    if action == 'provisioning-info' and set(request) == {'action'}:
+        material = ROOT / 'provisioning.json'
+        if not material.exists():
+            return {'ok': True, 'access': None, 'lease': None}
+        return {'ok': True, 'access': json.loads(material.read_text()), 'lease': state.get('provisioning')}
+    if action == 'close-provisioning' and set(request) == {'action'}:
+        lease = state.get('provisioning')
+        if lease and lease['previous']:
+            up(lease['previous'])
+        state['provisioning'] = None
+        save(state)
+        return {'ok': True}
+    if action == 'candidate-network' and set(request) == {'action', 'profile'}:
+        if not state.get('provisioning'):
+            raise ValueError('open a bounded local setup session first')
+        identity = str(uuid.uuid5(uuid.UUID(state['provisioning']['profile']), 'candidate'))
+        stage_profile(identity, request['profile'])
+        if identity not in state['owned']:
+            state['owned'].append(identity)
+        save(state)
+        up(identity)  # Existing AP lease retains previous profile and restores it after timeout.
+        return {'ok': True}
+    if action == 'reset' and set(request) == {'action'}:
+        if state['transition'] and state['transition']['phase'] in ('committed', 'recovering'):
+            recover(state)
+        for profile in state['owned']:
+            nm('connection', 'delete', 'uuid', guid(profile))
+        save({'format': 1, 'generation': None, 'revision': 0, 'owned': [], 'transition': None, 'recovery': None, 'provisioning': None})
+        return {'ok': True}
+    raise ValueError('unsupported operation')
+
+
+def tick():
+    state = load()
+    lease = state.get('provisioning')
+    if lease and expired(lease):
+        if lease['previous']:
+            up(lease['previous'])
+        else:
+            nm('connection', 'down', 'uuid', lease['profile'])
+        state['provisioning'] = None
+        save(state)
+    journal = state['transition']
+    if not journal:
+        return
+    if journal['phase'] == 'prepared' and time.time() >= journal['expires']:
+        journal['phase'] = 'expired'
+        save(state)
+    elif journal['phase'] == 'recovering' or journal['phase'] == 'committed' and expired(journal):
+        recover(state)
+    elif journal['phase'] == 'committed' and time.monotonic() >= journal['mono_switch'] and not journal['switched']:
+        # Save switched only after effect; a crash repeats the idempotent activation.
+        try:
+            up(journal['target'])
+            journal['switched'] = True
+            save(state)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            recover(state)
+
+
+def serve():
+    if os.getenv('LISTEN_FDS') != '1' or int(os.getenv('LISTEN_PID', '0')) != os.getpid():
+        raise RuntimeError('socket activation required')
+    with socket.socket(fileno=3) as server:
+        with server.accept()[0] as connection:
+            connection.settimeout(10)
+            peer = struct.unpack('3i', connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            if peer[1] != pwd.getpwnam(ACCOUNT).pw_uid:
+                raise PermissionError('unauthorized peer')
+            raw = bytearray()
+            while b'\n' not in raw:
+                piece = connection.recv(4096)
+                if not piece:
+                    raise ValueError('incomplete request')
+                raw.extend(piece)
+                if len(raw) > 8192:
+                    raise ValueError('oversized request')
+            try:
+                if raw.index(b'\n') != len(raw) - 1:
+                    raise ValueError('extra data')
+                with (ROOT / 'state.lock').open('a+b') as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX)
+                    reply = execute(json.loads(raw))
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.TimeoutExpired):
+                reply = {'ok': False}  # Never log payloads, secrets, or nmcli output.
+            connection.sendall((json.dumps(reply) + '\n').encode())
+
+
+def main():
+    if os.geteuid() != 0:
+        raise PermissionError('root required')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('operation', choices=['serve', 'tick'])
+    args = parser.parse_args()
+    if ROOT.is_symlink() or not ROOT.is_dir():
+        raise ValueError('protected state directory required')
+    if args.operation == 'serve':
+        serve()
+    else:
+        with (ROOT / 'state.lock').open('a+b') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            tick()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, subprocess.TimeoutExpired):
+        print('SATELLITE_NETWORK_REFUSED', file=sys.stderr)
+        sys.exit(1)

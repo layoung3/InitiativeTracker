@@ -12,6 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 
 builder.Services.AddSignalR();
+builder.Services.AddRateLimiter(options => options.AddPolicy("device-enrollment", context =>
+    System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ =>
+        new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })));
+
 
 var configuredDataDirectory =
     builder.Configuration[
@@ -33,6 +37,12 @@ var dataDirectory =
 
 Directory.CreateDirectory(
     dataDirectory);
+
+var coordinationCertificate = CoordinationEndpoints.Configure(builder, dataDirectory);
+if (coordinationCertificate is null) builder.Services.AddSingleton<InitiativeTracker.Core.Coordination.IProvisioningHttps>(new InitiativeTracker.Core.Coordination.PublicCertificateHttps(null, null));
+builder.Services.AddSingleton<ICoordinationNetwork, CoordinationNetworkBridge>();
+builder.Services.AddSingleton<DeviceCoordinationService>();
+builder.Services.AddHostedService<DeviceCoordinationWorker>();
 
 var dataProtectionDirectory =
     Path.Combine(
@@ -289,6 +299,7 @@ builder.Services
             };
     });
 
+builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, DeviceCertificateAuthentication>("DeviceCertificate", _ => { });
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
@@ -317,7 +328,35 @@ if (builder.Configuration
     app.UseHttpsRedirection();
 }
 
+// Reject browser secret submissions before Razor model binding on remote HTTP.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var devicePath = path.StartsWithSegments("/api/coordination") || path.StartsWithSegments("/hubs/device-coordination");
+    var coordinationPort = builder.Configuration.GetValue<int?>("Coordination:Port") ?? 5443;
+    if (devicePath && (!context.Request.IsHttps || coordinationCertificate is null))
+    { context.Response.StatusCode = 403; return; }
+    if (coordinationCertificate is not null && context.Connection.LocalPort == coordinationPort && !devicePath)
+    { context.Response.StatusCode = 404; return; }
+    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && !CoordinationEndpoints.Local(context))
+    {
+        var handler = context.Request.Query["handler"].ToString();
+        if (handler is "ApproveAgent")
+        { context.Response.StatusCode = 403; return; }
+    }
+    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && context.Request.Query["handler"].ToString() is "Provision" or "Validate" or "RotateHotspotPassword")
+    {
+        var tls = context.RequestServices.GetRequiredService<InitiativeTracker.Core.Coordination.IProvisioningHttps>();
+        if (!context.Request.IsHttps || !tls.Ready || context.Request.Host.Host != tls.Host)
+        { context.Response.StatusCode = 403; return; }
+    }
+    if (devicePath && context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } bodySize)
+        bodySize.MaxRequestBodySize = 8192;
+    if (devicePath) { context.Response.Headers.CacheControl = "no-store"; context.Response.Headers["Referrer-Policy"] = "no-referrer"; }
+    await next();
+});
 app.UseRouting();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -327,6 +366,7 @@ app.MapRazorPages()
    .WithStaticAssets();
 
 app.MapHub<EncounterHub>("/hubs/encounter");
+CoordinationEndpoints.Map(app);
 
 
 app.MapGet(

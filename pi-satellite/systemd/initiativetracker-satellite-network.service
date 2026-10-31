@@ -1,0 +1,15 @@
+[Unit]
+Description=InitiativeTracker satellite restricted network broker
+Requires=initiativetracker-satellite-network.socket
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/initiativetracker/initiativetracker-satellite-network serve
+User=root
+UMask=0077
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/initiativetracker-satellite-network /etc/NetworkManager/system-connections
+PrivateTmp=true
+TimeoutStartSec=70

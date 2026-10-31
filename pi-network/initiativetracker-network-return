@@ -63,8 +63,16 @@ def write(j):
         with os.fdopen(fd,'w') as f:
             json.dump(j,f,sort_keys=True);f.write('\n');f.flush();os.fsync(f.fileno())
         os.replace(name,JOURNAL)
+        directory = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
     finally:
         if os.path.exists(name):os.unlink(name)
+
+def clock_expired(j):
+    clock = j.get('clock')
+    return clock is not None and (pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip() != clock['boot'] or time.monotonic() >= clock['deadline'])
+
 
 def rollback(j):
     try:
@@ -92,14 +100,14 @@ def run(args):
             print('SAVED_WIFI='+json.dumps(saved(),sort_keys=True));return
         if args.command=='tick':
             if not j or j['state']!='pending':print('RETURN_ACTION=NONE');return
-            if not enabled():print('RETURN_ACTION=GATE_DISABLED_PENDING_ROLLBACK');return
-            if time.time()<j['deadline']:
+            # The new-switch gate does not disable already-armed rollback.
+            if time.time()<j['deadline'] and not clock_expired(j):
                 print('RETURN_ACTION=WAIT');return
             rollback(j);return
         if args.command=='confirm':
             if not j or j['state']!='pending':raise RuntimeError('No pending return')
             if not enabled():raise RuntimeError('Return gate disabled')
-            if time.time()>=j['deadline']:rollback(j);return
+            if time.time()>=j['deadline'] or clock_expired(j):rollback(j);raise RuntimeError('Confirmation expired; rollback executed')
             targets=[x for x in saved() if x['uuid']==j['target_uuid']]
             if len(targets)!=1 or a!=targets[0]['name']:raise RuntimeError('Target is not active')
             j['state']='confirmed';j['finished_at']=time.time();write(j)
@@ -113,7 +121,8 @@ def run(args):
             targets=[x for x in saved() if x['uuid']==args.uuid]
             if len(targets)!=1:raise RuntimeError('Target not an eligible saved Wi-Fi profile UUID')
             j={'state':'pending','target_uuid':args.uuid,'target_name':targets[0]['name'],
-               'previous':HOTSPOT,'deadline':time.time()+args.seconds,'created_at':time.time()}
+               'previous':HOTSPOT,'deadline':time.time()+args.seconds,'created_at':time.time(),
+               'clock': {'boot': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'deadline': time.monotonic()+args.seconds}}
             write(j) # durable before potential SSH loss
             print('RETURN_ACTION=ATTEMPT_SAVED_WIFI',flush=True)
             try:
@@ -130,7 +139,13 @@ def main():
     p.add_argument('--uuid',default='')
     p.add_argument('--seconds',type=int,default=180)
     args=p.parse_args()
-    try:run(args);return 0
+    try:
+        if args.command == 'begin':
+            with (ROOT/'activation.lock').open('a+b') as activation:
+                fcntl.flock(activation, fcntl.LOCK_EX)
+                run(args)
+        else: run(args)
+        return 0
     except (OSError,ValueError,RuntimeError,PermissionError,subprocess.TimeoutExpired,json.JSONDecodeError) as e:
         print('N68_ERROR='+str(e),file=sys.stderr);return 1
 if __name__=='__main__':sys.exit(main())

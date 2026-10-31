@@ -45,52 +45,82 @@
         When the Pi hosts its private hotspot using wlan0, another Wi-Fi network may not appear
         until a controlled scan or client-mode transition is performed.
     </div>
-    <div class="card mb-3"><div class="card-body">
-        <h2 class="h5">Select a Wi-Fi network (validation only)</h2>
-        @if (!ViewData.ModelState.IsValid)
-        {
-            <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
-        }
-        @if (Model.CommandResult is not null) { <div class="alert alert-success">@Model.CommandResult</div> }
-        @if (Model.ValidationSummary is not null)
-        {
-            <div class="alert alert-success" role="status">@Model.ValidationSummary</div>
-        }
-        <form method="post" asp-page-handler="Validate" autocomplete="off">
-            <div class="form-check mb-3">
-                <input asp-for="UseHiddenSsid" class="form-check-input" />
-                <label asp-for="UseHiddenSsid" class="form-check-label">Enter a hidden or unlisted network manually</label>
-            </div>
-            <div class="mb-3">
-                <label asp-for="SelectedSsid" class="form-label">Scanned network</label>
-                <select asp-for="SelectedSsid" class="form-select">
-                    <option value="">Select a network</option>
-                    @foreach (var network in Model.Status.Networks)
+    <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+    @if (Model.CommandResult is not null) { <div class="alert alert-info">@Model.CommandResult</div> }
+    @if (Model.CoordinationEnabled)
+    {
+        <div class="card mb-3"><div class="card-body">
+            <h2 class="h5">Network agents</h2>
+            <p>Display pairing remains separate. Verify a satellite's full certificate fingerprint on its physical setup screen before approving its network agent.</p>
+            @if (Model.HubPin is not null) { <p>Physical hub certificate SHA-256: <code>@Model.HubPin</code></p> }
+            @foreach (var agent in Model.Coordination.Enrollments)
+            {
+                <p><strong>@agent.Name</strong> · @(agent.Approved ? (Model.Online(agent.DeviceId) ? "Online" : "Offline") : "Awaiting approval")</p>
+                @if (!agent.Approved && Model.LocalCredentials)
+                {
+                    <form method="post" asp-page-handler="ApproveAgent" class="mb-3">
+                        <input type="hidden" name="AgentId" value="@agent.DeviceId" />
+                        <label>Enter the full certificate SHA-256 from this satellite's physical screen</label>
+                        <input name="VerifiedPin" class="form-control" required minlength="64" maxlength="64" autocomplete="off" />
+                        <button class="btn btn-primary">Approve this network agent</button>
+                    </form>
+                }
+                @if (agent.Approved)
+                {
+                    <form method="post" asp-page-handler="RevokeAgent"><input type="hidden" name="AgentId" value="@agent.DeviceId" />
+                        <button class="btn btn-outline-danger">Revoke @agent.Name network access</button></form>
+                }
+            }
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h2 class="h5">Coordinated network switch</h2>
+            @if (Model.Coordination.Transition is not { Stage: InitiativeTracker.Core.Coordination.TransitionStage.Preparing or InitiativeTracker.Core.Coordination.TransitionStage.Committed or InitiativeTracker.Core.Coordination.TransitionStage.HubConfirmed } transition)
+            {
+                <form method="post" asp-page-handler="Prepare">
+                    <label>Destination</label><select name="TargetKind" class="form-select"><option value="wifi">Saved WPA Wi-Fi (from private hotspot)</option><option value="hotspot">Hub private hotspot</option></select>
+                    <label>Saved Wi-Fi profile</label><select asp-for="SavedUuid" class="form-select"><option value="">Private hotspot / choose Wi-Fi</option>
+                        @foreach (var saved in Model.Status.SavedNetworks) { <option value="@saved.Uuid">@saved.Name</option> }
+                    </select><button class="btn btn-primary mt-2">Prepare devices without switching</button>
+                </form>
+            }
+            else
+            {
+                <p>Transition @transition.Id · @transition.Stage</p>
+                @if (transition.Stage == InitiativeTracker.Core.Coordination.TransitionStage.Preparing)
+                {
+                    <p>Preparation expires @transition.PrepareExpiresUtc. Refresh to update readiness. Postpone if any device is unavailable, or explicitly select the named devices to leave behind.</p>
+                    <form method="post" asp-page-handler="Commit">
+                        <input type="hidden" name="TransitionId" value="@transition.Id" />
+                        @foreach (var device in transition.Devices)
+                        {
+                            var name = Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name;
+                            <div><label><input type="checkbox" name="LeaveBehind" value="@device.DeviceId" /> Leave @name behind</label>
+                                — @(device.Ready ? "Ready" : "Not ready") · @(Model.Online(device.DeviceId) ? "Online" : "Offline")</div>
+                        }
+                        <button class="btn btn-warning mt-2">Commit switch; cannot cancel afterward</button>
+                    </form>
+                    <form method="post" asp-page-handler="Postpone"><input type="hidden" name="TransitionId" value="@transition.Id" /><button class="btn btn-outline-secondary mt-2">Postpone</button></form>
+                }
+                else
+                {
+                    <p>Recovery deadline @transition.DeadlineUtc. Join the destination network and confirm hub connectivity. Each satellite must reconnect and finalize separately.</p>
+                    <ul>@foreach (var device in transition.Devices)
                     {
-                        <option value="@network.Ssid">@network.Ssid (@(network.Signal?.ToString() ?? "?")% · @network.Security)</option>
+                        <li>@Model.Coordination.Enrollments.First(x => x.DeviceId == device.DeviceId).Name: @(transition.LeftBehind.Contains(device.DeviceId) ? "Left behind by DM" : device.Finalized ? "Finalized" : device.Reconnected ? "Reconnected" : device.CommitReceived ? "Committed" : "Commit not acknowledged")</li>
+                    }</ul>
+                    @if (transition.Stage == InitiativeTracker.Core.Coordination.TransitionStage.Committed)
+                    {
+                        <form method="post" asp-page-handler="ConfirmCoordinated"><input type="hidden" name="TransitionId" value="@transition.Id" /><button class="btn btn-primary">Confirm hub connectivity</button></form>
                     }
-                </select>
-            </div>
-            <div class="mb-3">
-                <label asp-for="HiddenSsid" class="form-label">Manual network name (SSID)</label>
-                <input asp-for="HiddenSsid" class="form-control" maxlength="32" autocomplete="off" />
-            </div>
-            <div class="form-check mb-3">
-                <input asp-for="RequiresPassword" class="form-check-input" />
-                <label asp-for="RequiresPassword" class="form-check-label">Password-protected network (WPA-Personal)</label>
-            </div>
-            <div class="mb-3">
-                <label asp-for="WifiPassword" class="form-label">Wi-Fi password (validation only)</label>
-                <input asp-for="WifiPassword" type="password" class="form-control" autocomplete="new-password" maxlength="63" />
-                <div class="form-text">Not retained or applied. Do not enter a real network password until secure provisioning is enabled.</div>
-            </div>
-            <button class="btn btn-primary" type="submit">Validate selection (no changes)</button>
-        </form>
-    </div></div>
+                }
+            }
+        </div></div>
+    }
+    @if (!Model.CanSubmitSecrets) { <div class="alert alert-info">Wi-Fi password entry is blocked until the configured, publicly trusted browser HTTPS endpoint is available. Saved-profile coordination remains available.</div> }
     <div class="card mb-3"><div class="card-body">
         <h2 class="h5">Save a new Wi-Fi connection</h2>
         <p>Save credentials securely on this Pi without disconnecting anyone. After saving, switch using the supervised saved-network return below. WPA-Personal networks only.</p>
-        @if (Model.CommandsEnabled)
+        @if (Model.CommandsEnabled && Model.CanSubmitSecrets)
         {
             <form method="post" asp-page-handler="Provision" autocomplete="off">
                 <div class="mb-2"><label asp-for="HiddenSsid" class="form-label">Wi-Fi name (SSID)</label>
@@ -105,7 +135,7 @@
     <div class="card mb-3"><div class="card-body">
         <h2 class="h5">Private hotspot password</h2>
         <p>Change the password for the hub's private network. Only available while connected to external Wi-Fi and no switch is pending. The physical Setup Wi-Fi QR will use the new password.</p>
-        @if (Model.CommandsEnabled && Model.Status.IsConnected && Model.Status.Connection != "InitiativeTracker-Recovery")
+        @if (Model.CommandsEnabled && Model.CanSubmitSecrets && Model.Status.IsConnected && Model.Status.Connection != "InitiativeTracker-Recovery")
         {
             <form method="post" asp-page-handler="RotateHotspotPassword" autocomplete="off">
                 <label asp-for="NewHotspotPassword" class="form-label">New hotspot password</label>
@@ -120,6 +150,8 @@
             <p class="text-body-secondary mb-0">Requires external Wi-Fi and administrator-enabled network commands.</p>
         }
     </div></div>
+    @if (!Model.CoordinationEnabled)
+    {
     <div class="card mb-3"><div class="card-body">
         <h2 class="h5">Return to a saved Wi-Fi network</h2>
         <p>Only available while the private hotspot is active. Switching disconnects devices from the hotspot. Rejoin the destination Wi-Fi and confirm within three minutes, or recovery will attempt to restore the hotspot.</p>
@@ -164,5 +196,6 @@
         @if (!Model.CommandsEnabled) { <p class="text-body-secondary">Network commands are disabled by the Pi administrator.</p> }
         <p class="small text-body-secondary mb-0">The network change requires the Pi administrator's separate live-switch gate. A failed request won't change the network. A single-radio Pi can't provide the external Wi-Fi and private hotspot simultaneously.</p>
     </div></div>
+    }
     <a href="/dm/network" class="btn btn-outline-primary">Refresh network status</a>
 </div>

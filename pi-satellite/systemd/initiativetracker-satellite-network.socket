@@ -1,0 +1,11 @@
+[Unit]
+Description=InitiativeTracker satellite restricted network broker socket
+[Socket]
+ListenStream=/run/initiativetracker-satellite/network.sock
+SocketUser=initiativetracker-satellite
+SocketGroup=initiativetracker-satellite
+SocketMode=0600
+DirectoryMode=0755
+Accept=no
+[Install]
+WantedBy=sockets.target

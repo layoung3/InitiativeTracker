@@ -1,0 +1,21 @@
+[Unit]
+Description=InitiativeTracker satellite coordination and local provisioning
+After=NetworkManager.service initiativetracker-satellite-network.socket
+Requires=initiativetracker-satellite-network.socket initiativetracker-satellite-recovery.timer
+[Service]
+User=initiativetracker-satellite
+Group=initiativetracker-satellite
+WorkingDirectory=/opt/initiativetracker-satellite/current
+ExecStart=/opt/initiativetracker-satellite/current/InitiativeTracker.Satellite
+Environment=DOTNET_ENVIRONMENT=Production
+EnvironmentFile=-/etc/initiativetracker-satellite/agent.env
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/initiativetracker-satellite /run/initiativetracker-satellite
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+name: N8 coordination tests
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  coordination:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build --configuration Release
+      - run: dotnet test --configuration Release --no-build --logger trx
+      - run: python3 -m unittest discover -s pi-network/tests
+      - run: python3 -m unittest discover -s pi-satellite/tests
+      - run: npm install --prefix /tmp/n8-browser-tests playwright
+      - run: /tmp/n8-browser-tests/node_modules/.bin/playwright install --with-deps chromium
+      - run: node --test scripts/tests/n7-ui.test.cjs
+        env:
+          NODE_PATH: /tmp/n8-browser-tests/node_modules
+      - run: git diff --check
