@@ -21,7 +21,7 @@ class FoundationTests(unittest.TestCase):
         cls.openssl('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem',
                     '-subj', '/CN=Disposable Test Root', '-days', '3', '-addext', 'basicConstraints=critical,CA:TRUE')
         for name, san, eku in [('good', cls.host, 'serverAuth'), ('wrong', 'other.owner-domain.org', 'serverAuth'),
-                               ('wildcard', '*.owner-domain.org', 'serverAuth'), ('client', cls.host, 'clientAuth')]:
+                               ('wildcard', '*.owner-domain.org', 'serverAuth'), ('client', cls.host, 'clientAuth'), ('next', cls.host, 'serverAuth')]:
             cls.openssl('req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', name + '.key',
                         '-out', name + '.csr', '-subj', '/CN=' + cls.host)
             (cls.root / (name + '.ext')).write_text(f'subjectAltName=DNS:{san}\nextendedKeyUsage={eku}\nbasicConstraints=critical,CA:FALSE\n')
@@ -41,8 +41,8 @@ class FoundationTests(unittest.TestCase):
     def settings(self, folder):
         return {'hostname': self.host, 'store': str(folder), 'port': 5445}
 
-    def activate(self, folder, **kwargs):
-        return f.activate(self.settings(folder), self.root / 'good.pem', self.root / 'good.key', _test_ca=self.root / 'ca.pem', **kwargs)
+    def activate(self, folder, name="good", **kwargs):
+        return f.activate(self.settings(folder), self.root / (name + ".pem"), self.root / (name + ".key"), _test_ca=self.root / 'ca.pem', **kwargs)
 
     def test_valid_hostname(self):
         for host in ['hub.owner-domain.org', 'h-2.sub.owner-domain.org', 'hub.xn--p1ai.ru']:
@@ -160,6 +160,18 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual(0o640, (folder / result['generation'] / 'bundle.pfx').stat().st_mode & 0o777)
             self.assertEqual(0o640, (folder / 'active.json').stat().st_mode & 0o777)
 
+    def test_not_due_renewal_confirms_service_without_new_generation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            old = self.activate(folder, dry_run=False, _probe=lambda *a: None)['generation']
+            before = set(folder.iterdir())
+            acknowledgements = []
+            result = self.activate(folder, dry_run=False, _probe=lambda h, p, g: acknowledgements.append(g))
+            self.assertFalse(result['changed'])
+            self.assertEqual(old, result['generation'])
+            self.assertEqual([old], acknowledgements)
+            self.assertEqual(before, set(folder.iterdir()))
+
     def test_rollback_last_known_good(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(f.time, 'sleep'):
             folder = Path(tmp)
@@ -168,7 +180,7 @@ class FoundationTests(unittest.TestCase):
                 if generation != old:
                     raise f.Rejected('fixture reload failure')
             with self.assertRaisesRegex(f.Rejected, 'previous manifest restored'):
-                self.activate(folder, dry_run=False, _probe=reject_new)
+                self.activate(folder, name="next", dry_run=False, _probe=reject_new)
             self.assertEqual(old, f.read_active(folder)['generation'])
 
     def test_uncertain_rollback_is_reported(self):
@@ -176,13 +188,13 @@ class FoundationTests(unittest.TestCase):
             folder = Path(tmp)
             self.activate(folder, dry_run=False, _probe=lambda *a: None)
             with self.assertRaisesRegex(f.Rejected, 'recovery is unconfirmed'):
-                self.activate(folder, dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
+                self.activate(folder, name="next", dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
 
     def test_first_activation_failure_requests_disable(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(f.time, 'sleep'):
             folder = Path(tmp)
             with self.assertRaises(f.Rejected):
-                self.activate(folder, dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
+                self.activate(folder, name="next", dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
             self.assertIsNone(f.read_active(folder))
             self.assertEqual({"disabled": True}, json.loads((folder / "active.json").read_text()))
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Offline preflight and certificate lifecycle. Never changes DNS, services or app DBs."""
 import argparse
+import base64
+import hashlib
 import fcntl
 import ipaddress
 import json
@@ -207,6 +209,13 @@ def probe(host, port, generation, *, _test_context=None):
     if value.get('ready') is not True or value.get('generation') != generation:
         raise Rejected('Application has not activated this generation')
 
+def chain_identity(material):
+    blocks = re.findall(rb'-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----', material, re.S)
+    if not 1 <= len(blocks) <= 8:
+        raise Rejected('Invalid archived chain')
+    return sorted(hashlib.sha256(base64.b64decode(re.sub(rb'\s', b'', block), validate=True)).digest() for block in blocks)
+
+
 def wait_for_probe(callback, host, port, generation):
     for attempt in range(8):
         try:
@@ -228,6 +237,15 @@ def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=N
     with os.fdopen(lock_fd, 'w') as stream:
         fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         old = read_active(root)
+        if old:
+            previous = private_path(root / old['generation'] / 'bundle.pfx')
+            if previous.stat().st_size > 262144:
+                raise Rejected('Archived bundle exceeds limit')
+            certificates = run(['/usr/bin/openssl', 'pkcs12', '-in', str(previous), '-nokeys', '-passin', 'stdin'], data=b'\n')
+            if chain_identity(certificates) == chain_identity(fullchain.read_bytes()):
+                # Certbot renew can succeed without issuance. Check service, avoid reload/key copies.
+                wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'])
+                return {'validated': True, 'changed': False, 'generation': old['generation']}
         generation = uuid.uuid4().hex
         target = root / generation
         target.mkdir(mode=0o750)

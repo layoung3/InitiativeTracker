@@ -91,6 +91,9 @@ def main():
             first = f.activate(settings, root / 'first.pem', root / 'first.key', dry_run=False, _probe=probe, _test_ca=root / 'ca.pem')['generation']
             probe(host, 5445, first)
             checks += 1
+            unchanged = f.activate(settings, root / 'first.pem', root / 'first.key', dry_run=False, _probe=probe, _test_ca=root / 'ca.pem')
+            assert not unchanged['changed'] and unchanged['generation'] == first
+            checks += 1
             second = f.activate(settings, root / 'second.pem', root / 'second.key', dry_run=False, _probe=probe, _test_ca=root / 'ca.pem')['generation']
             assert second != first
             probe(host, 5445, second)
