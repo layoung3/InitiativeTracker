@@ -304,6 +304,35 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
             return null;
         }
     }
+    /// <summary>
+    /// Serializes a prepared mutation's final synchronous database commit with revocation.
+    /// The caller must first enforce trusted transport, CSRF and asset/role permissions.
+    /// No decoding, file I/O, quota scan, asynchronous work or pre-held write transaction
+    /// belongs in this callback. Its database operation must have a bounded timeout.
+    /// Expiry linearizes at the last check immediately before callback entry; a commit
+    /// admitted before expiry may finish afterward. This does not extend the grant.
+    /// </summary>
+    public int CommitAuthorized(SecureGrant expected, string browser, string origin,
+        ClaimsPrincipal matchingLegacyPrincipal, Func<int> commit)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        ArgumentNullException.ThrowIfNull(matchingLegacyPrincipal);
+        ArgumentNullException.ThrowIfNull(commit);
+        if (!Monitor.TryEnter(gate, millisecondsTimeout: 250)) throw new SecureAccessUnavailable();
+        try
+        {
+            var current = Validate(expected.Id, expected.Generation, expected.Epoch, browser, origin);
+            if (current is null || current != expected || current.Identity.Role is not ("DM" or "Player") ||
+                !MatchesLegacy(current, matchingLegacyPrincipal)) throw new SecureAccessDenied();
+            // Identity/database reads can take time: check the clock again after them,
+            // while still excluding revoke/cancel and immediately before invoking commit.
+            var linearizationTime = Now;
+            if (current.Expires <= linearizationTime || current.Expires > linearizationTime.AddHours(12))
+                throw new SecureAccessDenied();
+            return commit();
+        }
+        finally { Monitor.Exit(gate); }
+    }
     public bool MatchesLegacy(SecureGrant grant, ClaimsPrincipal legacy) => Capture(legacy) == grant.Identity;
     public void Approve(SecureGrant dm, Guid id)
     {

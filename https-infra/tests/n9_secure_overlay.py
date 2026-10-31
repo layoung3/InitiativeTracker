@@ -28,7 +28,7 @@ def main():
             source.extractall(fixture, filter='data')
         for relative in ['InitiativeTracker.Web/Infrastructure', 'InitiativeTracker.Web/Pages/SecureAccess']:
             shutil.copytree(ROOT / relative, fixture / relative)
-        for name in ['SecureAccessWebTests.cs', 'SecureGrantDurabilityTests.cs']:
+        for name in ['SecureAccessWebTests.cs', 'SecureGrantDurabilityTests.cs', 'SecureCommitTests.cs']:
             shutil.copy2(ROOT / 'InitiativeTracker.Tests' / name, fixture / 'InitiativeTracker.Tests' / name)
         shutil.copy2(ROOT / 'https-infra/tests/overlay/SecureN9OverlayTests.cs.template', fixture / 'InitiativeTracker.Tests/SecureN9OverlayTests.cs')
         shutil.copy2(ROOT / 'hub-updater/runtime/initiativetracker-install-update', fixture / 'hub-updater/runtime/initiativetracker-install-update')
