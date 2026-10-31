@@ -1,0 +1,11 @@
+# Optional systemd app drop-in; REVIEW ONLY, never automatically installed.
+# Enable only after DNS, valid certificate and legacy recovery validation.
+[Service]
+Environment=BrowserTls__Enabled=true
+Environment=BrowserTls__Host=hub.CHOOSE-YOUR-OWN-DOMAIN.tld
+Environment=BrowserTls__Port=5445
+Environment=BrowserTls__Store=/var/lib/initiativetracker-browser-tls
+Environment=Tracker__UseHttpsRedirection=false
+# Dedicated read-only group; no access to ACME account or DNS API credentials.
+SupplementaryGroups=initiativetracker-tls
+ReadOnlyPaths=/var/lib/initiativetracker-browser-tls

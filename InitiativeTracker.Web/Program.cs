@@ -1,4 +1,5 @@
 using InitiativeTracker.Web.Services;
+using InitiativeTracker.Web.Infrastructure;
 using InitiativeTracker.Web.Hubs;
 using InitiativeTracker.Web.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
+BrowserTls.Configure(builder);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -307,7 +309,8 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    // HSTS is deliberately deferred during the dual-origin HTTPS migration.
+    if (!app.Services.GetRequiredService<BrowserTlsSettings>().Enabled) app.UseHsts();
 }
 
 if (builder.Configuration
@@ -316,6 +319,8 @@ if (builder.Configuration
 {
     app.UseHttpsRedirection();
 }
+
+app.Use(BrowserTls.Guard);
 
 app.UseRouting();
 
@@ -572,5 +577,11 @@ app.MapPost(
         policy =>
             policy.RequireRole(
                 "Player"));
+
+app.MapGet("/system/https-status", (HttpContext context, BrowserCertificateStore certificates) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Json(new { ready = certificates.TrustedRequest(context), generation = certificates.Generation, expiresAtUtc = certificates.ExpiresAtUtc });
+}).AllowAnonymous();
 
 app.Run();

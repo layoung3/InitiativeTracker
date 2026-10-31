@@ -1,0 +1,23 @@
+# REVIEW ONLY. New privileged service and ACME/DNS backend need deployment approval.
+[Unit]
+Description=Renew and validate InitiativeTracker browser certificate
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=root
+Group=initiativetracker-tls
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/lib/initiativetracker-https/foundation.py renew --config /etc/initiativetracker-https/settings.json --apply
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/initiativetracker-browser-tls /var/lib/initiativetracker-issuer
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStartSec=300
