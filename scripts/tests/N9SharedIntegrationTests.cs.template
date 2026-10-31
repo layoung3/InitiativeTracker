@@ -193,6 +193,43 @@ public sealed class N9SharedIntegrationTests
         host.Delete();
     }
 
+    [Fact]
+    public async Task ActualRollbackFencePreservesN9ImagesButRequiresFreshApprovalAfterRestart()
+    {
+        var host = new Host(); var directory = host.DirectoryPath; var clock = host.Clock;
+        using var dm = host.Client(); await dm.Bootstrap();
+        var owner = AddPlayer(host); var id = Character(host, owner.Profile);
+        using var player = host.Client(); player.Legacy("Player", owner.Profile, owner.Player, owner.Credential); await Enroll(player, dm);
+        await Upload(player, id);
+        var image = await (await player.Send(MediaPaths.CharacterPortrait(id))).Content.ReadAsByteArrayAsync();
+        var state = Path.Combine(directory, "secure-access", "state.bin");
+        var stale = File.ReadAllBytes(state);
+        host.Access.Cancel(player.Browser);
+        File.WriteAllBytes(state, stale); // Deliberately model whole-data restoration in disposable storage.
+        var source = File.ReadAllText(Path.Combine(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../..")),
+            "hub-updater/runtime/initiativetracker-install-update"));
+        var fence = source.Split("# BEGIN SECURE ROLLBACK FENCE\n")[1].Split("# END SECURE ROLLBACK FENCE")[0];
+        var info = new System.Diagnostics.ProcessStartInfo("/usr/bin/python3")
+            { RedirectStandardInput = true, RedirectStandardError = true, RedirectStandardOutput = true };
+        info.ArgumentList.Add("-I"); info.ArgumentList.Add("-"); info.ArgumentList.Add(directory);
+        using (var process = System.Diagnostics.Process.Start(info)!)
+        {
+            await process.StandardInput.WriteAsync(fence); process.StandardInput.Close();
+            await process.WaitForExitAsync(); Assert.Equal(0, process.ExitCode);
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
+        var cookies = new Dictionary<string,string>(player.Cookies); host.Dispose();
+        using var restarted = new Host(directory, clock); using var resumed = restarted.Client();
+        foreach (var cookie in cookies) resumed.Cookies[cookie.Key] = cookie.Value;
+        Assert.Equal(HttpStatusCode.Forbidden, (await resumed.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
+        using var freshDm = restarted.Client(); await freshDm.Bootstrap(); await Enroll(resumed, freshDm);
+        Assert.Equal(image, await (await resumed.Send(MediaPaths.CharacterPortrait(id))).Content.ReadAsByteArrayAsync());
+        using var check = restarted.Factory.CreateDbContext();
+        Assert.Equal(18, check.PlayerCharacters.Single(x => x.Id == id).CurrentHp);
+        Assert.Single(check.PresentationAssets);
+        restarted.Delete();
+    }
+
     private sealed class GatedStream(byte[] bytes) : MemoryStream(bytes)
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

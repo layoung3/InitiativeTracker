@@ -3,6 +3,7 @@
 import argparse
 import io
 import hashlib
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,7 +11,7 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-SHARED = '3f750935a2afc9ff4e405e3a54cb30b6daff847e'
+SHARED = '12b38a335b8f4bf23371d03c5948c891599a9975'
 N9 = '1e86dc520f9aa5e228b5639f1e31e9f7f19e0caa'
 
 
@@ -27,6 +28,18 @@ def prepare(destination, entry_only=False):
         archive(SHARED, shared)
         for relative in ['InitiativeTracker.Web/Infrastructure', 'InitiativeTracker.Web/Pages/SecureAccess', 'https-infra']:
             shutil.copytree(shared / relative, destination / relative)
+        # Fixture only: shared installer bytes, N9 launcher bytes, per-component hash composition.
+        installer = 'hub-updater/runtime/initiativetracker-install-update'
+        shutil.copy2(shared / installer, destination / installer)
+        manifest_path = destination / 'hub-updater/runtime-manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        shared_manifest = json.loads((shared / 'hub-updater/runtime-manifest.json').read_text())
+        manifest['componentSet'] = shared_manifest['componentSet']
+        manifest['sha256']['initiativetracker-install-update'] = shared_manifest['sha256']['initiativetracker-install-update']
+        for name, digest in manifest['sha256'].items():
+            if hashlib.sha256((destination / 'hub-updater/runtime' / name).read_bytes()).hexdigest() != digest:
+                raise SystemExit('Composite runtime manifest mismatch: ' + name)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
         for name in ['BrowserTlsTests.cs', 'SecureAccessWebTests.cs', 'SecureGrantDurabilityTests.cs']:
             shutil.copy2(shared / 'InitiativeTracker.Tests' / name, destination / 'InitiativeTracker.Tests' / name)
         shutil.copy2(shared / 'https-infra/tests/overlay/SecureN9OverlayTests.cs.template', destination / 'InitiativeTracker.Tests/SecureN9OverlayTests.cs')
