@@ -38,8 +38,12 @@ def main():
             (root / (name + '.pem')).chmod(0o600)
             (root / (name + '.key')).chmod(0o600)
         context = ssl.create_default_context(cafile=str(root / 'ca.pem'))
-        def probe(h, p, g):
-            return f.probe(h, p, g, _test_context=context)
+        def probe(h, p, g, expected=None):
+            if expected is None:
+                bundle = store / g / "bundle.pfx"
+                material = f.run(["/usr/bin/openssl", "pkcs12", "-in", str(bundle), "-nokeys", "-passin", "stdin"], data=b"\n") if bundle.is_file() else (root / "first.pem").read_bytes()
+                expected = f.leaf_fingerprint(material)
+            return f.probe(h, p, g, expected, _test_context=context)
         settings = {'hostname': host, 'store': str(store), 'port': 5445}
         env = os.environ | {'BrowserTls__Enabled': 'true', 'BrowserTls__Host': host, 'BrowserTls__Store': str(store),
                             'Tracker__DataDirectory': str(root / 'data'), 'Tracker__LanPort': '15491',
@@ -100,7 +104,7 @@ def main():
             checks += 1
             # Ordinary unmodified public roots reject our synthetic chain.
             try:
-                f.probe(host, 5445, second)
+                f.probe(host, 5445, second, f.leaf_fingerprint((root / "second.pem").read_bytes()))
             except ssl.SSLError:
                 pass
             else:
@@ -132,10 +136,10 @@ def main():
             probe(host, 5445, second)
             checks += 1
             f.write_active(store, {'generation': second})
-            def reject_candidate(h, p, g):
+            def reject_candidate(h, p, g, expected):
                 if g != second:
                     raise f.Rejected('simulated acknowledgement outage')
-                return probe(h, p, g)
+                return probe(h, p, g, expected)
             try:
                 f.activate(settings, root / 'third.pem', root / 'third.key', dry_run=False, _probe=reject_candidate, _test_ca=root / 'ca.pem')
             except f.Rejected as error:
@@ -159,6 +163,20 @@ def main():
             with urllib.request.urlopen('http://127.0.0.1:15491/system/health', timeout=2) as response:
                 assert response.status == 200
             checks += 1
+            # Preserve an established TLS stream across cache eviction and >16 rotations.
+            with socket.create_connection(('127.0.0.1', 5445), timeout=3) as held_raw:
+                with context.wrap_socket(held_raw, server_hostname=host) as held:
+                    for index in range(20):
+                        generation = f'{index + 100:032x}'
+                        directory = store / generation
+                        directory.mkdir(mode=0o750)
+                        (directory / 'bundle.pfx').write_bytes((store / first / 'bundle.pfx').read_bytes())
+                        (directory / 'bundle.pfx').chmod(0o640)
+                        f.write_active(store, {'generation': generation})
+                        f.wait_for_probe(probe, host, 5445, generation, f.leaf_fingerprint((root / 'first.pem').read_bytes()))
+                    held.sendall(f'GET /system/health HTTP/1.0\r\nHost: {host}:5445\r\n\r\n'.encode())
+                    assert held.recv(4096).startswith((b'HTTP/1.1 200', b'HTTP/1.0 200'))
+            checks += 2
             print(f'PASS: {checks} published Kestrel TLS/rotation/rollback/legacy checks; synthetic process trust only')
         except Exception:
             log.flush()

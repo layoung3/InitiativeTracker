@@ -111,6 +111,20 @@ class FoundationTests(unittest.TestCase):
             with self.assertRaises(f.Rejected):
                 f.validate_certificate(self.host, bad, self.root / 'good.key')
 
+    def test_old_tls_peer_cannot_acknowledge_new_generation(self):
+        from unittest.mock import MagicMock
+        raw = MagicMock()
+        connection = MagicMock()
+        connection.getpeercert.return_value = b'old-leaf-der'
+        connection.recv.side_effect = [b'HTTP/1.0 200 OK\r\n\r\n{"ready":true,"generation":"new"}', b'']
+        context = MagicMock()
+        context.wrap_socket.return_value.__enter__.return_value = connection
+        expected = f.hashlib.sha256(b'new-leaf-der').hexdigest()
+        with patch.object(f.socket, 'create_connection', return_value=raw):
+            with self.assertRaisesRegex(f.Rejected, 'leaf does not match'):
+                f.probe(self.host, 5445, 'new', expected, _test_context=context)
+        connection.sendall.assert_not_called()
+
     def test_no_secret_in_error(self):
         with self.assertRaises(f.Rejected) as error:
             f.run(['/usr/bin/openssl', 'not-a-command-super-secret'])
@@ -151,7 +165,7 @@ class FoundationTests(unittest.TestCase):
     def test_atomic_promotion_and_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
-            def acknowledge(host, port, generation):
+            def acknowledge(host, port, generation, fingerprint):
                 self.assertEqual(self.host, host)
                 self.assertEqual(generation, f.read_active(folder)['generation'])
                 self.assertTrue((folder / generation / 'bundle.pfx').is_file())
@@ -166,7 +180,7 @@ class FoundationTests(unittest.TestCase):
             old = self.activate(folder, dry_run=False, _probe=lambda *a: None)['generation']
             before = set(folder.iterdir())
             acknowledgements = []
-            result = self.activate(folder, dry_run=False, _probe=lambda h, p, g: acknowledgements.append(g))
+            result = self.activate(folder, dry_run=False, _probe=lambda h, p, g, fingerprint: acknowledgements.append(g))
             self.assertFalse(result['changed'])
             self.assertEqual(old, result['generation'])
             self.assertEqual([old], acknowledgements)
@@ -176,7 +190,7 @@ class FoundationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(f.time, 'sleep'):
             folder = Path(tmp)
             old = self.activate(folder, dry_run=False, _probe=lambda *a: None)['generation']
-            def reject_new(host, port, generation):
+            def reject_new(host, port, generation, fingerprint):
                 if generation != old:
                     raise f.Rejected('fixture reload failure')
             with self.assertRaisesRegex(f.Rejected, 'previous manifest restored'):

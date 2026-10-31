@@ -11,12 +11,17 @@ from pathlib import Path
 import re
 import socket
 import signal
+import selectors
 import ssl
 import stat
 import subprocess
 import tempfile
+import sys
 import time
 import uuid
+
+if __name__ == "__main__":
+    sys.modules["foundation"] = sys.modules[__name__]
 
 class Rejected(ValueError):
     pass
@@ -61,28 +66,65 @@ def private_path(path, directory=False, executable=False):
         raise Rejected('Private path permissions are too broad')
     return path
 
-def run(args, *, data=None, timeout=60):
-    # No tracing, OpenSSL trust overrides or user config. No command output on failure.
+def run(args, *, data=None, timeout=60, capture=True, max_output=262144):
+    """Bound captured stdout; discard stderr and unused backend output entirely."""
     env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'}
-    try:
-        process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   env=env, start_new_session=True)
+    if data is not None and len(data) > 1024:
+        raise Rejected('External command input exceeds limit')
+    process = None
+    def stop():
+        if process is None:
+            return
         try:
-            output, _ = process.communicate(input=data, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            # Terminate the backend and any subprocesses; never leave renewal running after failure.
             os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.communicate(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.communicate()
-            raise Rejected('External validation or renewal timed out') from None
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+    try:
+        process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+        try:
+            process.stdin.write(data or b'')
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        output = bytearray()
+        deadline = time.monotonic() + timeout
+        if capture:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ)
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(args, timeout)
+                    for key, _ in selector.select(min(.1, remaining)):
+                        chunk = os.read(key.fd, 16384)
+                        if not chunk:
+                            selector.unregister(key.fd)
+                        elif len(output) + len(chunk) > max_output:
+                            raise Rejected('External command output exceeds limit')
+                        else:
+                            output.extend(chunk)
+        process.wait(timeout=max(.001, deadline - time.monotonic()))
         if process.returncode:
             raise Rejected('External validation or renewal command failed')
-    except OSError:
-        raise Rejected('External validation or renewal command failed') from None
-    return output
+        return bytes(output)
+    except subprocess.TimeoutExpired:
+        stop()
+        raise Rejected('External validation or renewal timed out') from None
+    except (Rejected, OSError):
+        stop()
+        raise Rejected('External validation or renewal rejected') from None
+    finally:
+        if process is not None:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stdin is not None:
+                process.stdin.close()
 
 def validate_certificate(host, fullchain, key, *, _test_ca=None):
     hostname(host)
@@ -191,11 +233,13 @@ def write_active(root, value):
     finally:
         temp.unlink(missing_ok=True)
 
-def probe(host, port, generation, *, _test_context=None):
+def probe(host, port, generation, expected_leaf, *, _test_context=None):
     # Local connection + exact SNI; no DNS dependency or certificate bypass in deployment.
     context = _test_context or ssl.create_default_context()
     with socket.create_connection(('127.0.0.1', port), timeout=3) as raw:
         with context.wrap_socket(raw, server_hostname=host) as connection:
+            if hashlib.sha256(connection.getpeercert(binary_form=True)).hexdigest() != expected_leaf:
+                raise Rejected('Serving leaf does not match expected certificate')
             connection.sendall(f'GET /system/https-status HTTP/1.0\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n'.encode('ascii'))
             response = b''
             while chunk := connection.recv(4096):
@@ -216,10 +260,16 @@ def chain_identity(material):
     return sorted(hashlib.sha256(base64.b64decode(re.sub(rb'\s', b'', block), validate=True)).digest() for block in blocks)
 
 
-def wait_for_probe(callback, host, port, generation):
+def leaf_fingerprint(material):
+    block = re.search(rb'-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----', material, re.S)
+    if not block:
+        raise Rejected('Invalid certificate leaf')
+    return hashlib.sha256(base64.b64decode(re.sub(rb'\s', b'', block[1]), validate=True)).hexdigest()
+
+def wait_for_probe(callback, host, port, generation, expected_leaf):
     for attempt in range(8):
         try:
-            callback(host, port, generation)
+            callback(host, port, generation, expected_leaf)
             return
         except (OSError, ValueError, Rejected):
             if attempt == 7:
@@ -229,6 +279,7 @@ def wait_for_probe(callback, host, port, generation):
 def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=None):
     host = hostname(settings['hostname'])
     validate_certificate(host, fullchain, key, _test_ca=_test_ca)
+    expected_leaf = leaf_fingerprint(fullchain.read_bytes())
     root = private_path(settings['store'], directory=True)
     if dry_run:
         return {'validated': True, 'changed': False}
@@ -244,7 +295,7 @@ def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=N
             certificates = run(['/usr/bin/openssl', 'pkcs12', '-in', str(previous), '-nokeys', '-passin', 'stdin'], data=b'\n')
             if chain_identity(certificates) == chain_identity(fullchain.read_bytes()):
                 # Certbot renew can succeed without issuance. Check service, avoid reload/key copies.
-                wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'])
+                wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'], leaf_fingerprint(certificates))
                 return {'validated': True, 'changed': False, 'generation': old['generation']}
         generation = uuid.uuid4().hex
         target = root / generation
@@ -267,12 +318,12 @@ def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=N
                 os.close(generation_fd)
             write_active(root, {'generation': generation})
             try:
-                wait_for_probe(_probe, host, settings.get('port', 5445), generation)
+                wait_for_probe(_probe, host, settings.get('port', 5445), generation, expected_leaf)
             except Exception:
                 if old:
                     write_active(root, old)
                     try:
-                        wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'])
+                        wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'], leaf_fingerprint(certificates))
                     except Exception:
                         raise Rejected('Rollback recorded; application recovery is unconfirmed') from None
                 else:
@@ -301,10 +352,14 @@ def rollback(settings, generation, *, apply=False):
 
 def renew(settings, *, apply=False, _runner=run):
     """Call one reviewed, credential-free argv executable. Backend owns ACME/DNS details."""
-    backend = private_path(settings['renewal_adapter'], executable=True)
-    if not backend.stat().st_mode & stat.S_IXUSR:
-        raise Rejected('Renewal adapter is not executable')
-    # Output paths are fixed in root-owned settings, never taken from subprocess output.
+    if 'acme' in settings:
+        import certbot_adapter
+        certbot_adapter.arguments(settings, 'renew')
+        backend = None
+    else:
+        backend = private_path(settings['renewal_adapter'], executable=True)
+        if not backend.stat().st_mode & stat.S_IXUSR:
+            raise Rejected('Renewal adapter is not executable')
     if not apply:
         return {'changed': False, 'reason': 'dry-run-no-network'}
     root = private_path(settings['store'], directory=True)
@@ -314,13 +369,19 @@ def renew(settings, *, apply=False, _runner=run):
         timeout = settings.get('renewal_timeout_seconds', 900)
         if not isinstance(timeout, int) or not 60 <= timeout <= 3600:
             raise Rejected('Renewal timeout must be between 60 and 3600 seconds')
-        _runner([str(backend)], timeout=timeout)
-        return activate(settings, Path(settings['fullchain']), Path(settings['private_key']), dry_run=False)
+        if backend is None:
+            certbot_adapter.execute(settings, 'renew', apply=True)
+            chain, key = certbot_adapter.exported_paths(settings)
+        else:
+            _runner([str(backend)], timeout=timeout, capture=False)
+            chain, key = Path(settings['fullchain']), Path(settings['private_key'])
+        return activate(settings, chain, key, dry_run=False)
+
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['preflight', 'dns-template', 'activate', 'renew', 'rollback'])
+    parser.add_argument('action', choices=['preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue'])
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--generation')
     parser.add_argument('--address', action='append', default=[])
@@ -336,10 +397,18 @@ def main():
                 result = resolve_preflight(settings['hostname'], selected)
                 print(json.dumps(result))
                 return 0 if result['ready'] else 1
+        elif args.action == 'issue':
+            import certbot_adapter
+            print(json.dumps(certbot_adapter.execute(settings, 'issue', apply=args.apply)))
         elif args.action == 'rollback':
             print(json.dumps(rollback(settings, args.generation, apply=args.apply)))
         elif args.action == 'activate':
-            print(json.dumps(activate(settings, Path(settings['fullchain']), Path(settings['private_key']), dry_run=not args.apply)))
+            if 'acme' in settings:
+                import certbot_adapter
+                chain, key = certbot_adapter.exported_paths(settings)
+            else:
+                chain, key = Path(settings['fullchain']), Path(settings['private_key'])
+            print(json.dumps(activate(settings, chain, key, dry_run=not args.apply)))
         else:
             print(json.dumps(renew(settings, apply=args.apply)))
         return 0

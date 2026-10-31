@@ -84,10 +84,11 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
                 var id = document.RootElement.GetProperty("generation").GetString() ?? "";
                 if (!Regex.IsMatch(id, "^[a-f0-9]{32}$")) throw new InvalidOperationException();
                 if (current?.Id == id) { reportedReloadFailure = false; return; }
-                // Retain certificate handles for in-flight TLS handshakes until shutdown. Bound memory.
+                // SslStream owns its selected context by a strong reference during TLS use.
+                // Bound our cache, then let retired contexts/certificates finalize only after
+                // all stream references disappear. Never Dispose a context still in use.
                 var cached = generations.FirstOrDefault(x => x.Id == id);
                 if (cached is not null && Validate(cached.Certificate, cached.Chain, settings.Host)) { current = cached; reportedReloadFailure = false; return; }
-                if (generations.Count >= 16) throw new InvalidOperationException();
                 var folder = Path.Combine(settings.Store, id);
                 CheckPath(folder, true);
                 var bundle = Path.Combine(folder, "bundle.pfx");
@@ -104,6 +105,7 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
                     if (!Validate(certificate, chain, settings.Host)) throw new InvalidOperationException();
                     var next = new CertificateGeneration(id, certificate, chain, SslStreamCertificateContext.Create(certificate, chain, offline: true));
                     generations.Add(next);
+                    if (generations.Count > 4) generations.RemoveAt(0);
                     current = next;
                     adopted = true;
                     reportedReloadFailure = false;

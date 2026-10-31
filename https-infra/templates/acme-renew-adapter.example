@@ -1,15 +1,6 @@
 #!/bin/sh
-# NOT runnable as shipped. Select/review a maintained Certbot DNS plugin first.
-# No API tokens in argv, environment variables, logs or application config.
+# Optional compatibility wrapper. Main settings use the built-in Python adapter directly.
+# REVIEW ONLY: installing backend/plugin/credentials and invoking --apply need approval.
 set -eu
-exit 78
-# Example shape AFTER separately approved backend/plugin/account setup:
-# exec /usr/bin/certbot renew --cert-name OWNER_SELECTED_CERTIFICATE_NAME \
-#   --config-dir /var/lib/initiativetracker-issuer/config \
-#   --work-dir /var/lib/initiativetracker-issuer/work \
-#   --logs-dir /var/lib/initiativetracker-issuer/logs --non-interactive --quiet
-# Provider-specific plugin config references a 0600 credential file under issuer/.
-# Certificate inputs must be exported as REGULAR 0600 files in issuer/export/.
-# Certbot's live/ symlinks are deliberately not accepted by the promotion tool.
-# Adapter must export the selected lineage on every successful run (even not due).
-# Backend failure exits nonzero, without changing active browser TLS material.
+exec /usr/bin/python3 /usr/local/lib/initiativetracker-https/certbot_adapter.py renew \
+    --config /etc/initiativetracker-https/settings.json --apply

@@ -4,7 +4,16 @@
   "store": "/var/lib/initiativetracker-browser-tls",
   "resolution": "hotspot",
   "renewal_timeout_seconds": 900,
-  "renewal_adapter": "/usr/local/libexec/initiativetracker-acme-renew",
-  "fullchain": "/var/lib/initiativetracker-issuer/export/fullchain.pem",
-  "private_key": "/var/lib/initiativetracker-issuer/export/privkey.pem"
+  "acme": {
+    "executable": "/opt/initiativetracker-certbot/bin/certbot",
+    "expected_version": "5.9.0",
+    "state_directory": "/var/lib/initiativetracker-issuer",
+    "dns_plugin": "OWNER_SELECT_PLUGIN",
+    "credentials_file": "/var/lib/initiativetracker-issuer/dns-credentials.ini",
+    "propagation_seconds": 60,
+    "directory_url": "OWNER_SELECT_HTTPS_ACME_DIRECTORY",
+    "email": "OWNER_SELECT_ACCOUNT_CONTACT",
+    "scope_reviewed": false,
+    "terms_approved": false
+  }
 }
