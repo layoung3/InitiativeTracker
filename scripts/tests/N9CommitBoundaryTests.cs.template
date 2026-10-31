@@ -80,6 +80,8 @@ public sealed class N9CommitBoundaryTests
         public Guid InactiveId;
         public Guid PreviousBlob;
         public string PreviousName = "";
+        private string DmToken = "", PlayerToken = "";
+        private Guid DmGrant, PlayerGrant;
         public Dictionary<string,byte[]> PreviousFiles = [];
         private Fixture(Host host, Session dm, Session player, Guid character, Barrier barrier)
         { Host = host; Dm = dm; Player = player; CharacterId = character; Barrier = barrier; }
@@ -121,6 +123,10 @@ public sealed class N9CommitBoundaryTests
                 fixture.PreviousName = db.PresentationSettings.Single().ApplicationName;
             }
             fixture.PreviousFiles = Directory.GetFiles(fixture.Store.DirectoryPath).ToDictionary(path => Path.GetFileName(path)!, File.ReadAllBytes);
+            fixture.DmToken = await dm.Token("/secure-access");
+            fixture.PlayerToken = await player.Token("/secure-access");
+            fixture.DmGrant = host.Access.Grants().Single(grant => grant.Browser == dm.Browser).Id;
+            fixture.PlayerGrant = host.Access.Grants().Single(grant => grant.Browser == player.Browser).Id;
             return fixture;
         }
         public MediaStore Store => Host.App.Services.GetRequiredService<MediaStore>();
@@ -139,12 +145,15 @@ public sealed class N9CommitBoundaryTests
             var file = new ByteArrayContent(N9MediaTests.Raster(200,100)); file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
             body.Add(file, "Upload", "fixture.png"); return await member.Send(path + "?handler=Upload", body);
         }
-        public void Revoke(string operation, bool cancel)
+        public async Task Revoke(string operation, bool cancel)
         {
+            // Actual HTTPS Razor handler including origin/CSRF/current-grant checks.
+            // Tokens and target IDs are obtained before the transaction barrier.
             var target = Actor(operation);
-            if (cancel) { Host.Access.Cancel(target.Browser); return; }
-            var grants = Host.Access.Grants();
-            Host.Access.Revoke(grants.Single(g => g.Browser == Dm.Browser), grants.Single(g => g.Browser == target.Browser).Id);
+            using var response = cancel
+                ? await target.PostToken("Cancel", operation == "branding" ? DmToken : PlayerToken)
+                : await Dm.PostToken("Revoke", DmToken, ("id", (operation == "branding" ? DmGrant : PlayerGrant).ToString()));
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         }
         public void AssertPreserved()
         {
@@ -205,7 +214,7 @@ public sealed class N9CommitBoundaryTests
         try
         {
             await fixture.Barrier.Arrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            revocation = Task.Run(() => { revokeStarted.SetResult(); fixture.Revoke(operation, cancel); revokedSequence = Interlocked.Increment(ref fixture.Barrier.Sequence); });
+            revocation = Task.Run(async () => { revokeStarted.SetResult(); await fixture.Revoke(operation, cancel); revokedSequence = Interlocked.Increment(ref fixture.Barrier.Sequence); });
             await revokeStarted.Task;
             Assert.NotSame(revocation, await Task.WhenAny(revocation, Task.Delay(150)));
             fixture.Barrier.Resume.Set();
