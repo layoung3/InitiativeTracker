@@ -50,14 +50,17 @@ def guid(value):
 
 
 def credentials(value):
-    if not isinstance(value, dict) or set(value) != {'ssid', 'password'}:
+    if not isinstance(value, dict) or set(value) not in ({'ssid', 'password'}, {'ssid', 'password', 'keyManagement'}):
         raise ValueError('invalid Wi-Fi profile')
     ssid, password = value['ssid'], value['password']
     if not isinstance(ssid, str) or not 1 <= len(ssid.encode()) <= 32 or any(ord(c) < 32 for c in ssid):
         raise ValueError('invalid SSID')
     if not isinstance(password, str) or not 8 <= len(password.encode()) <= 63 or any(ord(c) < 32 for c in password):
         raise ValueError('invalid passphrase')
-    return ssid, password
+    key_management = value.get('keyManagement', 'wpa-psk')
+    if key_management not in ('wpa-psk', 'sae'):
+        raise ValueError('unsupported Wi-Fi security')
+    return ssid, password, key_management
 
 
 def nm(*args):
@@ -76,12 +79,12 @@ def up(profile):
 
 
 def stage_profile(profile, value):
-    ssid, password = credentials(value)
+    ssid, password, key_management = credentials(value)
     # GLib keyfile escaping. SSID byte-list avoids keyfile injection and preserves exact UTF-8 bytes.
     escaped = password.replace('\\', '\\\\').replace(' ', '\\s')
     content = ('[connection]\nid=IT-N8-' + profile + '\nuuid=' + profile +
                '\ntype=wifi\nautoconnect=false\n[wifi]\nmode=infrastructure\nssid=' +
-               ''.join(str(b) + ';' for b in ssid.encode()) + '\n[wifi-security]\nkey-mgmt=wpa-psk\npsk=' +
+               ''.join(str(b) + ';' for b in ssid.encode()) + '\n[wifi-security]\nkey-mgmt=' + key_management + '\npsk=' +
                escaped + '\n[ipv4]\nmethod=auto\n[ipv6]\nmethod=auto\n')
     path = PROFILES / ('IT-N8-' + profile + '.nmconnection')
     atomic(path, content)

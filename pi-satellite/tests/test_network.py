@@ -74,6 +74,13 @@ class SatelliteNetworkTests(unittest.TestCase):
         self.assertEqual(next(self.profiles.glob('*')).stat().st_mode & 0o777, 0o600)
         self.assertNotIn(self.profile['password'], str(self.calls))
 
+    def test_destination_security_is_preserved_instead_of_downgrading_wpa3(self):
+        profile = str(uuid.uuid4())
+        m.stage_profile(profile, {**self.profile, 'keyManagement': 'sae'})
+        self.assertIn('key-mgmt=sae', (self.profiles/('IT-N8-'+profile+'.nmconnection')).read_text())
+        with self.assertRaises(ValueError):
+            m.stage_profile(str(uuid.uuid4()), {**self.profile, 'keyManagement': 'wpa-eap'})
+
     def test_no_activation_before_commit_and_duplicate_prepare(self):
         request = self.prepare()
         self.run_action('prepare', **request)

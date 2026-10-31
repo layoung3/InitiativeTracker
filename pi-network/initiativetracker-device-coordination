@@ -31,13 +31,14 @@ def profile(identifier):
     mode = command('/usr/bin/nmcli', '-g', '802-11-wireless.mode', 'connection', 'show', identifier)
     if mode not in ('infrastructure', 'ap') or mode == 'ap' and identifier != HOTSPOT:
         raise ValueError('unsupported network profile')
-    if command('/usr/bin/nmcli', '-g', '802-11-wireless-security.key-mgmt', 'connection', 'show', identifier) not in ('wpa-psk', 'sae'):
+    key_management = command('/usr/bin/nmcli', '-g', '802-11-wireless-security.key-mgmt', 'connection', 'show', identifier)
+    if key_management not in ('wpa-psk', 'sae'):
         raise ValueError('WPA-Personal required')
     ssid = command('/usr/bin/nmcli', '--escape', 'no', '-g', '802-11-wireless.ssid', 'connection', 'show', identifier)
     password = command('/usr/bin/nmcli', '--show-secrets', '--escape', 'no', '-g', '802-11-wireless-security.psk', 'connection', 'show', identifier)
     if not 1 <= len(ssid.encode()) <= 32 or not 8 <= len(password.encode()) <= 63 or any(ord(c) < 32 for c in ssid + password):
         raise ValueError('unsupported profile credentials')
-    return {'ssid': ssid, 'password': password}
+    return {'ssid': ssid, 'password': password, 'keyManagement': key_management}
 
 
 def validate(request, now):
