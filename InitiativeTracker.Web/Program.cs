@@ -332,6 +332,8 @@ if (builder.Configuration
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path;
+    if (path.StartsWithSegments("/display") && context.Request.Query["satellite"] == "1")
+        context.Response.Cookies.Append("InitiativeTracker.SatelliteUi", "1", new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Secure = context.Request.IsHttps, MaxAge = TimeSpan.FromDays(365 * 5) });
     var devicePath = path.StartsWithSegments("/api/coordination") || path.StartsWithSegments("/hubs/device-coordination");
     var coordinationPort = builder.Configuration.GetValue<int?>("Coordination:Port") ?? 5443;
     if (devicePath && (!context.Request.IsHttps || coordinationCertificate is null))
@@ -340,11 +342,11 @@ app.Use(async (context, next) =>
     { context.Response.StatusCode = 404; return; }
     if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && !CoordinationEndpoints.Local(context))
     {
-        var handler = context.Request.Query["handler"].ToString();
-        if (handler is "ApproveAgent")
+        var handler = context.Request.Query["handler"].ToString().ToUpperInvariant();
+        if (handler is "APPROVEAGENT")
         { context.Response.StatusCode = 403; return; }
     }
-    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && context.Request.Query["handler"].ToString() is "Provision" or "Validate" or "RotateHotspotPassword")
+    if (path.StartsWithSegments("/dm/network") && context.Request.Method == "POST" && context.Request.Query["handler"].ToString().ToUpperInvariant() is "PROVISION" or "VALIDATE" or "ROTATEHOTSPOTPASSWORD")
     {
         var tls = context.RequestServices.GetRequiredService<InitiativeTracker.Core.Coordination.IProvisioningHttps>();
         if (!context.Request.IsHttps || !tls.Ready || context.Request.Host.Host != tls.Host)

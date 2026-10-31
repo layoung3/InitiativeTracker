@@ -165,6 +165,11 @@ for (const [width, height, reducedMotion] of [[1280, 800, 'no-preference'], [390
             await assertHeader();
             await list.focus();
             await page.keyboard.press('End');
+            // Wait for the browser's native keyboard scroll before the next synthetic hub event.
+            await page.waitForFunction(() => {
+                const element = document.querySelector('#initiativeList');
+                return element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+            });
             await assertHeader();
             await renderTurn(0);
             await page.waitForFunction(() => document.querySelector('.initiative-row.is-current').getBoundingClientRect().top >= document.querySelector('#initiativeList').getBoundingClientRect().top - 1);

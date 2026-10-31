@@ -138,6 +138,20 @@ def active_safe():
         return None
 
 
+def close_lease(state):
+    lease = state.get('provisioning')
+    if lease:
+        try:
+            if lease['previous']:
+                up(lease['previous'])
+        except (RuntimeError, subprocess.TimeoutExpired):
+            pass
+        if active_safe() == lease['profile']:
+            nm('connection', 'down', 'uuid', lease['profile'])
+        state['provisioning'] = None
+        save(state)
+
+
 def execute(request):
     if not isinstance(request, dict) or not isinstance(request.get('action'), str):
         raise ValueError('invalid request')
@@ -149,6 +163,8 @@ def execute(request):
         generation = guid(request['generation'])
         if action == 'bootstrap' and state['generation'] not in (None, generation):
             raise ValueError('local reset required before reassignment')
+        if action == 'rebind' and state.get('provisioning') and active_safe() == state['provisioning']['profile']:
+            raise ValueError('join destination network before finalizing reassignment')
         if action == 'rebind' and state['transition'] and state['transition']['phase'] in ('committed', 'recovering'):
             raise ValueError('wait for coordinated recovery before reassignment')
         profile = str(uuid.uuid5(uuid.UUID(generation), 'recovery'))
@@ -286,11 +302,7 @@ def execute(request):
             return {'ok': True, 'access': None, 'lease': None}
         return {'ok': True, 'access': json.loads(material.read_text()), 'lease': state.get('provisioning')}
     if action == 'close-provisioning' and set(request) == {'action'}:
-        lease = state.get('provisioning')
-        if lease and lease['previous']:
-            up(lease['previous'])
-        state['provisioning'] = None
-        save(state)
+        close_lease(state)
         return {'ok': True}
     if action == 'candidate-network' and set(request) == {'action', 'profile'}:
         if not state.get('provisioning'):
@@ -307,7 +319,10 @@ def execute(request):
             recover(state)
         for profile in state['owned']:
             nm('connection', 'delete', 'uuid', guid(profile))
-        save({'format': 1, 'generation': None, 'revision': 0, 'owned': [], 'transition': None, 'recovery': None, 'provisioning': None})
+        lease = state.get('provisioning')
+        if lease and lease['previous'] in state['owned']:
+            lease['previous'] = None
+        save({'format': 1, 'generation': None, 'revision': 0, 'owned': [], 'transition': None, 'recovery': None, 'provisioning': lease})
         return {'ok': True}
     raise ValueError('unsupported operation')
 
@@ -316,12 +331,7 @@ def tick():
     state = load()
     lease = state.get('provisioning')
     if lease and expired(lease):
-        if lease['previous']:
-            up(lease['previous'])
-        else:
-            nm('connection', 'down', 'uuid', lease['profile'])
-        state['provisioning'] = None
-        save(state)
+        close_lease(state)
     journal = state['transition']
     if not journal:
         return

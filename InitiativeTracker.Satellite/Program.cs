@@ -19,7 +19,7 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(5081);
     // A phone-trusted certificate is supplied only by the approval-gated installation workflow.
-    if (phoneEnabled) options.ListenAnyIP(5444, listen => listen.UseHttps(phoneTls.Certificate!));
+    if (phoneEnabled) options.ListenAnyIP(5444, listen => listen.UseHttps(tls => { tls.ServerCertificate = phoneTls.Certificate; tls.ServerCertificateChain = phoneTls.Chain; }));
 });
 var app = builder.Build();
 var agent = app.Services.GetRequiredService<SatelliteAgent>();
@@ -62,9 +62,9 @@ app.Use(async (context, next) =>
         var expected = context.Request.Scheme + "://" + context.Request.Host;
         if (context.Request.Headers.Origin.ToString() != expected || context.Request.ContentLength is > 8192 || !context.Request.HasFormContentType)
         { context.Response.StatusCode = 403; return; }
-        var form = await context.Request.ReadFormAsync();
         if (context.Request.Path is { } secretPath && (secretPath == "/network" || secretPath == "/authorize" || secretPath == "/reassign") && (!context.Request.IsHttps || !phoneTls.Ready))
         { context.Response.StatusCode = 403; return; }
+        var form = await context.Request.ReadFormAsync();
         if (form["csrf"] != csrf || context.Request.Path != "/authorize" && !Session(context))
         { context.Response.StatusCode = 403; return; }
     }

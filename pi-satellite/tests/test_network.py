@@ -182,6 +182,33 @@ class SatelliteNetworkTests(unittest.TestCase):
         self.assertEqual(self.active, previous)
         self.assertEqual(m.load()['generation'], self.generation)
 
+    def test_forget_does_not_remove_the_provisioning_ap_deadline(self):
+        self.run_action('open-provisioning')
+        lease = m.load()['provisioning']
+        self.run_action('reset')
+        state = m.load()
+        self.assertIsNone(state['generation'])
+        self.assertEqual(state['provisioning']['deadline'], lease['deadline'])
+        state['provisioning']['mono_deadline'] = time.monotonic()-1
+        m.save(state)
+        m.tick()
+        self.assertIsNone(m.load()['provisioning'])
+
+    def test_failed_restore_closes_the_ap_instead_of_extending_lease(self):
+        previous = self.active
+        self.run_action('open-provisioning')
+        self.failed_profiles.add(previous)
+        # Model NM rejecting restoration while leaving the AP active.
+        def failing_up(profile):
+            raise RuntimeError('synthetic restore failure')
+        state = m.load()
+        state['provisioning']['mono_deadline'] = time.monotonic()-1
+        m.save(state)
+        with patch.object(m, 'up', failing_up):
+            m.tick()
+        self.assertIsNone(m.load()['provisioning'])
+        self.assertTrue(any('down' in command for command in self.calls))
+
     def test_unknown_actions_profiles_generations_and_malformed_input_rejected(self):
         for request in [{'action': 'shell', 'command': 'id'}, {'action': 'activate', 'profile': str(uuid.uuid4())},
                         {'action': 'commit', 'id': self.identity, 'switchAt': time.time(), 'deadline': time.time()+100}]:

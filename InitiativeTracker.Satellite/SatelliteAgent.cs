@@ -302,7 +302,17 @@ public sealed class SatelliteAgent
                 { Message = "Waiting for the authorized destination network and DM approval; previous binding remains saved."; }
                 return;
             }
-            if (state.Binding is not { } binding) return;
+            if (state.Binding is not { } binding)
+            {
+                var now = time.GetUtcNow();
+                if (!string.IsNullOrWhiteSpace(configuration["Satellite:PhoneCertificate"]) && (state.NextRecoveryUtc is null || now >= state.NextRecoveryUtc))
+                {
+                    Save(state with { NextRecoveryUtc = now.AddMinutes(15) });
+                    await Broker(new { action = "open-provisioning" }, ct);
+                    Show("http://127.0.0.1:5081/");
+                }
+                return;
+            }
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(12));

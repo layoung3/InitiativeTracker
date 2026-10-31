@@ -18,7 +18,7 @@ public static class CoordinationEndpoints
         {
             if (!builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any())
                 options.ListenAnyIP(builder.Configuration.GetValue<int?>("Tracker:LanPort") ?? 5000);
-            if (browserTls.Ready) options.ListenAnyIP(builder.Configuration.GetValue<int?>("BrowserTls:Port") ?? 5445, listen => listen.UseHttps(browserTls.Certificate!));
+            if (browserTls.Ready) options.ListenAnyIP(builder.Configuration.GetValue<int?>("BrowserTls:Port") ?? 5445, listen => listen.UseHttps(tls => { tls.ServerCertificate = browserTls.Certificate; tls.ServerCertificateChain = browserTls.Chain; }));
             options.ListenAnyIP(port, listen => listen.UseHttps(tls =>
             {
                 tls.ServerCertificate = certificate;
