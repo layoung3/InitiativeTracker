@@ -242,6 +242,11 @@ def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=N
                 output.write(bundle)
                 output.flush()
                 os.fsync(output.fileno())
+            generation_fd = os.open(target, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(generation_fd)
+            finally:
+                os.close(generation_fd)
             write_active(root, {'generation': generation})
             try:
                 wait_for_probe(_probe, host, settings.get('port', 5445), generation)

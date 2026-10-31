@@ -137,9 +137,9 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
         }
     }
 
-    public bool TrustedRequest(HttpContext context) => settings.Enabled && Ready && context.Request.IsHttps &&
+    public bool TrustedRequest(HttpContext context) => settings.Enabled && context.Request.IsHttps &&
         context.Features.Get<ITlsHandshakeFeature>() is not null && context.Connection.LocalPort == settings.Port &&
-        (context.Request.Host.Port ?? 443) == settings.Port && string.Equals(context.Request.Host.Host, settings.Host, StringComparison.OrdinalIgnoreCase);
+        (context.Request.Host.Port ?? 443) == settings.Port && string.Equals(context.Request.Host.Host, settings.Host, StringComparison.OrdinalIgnoreCase) && Ready;
 
     public static void CheckPath(string path, bool directory)
     {
