@@ -347,7 +347,7 @@ public sealed class SatelliteAgent : IAsyncDisposable
                     var pending = transition.ValueKind != JsonValueKind.Null && transition.GetProperty("phase").GetString() is "prepared" or "committed" or "recovering";
                     if (pending || radio.TryGetProperty("provisioning", out var setup) && setup.ValueKind != JsonValueKind.Null) return;
                     // Each stage finishes before the next authority is granted. AP setup never races an armed trial.
-                    var offerSetup = state.RecoveryAttempts >= 1 && !string.IsNullOrWhiteSpace(configuration["Satellite:PhoneCertificate"]);
+                    var offerSetup = state.RecoveryAttempts >= 1 && radio.TryGetProperty("last_trial", out var lastTrial) && lastTrial.GetString() == "hotspot" && !string.IsNullOrWhiteSpace(configuration["Satellite:PhoneCertificate"]);
                     Save(state with { NextRecoveryUtc = now.AddMinutes(offerSetup ? 15 : Math.Min(15, 3 * Math.Pow(2, Math.Min(state.RecoveryAttempts, 3)))), RecoveryAttempts = state.RecoveryAttempts + 1 });
                     await Broker(new { action = offerSetup ? "open-provisioning" : "recover-profile" }, ct);
                     Show("http://127.0.0.1:5081/");

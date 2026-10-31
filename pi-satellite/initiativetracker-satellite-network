@@ -133,6 +133,7 @@ def pending(state):
 
 def arm_trial(state, target, previous, kind):
     now = time.time()
+    state['last_trial'] = 'preferred' if kind == 'boot' else kind
     state['transition'] = {'id': str(uuid.uuid4()), 'phase': 'committed', 'previous': previous,
                            'target': target, 'recovery': state['recovery'], 'switchAt': now,
                            'deadline': now + 50, 'created': now, 'boot': boot(), 'mono_switch': time.monotonic(),
@@ -223,6 +224,7 @@ def execute(request):
             state['revision'] = 0
             state['transition'] = None
         if action == 'rebind':
+            state['last_trial'] = None
             state['preferred'] = active_optional()
             state['boot_seen'] = boot()
             state['restoration'] = None
@@ -293,6 +295,7 @@ def execute(request):
             raise ValueError('not connected to target within deadline')
         journal['phase'] = 'finalized'
         state['preferred'] = journal['target']
+        state['last_trial'] = None
         state['boot_seen'] = boot()
         state['restoration'] = None
         save(state)
@@ -322,7 +325,9 @@ def execute(request):
         previous = active_optional()
         if previous == state['recovery']:
             raise ValueError('already on paired private hotspot')
-        arm_trial(state, state['recovery'], previous, 'hotspot')
+        preferred = state.get('preferred')
+        retry_preferred = previous is None and preferred is not None and preferred != state['recovery'] and state.get('last_trial') != 'preferred'
+        arm_trial(state, preferred if retry_preferred else state['recovery'], previous, 'preferred' if retry_preferred else 'hotspot')
         return {'ok': True}
     if action == 'open-provisioning' and set(request) == {'action'}:
         if state.get('provisioning'):

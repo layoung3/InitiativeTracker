@@ -251,6 +251,27 @@ class SatelliteNetworkTests(unittest.TestCase):
         self.assertEqual(state['transition']['kind'], 'boot')
         self.assertEqual(state['transition']['phase'], 'committed')
 
+    def test_same_boot_wifi_drop_retries_last_finalized_profile_before_private_hotspot(self):
+        self.prepare()
+        self.commit(switchAt=time.time()-1, deadline=time.time()+99)
+        m.tick()
+        self.run_action('finalize', id=self.identity)
+        target = self.active
+        self.active = '--'
+        self.run_action('recover-profile')
+        self.assertEqual(m.load()['transition']['kind'], 'preferred')
+        m.tick()
+        self.assertEqual(self.active, target)
+        state = m.load()
+        state['transition']['mono_deadline'] = time.monotonic()-1
+        m.save(state)
+        m.tick()
+        self.assertIsNone(m.active_optional())
+        self.run_action('recover-profile')
+        self.assertEqual(m.load()['transition']['kind'], 'hotspot')
+        m.tick()
+        self.assertEqual(self.active, m.load()['recovery'])
+
     def test_failed_ap_restoration_retains_durable_retry_intent_across_restart(self):
         previous = self.active
         self.run_action('open-provisioning')
