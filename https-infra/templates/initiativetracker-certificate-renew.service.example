@@ -20,4 +20,4 @@ RestrictSUIDSGID=true
 CapabilityBoundingSet=
 ReadWritePaths=/var/lib/initiativetracker-browser-tls /var/lib/initiativetracker-issuer
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-TimeoutStartSec=300
+TimeoutStartSec=4200

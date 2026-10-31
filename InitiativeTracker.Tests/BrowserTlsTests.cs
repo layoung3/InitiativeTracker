@@ -129,6 +129,11 @@ public sealed class BrowserTlsTests
             Assert.Equal((HttpStatusCode)426, (await client.GetAsync("/media?id=fixture")).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/system/health")).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/display/pair")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/dm/login")).StatusCode);
+            client.DefaultRequestHeaders.Host = Host + ":5000";
+            Assert.Equal((HttpStatusCode)426, (await client.GetAsync("/dm/login")).StatusCode);
+            Assert.Equal((HttpStatusCode)426, (await client.PostAsync("/dm/login", new StringContent("fixture-pin"))).StatusCode);
+            client.DefaultRequestHeaders.Host = null;
             var status = await client.GetStringAsync("/system/https-status");
             Assert.Contains("\"ready\":false", status);
         }

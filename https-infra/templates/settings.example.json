@@ -3,6 +3,7 @@
   "port": 5445,
   "store": "/var/lib/initiativetracker-browser-tls",
   "resolution": "hotspot",
+  "renewal_timeout_seconds": 900,
   "renewal_adapter": "/usr/local/libexec/initiativetracker-acme-renew",
   "fullchain": "/var/lib/initiativetracker-issuer/export/fullchain.pem",
   "private_key": "/var/lib/initiativetracker-issuer/export/privkey.pem"

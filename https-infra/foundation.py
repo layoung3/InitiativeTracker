@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Offline preflight and certificate lifecycle. Never changes DNS, services or app DBs."""
 import argparse
-import contextlib
 import fcntl
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import socket
+import signal
 import ssl
 import stat
 import subprocess
@@ -49,9 +48,9 @@ def private_path(path, directory=False, executable=False):
     # Do not follow links, including ancestor links. Sticky /tmp is allowed for fixtures.
     for parent in reversed([path, *path.parents][:-1]):
         info = parent.lstat()
-        if stat.S_ISLNK(info.st_mode) or (info.st_uid not in {0, os.geteuid()} and not (stat.S_ISDIR(info.st_mode) and info.st_mode & stat.S_ISVTX)):
+        if stat.S_ISLNK(info.st_mode) or (info.st_uid not in {0, os.geteuid()} and not (str(parent) == '/tmp' and stat.S_ISDIR(info.st_mode) and info.st_mode & stat.S_ISVTX)):
             raise Rejected('Untrusted path ownership or symlink')
-        if stat.S_ISDIR(info.st_mode) and info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
+        if stat.S_ISDIR(info.st_mode) and info.st_mode & 0o022 and not (str(parent) in {'/tmp', '/var/tmp'} and info.st_mode & stat.S_ISVTX):
             raise Rejected('Writable ancestor directory')
     info = path.lstat()
     if directory != stat.S_ISDIR(info.st_mode) or not directory and not stat.S_ISREG(info.st_mode):
@@ -60,15 +59,28 @@ def private_path(path, directory=False, executable=False):
         raise Rejected('Private path permissions are too broad')
     return path
 
-def run(args, *, data=None):
-    # Never inherit tracing, OpenSSL trust overrides or user config. No command output on failure.
-    env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'HOME': '/nonexistent'}
+def run(args, *, data=None, timeout=60):
+    # No tracing, OpenSSL trust overrides or user config. No command output on failure.
+    env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'}
     try:
-        result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                check=True, timeout=60, env=env)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   env=env, start_new_session=True)
+        try:
+            output, _ = process.communicate(input=data, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Terminate the backend and any subprocesses; never leave renewal running after failure.
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.communicate()
+            raise Rejected('External validation or renewal timed out') from None
+        if process.returncode:
+            raise Rejected('External validation or renewal command failed')
+    except OSError:
         raise Rejected('External validation or renewal command failed') from None
-    return result.stdout
+    return output
 
 def validate_certificate(host, fullchain, key, *, _test_ca=None):
     hostname(host)
@@ -276,7 +288,10 @@ def renew(settings, *, apply=False, _runner=run):
     descriptor = os.open(root / '.renewal-lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as locked:
         fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        _runner([str(backend)])
+        timeout = settings.get('renewal_timeout_seconds', 900)
+        if not isinstance(timeout, int) or not 60 <= timeout <= 3600:
+            raise Rejected('Renewal timeout must be between 60 and 3600 seconds')
+        _runner([str(backend)], timeout=timeout)
         return activate(settings, Path(settings['fullchain']), Path(settings['private_key']), dry_run=False)
 
 

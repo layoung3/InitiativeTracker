@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Real published Kestrel + disposable, PROCESS-ONLY trust; no OS trust or DNS writes."""
 import argparse
-import contextlib
 import importlib.util
 import json
 import os
 from pathlib import Path
-import shutil
 import socket
 import ssl
 import subprocess

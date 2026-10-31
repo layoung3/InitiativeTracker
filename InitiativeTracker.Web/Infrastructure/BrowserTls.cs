@@ -152,7 +152,7 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
             {
                 var mode = File.GetUnixFileMode(parent.FullName);
                 var writable = mode & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite);
-                if (writable != 0 && !(parent is DirectoryInfo && mode.HasFlag(UnixFileMode.StickyBit))) throw new InvalidOperationException("Writable certificate path.");
+                if (writable != 0 && !(parent is DirectoryInfo && (parent.FullName is "/tmp" or "/var/tmp") && mode.HasFlag(UnixFileMode.StickyBit))) throw new InvalidOperationException("Writable certificate path.");
             }
         }
         if (OperatingSystem.IsLinux())
@@ -215,7 +215,10 @@ public static class BrowserTls
         var store = context.RequestServices.GetRequiredService<BrowserCertificateStore>();
         if (store.Settings.Enabled && context.Connection.LocalPort == store.Settings.Port && !store.TrustedRequest(context))
         { context.Response.StatusCode = 421; context.Response.Headers.CacheControl = "no-store"; return; }
-        if (store.Settings.Enabled && Sensitive(context.Request) && !store.TrustedRequest(context))
+        // The newly configured public hostname never serves an HTTP fallback, including login forms.
+        // Existing .local/IP gameplay origins retain their current migration behavior.
+        if (store.Settings.Enabled && (Sensitive(context.Request) ||
+            string.Equals(context.Request.Host.Host, store.Settings.Host, StringComparison.OrdinalIgnoreCase)) && !store.TrustedRequest(context))
         { context.Response.StatusCode = 426; context.Response.Headers.CacheControl = "no-store"; return; }
         await next(context);
     }
