@@ -111,7 +111,7 @@ public static class SecureAccess
     private static bool PrivateRoute(HttpRequest request)
     {
         if (request.Path.StartsWithSegments("/media") || request.Path.StartsWithSegments("/appearance") ||
-            request.Path.StartsWithSegments("/player/editcharacter")) return true;
+            IsPage(request, "/Player/EditCharacter", "/player/editcharacter")) return true;
         if (!HttpMethods.IsPost(request.Method)) return false;
         var handler = request.Query["handler"].ToString().ToUpperInvariant();
         if (request.Path.StartsWithSegments("/player/character"))

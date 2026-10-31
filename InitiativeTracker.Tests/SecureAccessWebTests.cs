@@ -559,4 +559,23 @@ public sealed class SecureAccessWebTests
         host.Delete();
     }
 
+    [Fact]
+    public async Task ActualCharacterEditorGetRequiresFreshAuthorityAtItsRoutedUrl()
+    {
+        using var host = new Host(); var owner = AddPlayer(host); Guid id;
+        using (var db = host.Factory.CreateDbContext())
+        {
+            var character = new PlayerCharacter { PlayerProfileId = owner.Profile, Name = "Editor fixture", MaxHp = 20, CurrentHp = 18, CreatedAtUtc = DateTime.UtcNow };
+            db.Add(character); db.SaveChanges(); id = character.Id;
+        }
+        var page = $"/player/character/{id:D}/edit";
+        using var player = host.Client(); player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send(page)).StatusCode);
+        using var http = host.Client(http: true); http.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        Assert.Equal((HttpStatusCode)426, (await http.Send(page)).StatusCode);
+        using var dm = host.Client(); await dm.Bootstrap(); await Enroll(player, dm);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send(page)).StatusCode);
+        host.Delete();
+    }
+
 }
