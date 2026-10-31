@@ -623,6 +623,10 @@ public sealed class SecureAccessWebTests
         {
             using var dm = first.Client(); await dm.Bootstrap();
             var owner = AddPlayer(first);
+            Guid displayId;
+            using (var db = first.Factory.CreateDbContext()) { var device = new RegisteredDevice { Name = "Preserved display pairing", PairedAtUtc = DateTime.UtcNow }; db.Add(device); db.SaveChanges(); displayId = device.Id; }
+            using var display = first.Client(); display.Legacy("Display", display: displayId);
+            Assert.Equal(HttpStatusCode.OK, (await display.Send("/display")).StatusCode);
             var state = Path.Combine(directory, "secure-access", "state.bin");
             var backup = File.ReadAllBytes(state); staleCookies = new(dm.Cookies);
             var id = first.Access.Grants().Single().Id;
@@ -630,7 +634,7 @@ public sealed class SecureAccessWebTests
             Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
             File.WriteAllBytes(state, backup); // Deliberately model updater whole-data restore.
             var keys = Directory.GetFiles(Path.Combine(directory, "DataProtection-Keys")).ToDictionary(p => p, File.ReadAllBytes);
-            var media = Path.Combine(directory, "media"); Directory.CreateDirectory(media); File.WriteAllBytes(Path.Combine(media, "portrait.png"), [1, 2, 3]);
+            var media = Path.Combine(directory, "Media"); Directory.CreateDirectory(media); File.WriteAllBytes(Path.Combine(media, "portrait.png"), [1, 2, 3]);
             var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
             var source = File.ReadAllText(Path.Combine(root, "hub-updater/runtime/initiativetracker-install-update"));
             var python = source.Split("# BEGIN SECURE ROLLBACK FENCE\n")[1].Split("# END SECURE ROLLBACK FENCE")[0];
@@ -645,6 +649,7 @@ public sealed class SecureAccessWebTests
             foreach (var key in keys) Assert.Equal(key.Value, File.ReadAllBytes(key.Key));
             Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(Path.Combine(media, "portrait.png")));
             using (var db = first.Factory.CreateDbContext()) Assert.True(db.PlayerProfiles.Any(p => p.Id == owner.Profile));
+            Assert.Equal(HttpStatusCode.OK, (await display.Send("/display")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await dm.Send("/system/health")).StatusCode);
         }

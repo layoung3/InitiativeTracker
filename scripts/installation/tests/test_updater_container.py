@@ -41,8 +41,8 @@ class UpdaterLifecycleTests(unittest.TestCase):
             (self.data / name).write_text(content)
         (self.data / 'secure-access').mkdir(mode=0o700)
         (self.data / 'secure-access/state.bin').write_bytes(b'backup-era-secure-grant')
-        (self.data / 'media').mkdir()
-        (self.data / 'media/portrait.png').write_bytes(b'private-media-fixture')
+        (self.data / 'Media').mkdir()
+        (self.data / 'Media/portrait.png').write_bytes(b'private-media-fixture')
         self.manifest = self.incoming / 'new.manifest.json'
         package = self.incoming / 'InitiativeTracker-0.1.6-linux-arm64.tar.gz'
         with tarfile.open(package, 'w:gz') as archive:
@@ -146,7 +146,7 @@ Path(sys.argv[sys.argv.index('--output')+1]).write_text(json.dumps({'status':'he
                 self.assertEqual((self.data / 'database').read_text(), 'old-database')
                 self.assertEqual((self.data / 'identity').read_text(), 'fixture-guid')
                 self.assertEqual((self.data / 'DataProtection-Keys').read_text(), 'fixture-key')
-                self.assertEqual((self.data / 'media/portrait.png').read_bytes(), b'private-media-fixture')
+                self.assertEqual((self.data / 'Media/portrait.png').read_bytes(), b'private-media-fixture')
                 self.assertEqual((self.data / 'secure-access/state.bin').read_bytes(), b'backup-era-secure-grant')
                 self.assertTrue((self.data / 'secure-access/mutation.pending').is_file())
                 self.assertEqual(stat.S_IMODE((self.data / 'secure-access/mutation.pending').stat().st_mode), 0o600)

@@ -300,6 +300,8 @@ using [the checklist](acceptance.md).
 
 ## 8. Failed release
 
+For shared HTTPS/N9, follow the [0.1.6 consolidated plan](../https/0.1.6-integration-release-plan.md). Its guarded updater component installation is separately approved and required before secure grants exist: restoring a whole-data backup without fencing secure approvals can revive revoked tickets. The original installed updater is not changed by an application archive or by this documentation.
+
 The previously audited installer restores both old release **and its data backup**
 when the new health check fails. Other error paths may not perform that rollback.
 Always inspect symlink, health and logs after failure. An automatic data restore
