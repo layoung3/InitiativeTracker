@@ -79,6 +79,19 @@ jobs:
         with:
           name: n9-shared-https-composite-evidence
           path: ${{ runner.temp }}/n9-integrated-results/*.trx
+  composite-installer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prepare pinned composite source without merging branches
+        run: python3 scripts/tests/n9-https-integration.py --prepare-only --fixture "$RUNNER_TEMP/n9-installer-composite"
+      - name: Resolved private-media and secure-rollback installer fixtures
+        run: |
+          docker build -f "$RUNNER_TEMP/n9-installer-composite/scripts/installation/tests/Dockerfile" -t n9-shared-installer "$RUNNER_TEMP/n9-installer-composite"
+          docker run --rm --network none n9-shared-installer
+          docker run --rm --network none n9-shared-installer shellcheck scripts/install.sh scripts/install-hub.sh scripts/install-satellite.sh hub-updater/runtime/* hub-bootstrap/install-hub-release.sh hub-bootstrap/initiativetracker-sync-hostname
   arm64-native:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15

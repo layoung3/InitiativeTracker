@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-SHARED = '12b38a335b8f4bf23371d03c5948c891599a9975'
+SHARED = '5b3e0f66b3e9a7ea6a6b2e2bdea6f0a222bb287e'
 N9 = '1e86dc520f9aa5e228b5639f1e31e9f7f19e0caa'
 
 
@@ -75,10 +75,11 @@ app.Run();''')
 }
 ''')
     if not entry_only:
-        patch = ROOT / 'integration/n9-shared-https.patch'
-        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=destination, check=True)
-        subprocess.run(['git', 'apply', str(patch)], cwd=destination, check=True)
-        print('Adapter SHA256: ' + hashlib.sha256(patch.read_bytes()).hexdigest(), flush=True)
+        for name in ['n9-shared-https.patch', 'n9-shared-updater-fixtures.patch', 'n9-shared-installer-ci.patch']:
+            patch = ROOT / 'integration' / name
+            subprocess.run(['git', 'apply', '--check', str(patch)], cwd=destination, check=True)
+            subprocess.run(['git', 'apply', str(patch)], cwd=destination, check=True)
+            print(name + ' SHA256: ' + hashlib.sha256(patch.read_bytes()).hexdigest(), flush=True)
     shutil.copy2(ROOT / 'scripts/tests/N9SharedIntegrationTests.cs.template', destination / 'InitiativeTracker.Tests/N9SharedIntegrationTests.cs')
     print(f'Composite sources: N9 {N9}; shared HTTPS {SHARED}; reviewed adapter applied: {not entry_only}', flush=True)
 
