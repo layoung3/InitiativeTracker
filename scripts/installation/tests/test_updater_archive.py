@@ -89,6 +89,20 @@ class ArchiveTests(unittest.TestCase):
                     self.assertNotEqual(hashlib.sha256(exported).digest(), hashlib.sha256(blob).digest())
         self.assertNotEqual(self.verify(self.base / 'bundle.tar').returncode, 0)
 
+    def test_higher_precedence_local_eol_and_export_filter_overrides_are_rejected(self):
+        info = self.repo / '.git/info/attributes'
+        self.git('config', 'filter.integrity-fixture.smudge', 'git hash-object --stdin')
+        self.git('config', 'filter.integrity-fixture.required', 'true')
+        for attribute in ('text eol=crlf', 'filter=integrity-fixture'):
+            with self.subTest(attribute=attribute):
+                info.write_bytes(('hub-updater/original/* ' + attribute + '\n' +
+                                  'hub-updater/runtime/* ' + attribute + '\n').encode())
+                # Even explicit command-local EOL settings cannot override an
+                # attribute/filter. Verification must fail, never repair bytes.
+                result = self.verify(self.export('false', 'lf'))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('manifest mismatch', result.stderr)
+
     @unittest.skipIf(os.name == 'nt', 'documented Linux workstation commands require Bash')
     def test_exact_documented_bash_export_and_verification(self):
         guide = (ROOT / 'hub-updater/EXISTING-HUB-UPGRADE.md').read_text()

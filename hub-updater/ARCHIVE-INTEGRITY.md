@@ -72,6 +72,8 @@ Automated tests create tiny temporary Git repositories and cover:
   Linux CI runs Git/Bash and the extracted inspector.
 - Historical `text=auto` behavior reproducing all six CRLF mismatches; corrected
   LF pins rejecting changes to each of the six scripts or either manifest.
+- Higher-precedence `.git/info/attributes` EOL and smudge-filter overrides still
+  failing raw-byte verification, even with command-local LF export settings.
 - Exact documented Bash and PowerShell export/verification commands, including
   binary output with native-command exit-code checks on Windows.
 - Extracted six-script Bash syntax checks and extracted inspector candidate

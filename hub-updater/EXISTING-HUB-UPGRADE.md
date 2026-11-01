@@ -132,6 +132,12 @@ Always use Git's binary `--output` option. Do not use PowerShell text pipelines,
 `Out-File`, `Set-Content`, or version-dependent native stdout redirection to create
 the tar. The explicit command-local EOL settings also protect exports of older
 commits; the corrected commit additionally pins `hub-updater/** text eol=lf`.
+Local `.git/info/attributes` has higher precedence than the tracked rules, and
+workstation filters or export substitutions can also change exported bytes.
+The six-entry verifier must still pass; an override is never a reason to accept
+different hashes. Review/remove conflicting local settings in a disposable clean
+checkout before recreating the export. The procedure does not edit global Git
+configuration or silently override filters.
 Do not edit either manifest or normalize an extracted bundle to make it pass:
 discard a failed export and recreate it from the reviewed source. See the
 [six-file reproduction and cause](ARCHIVE-INTEGRITY.md) for the distinction between
