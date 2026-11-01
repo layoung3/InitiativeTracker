@@ -5,12 +5,12 @@ hub. The owner-observed deployed baseline is **0.1.5** on Debian 13 Trixie ARM64
 with the application and LightDM active and health/database/storage checks passing
 on the existing hub. See [the evidence record](docs/setup/evidence-and-gaps.md)
 for verification limits. This guide was
-checked against `master` commit `353a1c78b0eb9150d6587a6c442c7dca76aaf5e4`.
+checked against `master` commit `d9470510eba7af584d5c8f8ba05250d275979a62` (merged N9/0.1.6 source).
 
-**A release package is not a complete device image.** This branch adds an
+**A release package is not a complete device image.** Merged source includes an
 [automated fresh-device installer](docs/setup/automated-installation.md), including
 the recovered original graphical updater sources and separately derived runtime
-safety changes. It is a draft implementation validated with disposable fixtures
+safety changes. It is validated with disposable fixtures
 and a Debian container, pending physical fresh-Pi acceptance; it is not an
 installed upgrade or hardware acceptance result. Do not run a fresh installer on
 an existing working hub or satellite. Existing-hub component maintenance has a
@@ -23,6 +23,7 @@ Complete hardware acceptance before handover.
 | --- | --- |
 | Preview/install a fresh hub or satellite automatically | [Automated installation and rollback checks](docs/setup/automated-installation.md) |
 | Review a backed-up component-only upgrade for an existing hub | [Separate approval-gated maintenance procedure](hub-updater/EXISTING-HUB-UPGRADE.md) |
+| Review N9 application branding and fresh/existing desktop loading artwork | [Pinned artwork paths, copy/backup/rollback and compatibility gates](docs/setup/branding.md) |
 | Update an already configured hub | [Canonical hub release procedure](docs/setup/hub-release.md) |
 | Image a new Pi and install the hub | [Fresh hub installation](docs/setup/fresh-hub.md) |
 | Install hub networking and understand fallback | [Hub networking](docs/setup/networking.md) |
@@ -37,7 +38,7 @@ first-install bootstrap as an updater or copy files over the live application.
 
 Updating the **application** and hardening the existing hub's **OS updater** are
 separate operations. The latter needs a backed-up, approval-gated maintenance
-procedure being prepared in PR #3. Follow only available reviewed documentation;
+procedure in the linked component guide. Follow only reviewed documentation;
 do not run a fresh-device installer or copy proposed runtime files onto a working
 hub. The original installed behavior and its limitations remain documented here.
 
@@ -99,6 +100,30 @@ Store private backups separately from release artifacts. Read only selected
 configuration metadata when diagnosing; never use `nmcli --show-secrets` in a
 shared transcript.
 
+## N9 branding and startup artwork
+
+The bundled blue phoenix is `InitiativeTracker.Web/wwwroot/images/colophon.png`.
+The app archive places it at `wwwroot/images/colophon.png` in each versioned hub
+release. Fresh installers separately copy it to the selected desktop account's
+`~/.local/lib/initiativetracker-hub/colophon.png` or
+`~/.local/lib/initiativetracker-satellite/colophon.png`. Application updates and the
+three-script hub component upgrader do not copy these desktop assets.
+
+Use the [single branding procedure](docs/setup/branding.md) for exact hashes,
+actual fresh installer modes, Windows PowerShell transfer and approval-gated Pi
+SSH Bash inspection/copy/backup/rollback. Older launchers/satellite wrappers must
+stop for a separately reviewed component upgrade; copying a PNG cannot add N9
+loading support. Preserve Labwc/updater order, Chromium profiles and pairing.
+No restart, reboot, app start or 0.1.6 migration is authorized by these docs.
+
+Customers can replace the application logo/name through **secure DM appearance
+settings** after trusted HTTPS, persistent storage and the migration are separately
+commissioned, without editing source. This does not replace desktop artwork.
+Default characters remain the generic fantasy silhouette, with a neutral banner;
+the phoenix is never the default character portrait. Desktop loading pages/dialogs
+are distinct from [optional true Linux boot splash](docs/N9-optional-boot-splash.md),
+which is not installed by N9. Follow the [single 0.1.6 deployment/rollback plan](docs/https/0.1.6-integration-release-plan.md).
+
 ## Optional shared trusted HTTPS checkpoint
 
-The disabled-by-default [shared HTTPS foundation](docs/https/architecture-security.md) provides direct browser TLS, protected certificate activation/renewal orchestration and local DNS preflight. Read the [certificate/DNS setup guide](docs/https/certificate-dns-setup.md), [staged migration/rollback plan](docs/https/migration-rollback.md) and [validation limits](docs/https/validation.md) before requesting any installation. It does not choose a domain, install a DNS/ACME backend, change either Pi, enable redirects or merge N8/N9.
+The disabled-by-default [shared HTTPS foundation](docs/https/architecture-security.md) provides direct browser TLS, protected certificate activation/renewal orchestration and local DNS preflight. Read the [certificate/DNS setup guide](docs/https/certificate-dns-setup.md), [staged migration/rollback plan](docs/https/migration-rollback.md) and [validation limits](docs/https/validation.md) before requesting any installation. It does not choose a domain, install a DNS/ACME backend, change either Pi, enable redirects or install the merged N9 application. N8 remains a separate hardware-validation checkpoint.

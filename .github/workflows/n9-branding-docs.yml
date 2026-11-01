@@ -1,0 +1,58 @@
+name: N9 branding documentation commands
+on:
+  pull_request:
+    paths:
+      - 'SetupReadme.md'
+      - 'docs/setup/**'
+      - 'scripts/tests/test_n9_branding_docs.py'
+      - '.github/workflows/n9-branding-docs.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disposable-pi-command-logic:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Execute exact documented Python/Bash logic in fake homes only
+        run: python3 -m unittest discover -s scripts/tests -p test_n9_branding_docs.py -v
+  windows-powershell-transfer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Parse and exercise exact PowerShell preparation with offline transfer mocks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $guide = Get-Content docs/setup/branding.md -Raw
+          $snippet = [regex]::Match($guide, '(?s)```powershell\r?\n(.*?)```').Groups[1].Value
+          if (!$snippet) { throw 'PowerShell block missing' }
+          $tokens = $null; $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseInput($snippet, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          $gitExecutable = (Get-Command git -CommandType Application).Source
+          $script:transferCount = 0
+          # Exercise archive/export/hash commands unchanged. Fetch and SCP alone
+          # are offline mocks; no SSH target, network or installed device exists.
+          function git {
+            if ($args[0] -eq 'fetch') { $global:LASTEXITCODE = 0; return }
+            & $gitExecutable @args
+            $global:LASTEXITCODE = $LASTEXITCODE
+          }
+          function scp {
+            if ($args.Count -ne 3 -or $args[0] -ne '--' -or !(Test-Path -LiteralPath $args[1] -PathType Leaf)) { throw 'Unexpected SCP arguments' }
+            if ($args[2] -ne 'YOUR_SSH_ACCOUNT@APPROVED_PI_ADDRESS:n9-branding-source.tar') { throw 'Unexpected transfer target' }
+            $script:transferCount += 1
+            $global:LASTEXITCODE = 0
+          }
+          & ([scriptblock]::Create($snippet))
+          if ($script:transferCount -ne 1) { throw 'Transfer mock was not exercised' }
+          Write-Output 'PASS: exact PowerShell preparation, binary tar export/extraction and PNG hash; no real fetch/SCP'

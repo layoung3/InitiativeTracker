@@ -2,8 +2,8 @@
 
 [Setup index](../../SetupReadme.md) · [Networking](networking.md) · [Acceptance](acceptance.md)
 
-For the new draft automation, start with [automated installation](automated-installation.md).
-It includes the recovered source snapshots, proposed provisioning recipe and
+For current N9 commissioning, start with [automated installation](automated-installation.md).
+It includes the recovered source snapshots, reviewed provisioning recipe and
 targeted updater/launcher corrections. The manual steps below describe the
 original deployment baseline; their updater caveats still apply to existing
 devices running the originals. No existing device has been changed by this PR.
@@ -19,6 +19,14 @@ The owner has verified an existing hub on **Debian 13 Trixie ARM64/aarch64**, wi
 LightDM, graphical target and the 0.1.5 application active, healthy persistent data
 and unchanged identity. This supports the deployed baseline; it is not evidence
 that this fresh-image procedure or draft automation passed on new hardware.
+
+For N9 artwork use the [single branding guide](branding.md): bundled release PNG,
+separately provisioned desktop PNG/launcher/supervisor, actual owner/modes and
+existing-device compatibility/backup/rollback. Its source pin is merged master
+`d9470510eba7af584d5c8f8ba05250d275979a62`. The legacy manual baseline below does
+not itself provision N9 loading support; do not combine its original launcher with
+a PNG and claim N9 support. Merged source is 0.1.6; any app start invokes migration
+checks, requiring separate application/database approval before installation.
 
 ## 1. Hardware and imaging
 
@@ -140,7 +148,7 @@ test ! -e /opt/initiativetracker/current && test ! -L /opt/initiativetracker/cur
 chmod +x "$HOME/hub-bootstrap/install-hub-release.sh"
 sudo "$HOME/hub-bootstrap/install-hub-release.sh" \
   "$HOME/it-release-transfer/release-manifest.json" \
-  "$HOME/it-release-transfer/InitiativeTracker-0.1.5-linux-arm64.tar.gz"
+  "$HOME/it-release-transfer/InitiativeTracker-0.1.6-linux-arm64.tar.gz"
 ```
 
 Use the actual approved package filename if different. Expected:
@@ -157,7 +165,7 @@ What the source installs:
 | Resource | Configuration / verification |
 | --- | --- |
 | System account | `initiativetracker`, nologin shell; `getent passwd initiativetracker` |
-| Release | `/opt/initiativetracker/releases/0.1.5-linux-arm64`, root-owned; `readlink -f /opt/initiativetracker/current` |
+| Release | `/opt/initiativetracker/releases/0.1.6-linux-arm64`, root-owned; `readlink -f /opt/initiativetracker/current` |
 | Persistent data | `/var/lib/initiativetracker`, service user/group, mode 0750; `sudo stat -c '%U:%G %a' /var/lib/initiativetracker` |
 | Config | Bootstrap production template copied into release; external `Tracker:DataDirectory`, LAN HTTP port 5000, friendly hostname |
 | App unit | `User/Group=initiativetracker`, working directory `current`, `Restart=always`, `RestartSec=3`, `ReadWritePaths=/var/lib/initiativetracker` |
