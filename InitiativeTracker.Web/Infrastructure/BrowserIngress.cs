@@ -45,10 +45,12 @@ internal sealed class BrowserIngress
         IPEndPoint? original = null;
         try
         {
-            var bytes = new byte[32];
+            // Linux getorigdst copies exactly sockaddr_in/in6 but does not update
+            // optlen. Supply the exact family size, never a larger shared buffer.
+            var bytes = new byte[family == AddressFamily.InterNetwork ? 16 : 28];
             var count = read is null ? socket.GetRawSocketOption(family == AddressFamily.InterNetwork ? 0 : 41, 80, bytes)
                 : read(socket, family == AddressFamily.InterNetwork ? 0 : 41, 80, bytes);
-            if (count is >= 0 and <= 32) original = ParseOriginal(bytes.AsSpan(0, count), family);
+            if (count == bytes.Length) original = ParseOriginal(bytes, family);
         }
         catch (SocketException) { } // No metadata is never canonical authority.
         catch (ObjectDisposedException) { return null; }

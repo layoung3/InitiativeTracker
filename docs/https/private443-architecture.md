@@ -122,6 +122,8 @@ independently approved stages with receipts and rollback.
   preserve additive ambient-config protections, not an empty-config assumption.
 - [nftables NAT](https://wiki.nftables.org/wiki-nftables/index.php/Performing_Network_Address_Translation_(NAT)):
   stateful destination redirect in prerouting/output.
+- [Linux original-destination implementation](https://github.com/torvalds/linux/blob/v6.12/net/netfilter/nf_conntrack_proto.c):
+  IPv4/IPv6 sockaddr layout and exact-sized buffers (the getter does not reduce optlen).
 - [Kestrel socket feature](https://learn.microsoft.com/en-us/dotnet/api/microsoft.aspnetcore.connections.features.iconnectionsocketfeature?view=aspnetcore-10.0),
   [Socket raw options](https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket?view=net-10.0).
 - [systemd sockets](https://www.freedesktop.org/software/systemd/man/latest/systemd.socket.html):

@@ -255,6 +255,13 @@ public static class BrowserTls
         if (store.Settings.Enabled && (Sensitive(context.Request) ||
             string.Equals(context.Request.Host.Host, store.Settings.Host, StringComparison.OrdinalIgnoreCase)) && !origin.TrustedRequest(context))
         { context.Response.StatusCode = 426; context.Response.Headers.CacheControl = "no-store"; return; }
+        // Canonical browser WebSocket handshakes carry Origin. Keep legacy HTTP
+        // gameplay migration independent; do not accept a cross-site upgrade at 443.
+        if (store.Settings.KernelRedirect && origin.TrustedRequest(context) &&
+            context.Request.Path.StartsWithSegments("/hubs/encounter") &&
+            (HttpMethods.IsConnect(context.Request.Method) || context.Request.Headers.Upgrade.ToString().Split(',').Any(value => value.Trim().Equals("websocket", StringComparison.OrdinalIgnoreCase))) &&
+            context.Request.Headers.Origin.ToString() != origin.Origin)
+        { context.Response.StatusCode = 403; context.Response.Headers.CacheControl = "no-store"; return; }
         await next(context);
     }
 }

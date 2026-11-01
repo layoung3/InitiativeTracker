@@ -103,18 +103,24 @@ def stop_app(process):
     except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3)
 
 
-def websocket(session):
+def websocket(session,origin=None):
     with context().wrap_socket(socket.create_connection(('127.0.0.1',443),timeout=5),server_hostname=HOST) as stream:
         key = base64.b64encode(os.urandom(16)).decode()
         cookie = '; '.join(k+'='+v for k,v in session.cookies.items())
-        stream.sendall(('GET /hubs/encounter HTTP/1.1\r\nHost: '+HOST+'\r\nOrigin: https://'+HOST+
+        stream.sendall(('GET /hubs/encounter HTTP/1.1\r\nHost: '+HOST+'\r\nOrigin: '+(origin or 'https://'+HOST)+
             '\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: '+key+'\r\nCookie: '+cookie+'\r\n\r\n').encode())
         response = b''
         while b'\r\n\r\n' not in response:response += stream.recv(4096)
+        if origin is not None:
+            assert response.startswith(b'HTTP/1.1 403');return
         assert response.startswith(b'HTTP/1.1 101')
         payload = b'{"protocol":"json","version":1}\x1e';mask = os.urandom(4)
         stream.sendall(bytes([0x81,0x80|len(payload)])+mask+bytes(x^mask[i%4] for i,x in enumerate(payload)))
-        response = stream.recv(4096)
+        response = b''
+        while b'{}\x1e' not in response and len(response) < 16384:
+            chunk=stream.recv(4096)
+            if not chunk:break
+            response += chunk
         assert b'{}\x1e' in response
 
 
@@ -165,6 +171,7 @@ def hub():
         assert backend.request('/system/https-status',{},authority=HOST)[0] == 421
         assert session.request('/system/health',authority=HOST+':5445')[0] == 421
         websocket(session)
+        websocket(session,origin='https://other.colophon.stream')
         settings['public_port'] = 443
         second = f.activate(settings,ROOT/'second.pem',ROOT/'second.key',dry_run=False,
             _probe=lambda h,p,g,leaf:probe(g,leaf),_test_ca=ROOT/'ca.pem')['generation']

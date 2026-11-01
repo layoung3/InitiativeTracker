@@ -23,7 +23,7 @@ public sealed class BrowserIngressTests
     }
     private static BrowserIngress Capture(Socket accepted, byte[] value) => BrowserIngress.Capture(accepted, (_,level,option,buffer) =>
     {
-        Assert.Equal(0,level);Assert.Equal(80,option);value.CopyTo(buffer,0);return value.Length;
+        Assert.Equal(0,level);Assert.Equal(80,option);Assert.Equal(16,buffer.Length);value.CopyTo(buffer,0);return value.Length;
     })!;
     private static void Accepted(Action<Socket> test)
     {
