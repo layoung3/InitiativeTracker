@@ -1,14 +1,39 @@
 #!/usr/bin/env python3
 """Render isolated, exact-address nftables ingress. Never install/reload rules."""
 import argparse
+import ipaddress
 import json
 from pathlib import Path
 import re
+import uuid
 
 import foundation as f
 
 
-def render(bindings, assigned):
+def read_hotspot(profile, *, _runner=f.run):
+    if not isinstance(profile,str):raise f.Rejected('An existing profile UUID is required')
+    identity = str(uuid.UUID(profile))
+    fields = 'connection.uuid,connection.interface-name,802-11-wireless.mode,ipv4.method,ipv4.addresses,ipv6.method'
+    output = _runner(['/usr/bin/nmcli','--escape','no','--get-values',fields,'connection','show','uuid',identity],timeout=10,max_output=4096).decode().splitlines()
+    if len(output) != 6:raise f.Rejected('Incomplete NetworkManager hotspot metadata')
+    return dict(zip(['id','interface','mode','method','addresses','ipv6'],output))
+
+
+def validate_hotspot(binding, *, _reader=read_hotspot):
+    if not isinstance(binding.get('hotspot_profile'),str):raise f.Rejected('An existing profile UUID is required')
+    identity = str(uuid.UUID(binding['hotspot_profile']))
+    if uuid.UUID(identity).int == 0:raise f.Rejected('An existing approved hotspot profile UUID is required')
+    profile = _reader(identity)
+    address = f.local_address(binding['address'])
+    if ':' in address or not isinstance(profile,dict) or any(profile.get(key) != value for key,value in
+        {'id':identity,'interface':binding['interface'],'mode':'ap','method':'shared','ipv6':'disabled'}.items()):
+        raise f.Rejected('Inactive binding must match an interface-bound shared IPv4 AP with IPv6 disabled')
+    if str(ipaddress.IPv4Interface(profile['addresses']).ip) != address:
+        raise f.Rejected('Configured hotspot address differs from the selected binding')
+    return address
+
+
+def validated_bindings(bindings, assigned, *, _hotspot_reader=read_hotspot):
     if not isinstance(bindings,list) or not 1 <= len(bindings) <= 16:
         raise f.Rejected('Select explicit private interface/address bindings')
     selected = [];seen = set()
@@ -16,9 +41,17 @@ def render(bindings, assigned):
         interface,address = item['interface'],f.local_address(item['address'])
         if not isinstance(interface,str) or interface == 'lo' or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}',interface) or address in seen:
             raise f.Rejected('Ambiguous private ingress binding')
-        if address not in assigned.get(interface,[]):
+        if interface not in assigned:raise f.Rejected('Selected ingress interface is not present')
+        if 'hotspot_profile' in item:
+            validate_hotspot(item,_reader=_hotspot_reader)
+        elif address not in assigned.get(interface,[]):
             raise f.Rejected('Ingress address is not currently assigned to the selected interface')
         seen.add(address);selected.append((interface,address))
+    return selected
+
+
+def render(bindings, assigned, *, _hotspot_reader=read_hotspot):
+    selected = validated_bindings(bindings,assigned,_hotspot_reader=_hotspot_reader)
     lines = ['# REVIEW ONLY. Dedicated table; no other firewall/NM state is changed.',
         'table inet initiativetracker_browser443 {',
         ' chain prerouting { type nat hook prerouting priority dstnat; policy accept;']

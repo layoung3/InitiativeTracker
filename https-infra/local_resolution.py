@@ -3,6 +3,7 @@
 import argparse
 import http.client
 import json
+import re
 from pathlib import Path
 import socket
 import ssl
@@ -10,12 +11,20 @@ import uuid
 
 import device_names
 import foundation as f
+import private443
 
 
-def hotspot_dns(host, addresses, assigned):
+def hotspot_dns(host, addresses, assigned, *, profile=None, interface=None, _hotspot_reader=private443.read_hotspot):
     # NetworkManager owns the shared instance, interfaces, upstreams and DHCP.
     # Importing the hub's /etc/hosts would expose its physical-screen loopback name.
-    return f.render_dns(host, addresses, assigned)
+    if (profile is None) != (interface is None):raise f.Rejected('Hotspot profile and interface must be supplied together')
+    if profile is None:return f.render_dns(host, addresses, assigned)
+    f.hostname(host)
+    if len(addresses) != 1 or not isinstance(interface,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}',interface) or interface == 'lo':
+        raise f.Rejected('Select one fixed hotspot address and its interface')
+    address = private443.validate_hotspot({'address':addresses[0],'interface':interface,'hotspot_profile':profile},_reader=_hotspot_reader)
+    # Fixed profile proof, not a claim the inactive AP is currently assigned.
+    return f'no-hosts\nlocal=/{host}/\nhost-record={host},{address}\n'
 
 
 def client_hosts(host, addresses):
@@ -86,14 +95,20 @@ def main():
     parser.add_argument('--inventory', type=Path, required=True)
     parser.add_argument('--id', required=True, help='Approved existing full hub GUID')
     parser.add_argument('--address', action='append', default=[], help='Current private hub address, repeat for each advertised family')
+    parser.add_argument('--hotspot-profile',help='Existing approved AP/shared profile UUID; allows safe inactive preparation')
+    parser.add_argument('--interface',help='Explicit interface bound in the selected AP profile')
     args = parser.parse_args()
     try:
+        if args.action != 'hotspot-template' and (args.hotspot_profile is not None or args.interface is not None):
+            raise f.Rejected('Profile preparation options are only for hotspot DNS')
         if args.inventory.stat().st_size > 1_048_576:
             raise f.Rejected('Inventory exceeds limit')
         item = device_names.lookup(json.loads(args.inventory.read_text()), 'hub', args.id)
         host = item['hostname']
         if args.action == 'hotspot-template':
-            print(hotspot_dns(host, args.address, f.assigned_addresses()), end='')
+            if args.hotspot_profile is not None and args.interface not in private443.assigned_interfaces():
+                raise f.Rejected('Selected hotspot interface is not present')
+            print(hotspot_dns(host, args.address, f.assigned_addresses(),profile=args.hotspot_profile,interface=args.interface), end='')
         elif args.action == 'client-hosts':
             print(client_hosts(host, args.address), end='')
         elif args.action == 'physical-hosts':

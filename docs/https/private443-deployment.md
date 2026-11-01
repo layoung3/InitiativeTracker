@@ -306,10 +306,30 @@ absence/backup receipt, containing the selected current private bindings, e.g.:
 [{"interface":"OWNER_INTERFACE","address":"OWNER_CURRENT_PRIVATE_IP"}]
 ```
 
+To prepare the already configured recovery hotspot while the radio remains on
+home Wi-Fi, add its fixed IPv4 address and **existing approved profile UUID**, e.g.:
+
+```json
+[
+  {"interface":"OWNER_WIFI_INTERFACE","address":"OWNER_CURRENT_HOME_PRIVATE_IP"},
+  {"interface":"OWNER_WIFI_INTERFACE","address":"OWNER_FIXED_HOTSPOT_PRIVATE_IP","hotspot_profile":"EXISTING_APPROVED_AP_PROFILE_UUID"}
+]
+```
+
+The inactive exception reads only UUID/interface/AP mode/shared method/fixed
+IPv4/disabled-IPv6 metadata through `nmcli`; it does not read a password or activate
+anything. A mismatch or absent interface refuses generation. Every private rule
+also requires `fib daddr type local` at packet time, so an inactive or stale
+address cannot cause translation of traffic forwarded to another machine. Once
+the approved hotspot owns its fixed address, the preinstalled rule works without
+an app restart or new privileged watcher. This is profile proof at preparation,
+not a claim that NetworkManager is running that mode now. Ordinary LAN DHCP
+changes still require a new reviewed address/mapping; the XB8 cannot distribute it.
+
 Only advertise ULA IPv6 if it is assigned, reachable and accepted by clients.
 Generated rules always include hub-only IPv4/IPv6 loopback OUTPUT; no public/global
-ingress binding is accepted. The renderer checks selected addresses against the
-actual interface, refuses ambiguous/duplicate/unassigned bindings and emits only
+ingress binding is accepted. The renderer checks current addresses or the narrowly
+verified inactive AP against the actual interface, refuses ambiguous/duplicate bindings and emits only
 the dedicated `inet initiativetracker_browser443` table. Never flush rulesets or
 NetworkManager tables. Check for an existing port-443 listener/table before the
 first install; hold on any conflict. Under separate network-stage approval:

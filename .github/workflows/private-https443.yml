@@ -60,3 +60,18 @@ jobs:
           docker run --rm --network "$fixture" --ip 192.168.253.3 --ip6 fd25:443:5445::3 --cap-drop ALL \
             -e IT_DISPOSABLE_KERNEL_TEST=1 -v "$fixture-public:/public:ro" it-private443-kernel \
             /usr/bin/python3 -I https-infra/tests/private443_socket_smoke.py remote
+          for mode in hotspot home; do
+            docker exec "$fixture-hub" touch "/public/switch-$mode"
+            ready=false
+            for attempt in $(seq 1 30); do
+              if docker exec "$fixture-hub" test -f "/public/$mode-ready"; then ready=true; break; fi
+              test "$(docker inspect -f '{{.State.Running}}' "$fixture-hub")" = true || exit 1
+              sleep 1
+            done
+            test "$ready" = true
+            role=remote
+            if test "$mode" = hotspot; then role=remote-hotspot; fi
+            docker run --rm --network "$fixture" --ip 192.168.253.3 --ip6 fd25:443:5445::3 --cap-drop ALL \
+              -e IT_DISPOSABLE_KERNEL_TEST=1 -v "$fixture-public:/public:ro" it-private443-kernel \
+              /usr/bin/python3 -I https-infra/tests/private443_socket_smoke.py "$role"
+          done

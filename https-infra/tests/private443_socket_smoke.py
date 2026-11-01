@@ -28,6 +28,7 @@ ROOT = Path('/fixture')
 PUBLIC = Path('/public')
 V4 = '192.168.253.2'
 V6 = 'fd25:443:5445::2'
+HOTSPOT = '192.168.253.4'
 EDITOR = '/appearance/application/00000000-0000-0000-0000-000000000000'
 BANNER = '/media/application/00000000-0000-0000-0000-000000000000/banner'
 
@@ -176,7 +177,12 @@ def hub():
         openssl('x509','-req','-in',name+'.csr','-CA','ca.pem','-CAkey','ca.key','-CAcreateserial','-out',name+'.pem','-days','2','-extfile','leaf.ext')
         (ROOT/(name+'.pem')).chmod(0o600);(ROOT/(name+'.key')).chmod(0o600)
     # Only this disposable container's network namespace is changed. No host mode.
-    rules = private443.render([{'interface':'eth0','address':V4},{'interface':'eth0','address':V6}],private443.assigned_interfaces())
+    profile_id = 'ddae7300-1111-4111-8111-111111111111'
+    # NM profile provenance is a contract fixture; real kernel transitions below
+    # do not pretend a NetworkManager daemon or Wi-Fi hardware exists here.
+    profile = {'id':profile_id,'interface':'eth0','mode':'ap','method':'shared','addresses':HOTSPOT+'/24','ipv6':'disabled'}
+    rules = private443.render([{'interface':'eth0','address':V4},{'interface':'eth0','address':V6},
+        {'interface':'eth0','address':HOTSPOT,'hotspot_profile':profile_id}],private443.assigned_interfaces(),_hotspot_reader=lambda _:profile)
     (ROOT/'ingress.nft').write_text(rules)
     subprocess.run(['/usr/sbin/nft','--check','-f',str(ROOT/'ingress.nft')],check=True)
     subprocess.run(['/usr/sbin/nft','-f',str(ROOT/'ingress.nft')],check=True)
@@ -227,6 +233,16 @@ def hub():
         (PUBLIC/'ready').write_text('ready\n')
         print('PASS: kernel IPv4/IPv6 OUTPUT, physical proof, strict backend probe, old-origin replay, cookies/CSRF, private N9 upload/settings/revocation, WebSocket, rotation/rollback/restart; app uid 65000',flush=True)
         signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
+        for requested,finished,commands in [
+            ('switch-hotspot','hotspot-ready',[("del",V4+'/24'),("del",V6+'/64'),("add",HOTSPOT+'/24')]),
+            ('switch-home','home-ready',[("del",HOTSPOT+'/24'),("add",V4+'/24'),("add",V6+'/64')])]:
+            while not (PUBLIC/requested).exists():time.sleep(.1)
+            for action,address in commands:
+                # Deterministic fixture-only IPv6 alias restoration, no radio/DAD claim.
+                subprocess.run(['/usr/sbin/ip','address',action,address,'dev','eth0']+(['nodad'] if action == 'add' and ':' in address else []),check=True)
+            assert session.request(BANNER,binary=True)[1] == saved_banner
+            (PUBLIC/finished).write_text('ready\n')
+        print('PASS: actual home → fixed hotspot → home address transitions, unchanged nftables/app, preserved secure grant/media; NetworkManager metadata is a contract fixture',flush=True)
         while True:time.sleep(1)
     except Exception:
         for path in [ROOT,ROOT/'tls',*(ROOT/'tls').glob('*/bundle.pfx'),ROOT/'tls'/'active.json',PUBLIC,PUBLIC/'ca.pem']:
@@ -238,8 +254,8 @@ def hub():
     finally:stop_app(process)
 
 
-def remote():
-    for address in [V4,V6]:
+def remote(hotspot=False):
+    for address in ([HOTSPOT] if hotspot else [V4,V6]):
         session = Session(address)
         assert session.request('/system/health')[0] == 200
         assert session.request('/secure-access')[0] == 200
@@ -249,6 +265,10 @@ def remote():
         try:socket.create_connection((address,5445),timeout=.75)
         except OSError:pass
         else:raise AssertionError('Remote direct backend was reachable')
+    absent = V4 if hotspot else HOTSPOT
+    try:socket.create_connection((absent,443),timeout=.75)
+    except OSError:pass
+    else:raise AssertionError('Unassigned private origin remained reachable')
     print('PASS: separate client actual IPv4/IPv6 PREROUTING, trusted TLS, remote physical GET/POST denial and direct 5445 firewall rejection')
 
 
@@ -257,4 +277,5 @@ if __name__ == '__main__':
         raise SystemExit('Refuse outside an explicit disposable Docker PID/network namespace')
     if sys.argv[1:] == ['hub']:hub()
     elif sys.argv[1:] == ['remote']:remote()
+    elif sys.argv[1:] == ['remote-hotspot']:remote(hotspot=True)
     else:raise SystemExit('Expected hub or remote fixture role')

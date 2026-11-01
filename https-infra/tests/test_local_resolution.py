@@ -31,6 +31,15 @@ class LocalResolutionTests(unittest.TestCase):
         self.assertEqual('127.0.0.1\t' + self.host + '\n::1\t' + self.host + '\n', r.physical_hosts(self.host))
         with self.assertRaises(r.f.Rejected):r.client_hosts(self.host, [])
 
+    def test_hotspot_dns_can_be_prepared_inactive_only_from_existing_ap_profile(self):
+        identity='ddae7300-1111-4111-8111-111111111111'
+        profile={'id':identity,'interface':'wlan0','mode':'ap','method':'shared','addresses':'10.84.0.1/24','ipv6':'disabled'}
+        reader=MagicMock(return_value=profile)
+        text=r.hotspot_dns(self.host,['10.84.0.1'],['192.168.1.5'],profile=identity,interface='wlan0',_hotspot_reader=reader)
+        self.assertIn('no-hosts\n',text);self.assertIn('host-record='+self.host+',10.84.0.1',text)
+        self.assertNotIn('127.0.0.1',text)
+        with self.assertRaises(ValueError):r.hotspot_dns(self.host,['10.84.0.2'],[],profile=identity,interface='wlan0',_hotspot_reader=reader)
+
     def test_stale_a_aaaa_and_unconfigured_dns_fail_before_tls(self):
         identity = MagicMock()
         for addresses in [[], ['127.0.0.1'], ['192.168.1.8'], ['192.168.1.7','fd12::4']]:

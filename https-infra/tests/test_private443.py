@@ -11,6 +11,28 @@ import foundation as f
 
 
 class Private443Tests(unittest.TestCase):
+    def test_inactive_hotspot_needs_readonly_profile_proof_and_runtime_local_address_guard(self):
+        identity='ddae7300-1111-4111-8111-111111111111'
+        binding={'interface':'wlan0','address':'10.84.0.1','hotspot_profile':identity}
+        profile={'id':identity,'interface':'wlan0','mode':'ap','method':'shared','addresses':'10.84.0.1/24','ipv6':'disabled'}
+        reader=MagicMock(return_value=profile)
+        # Home Wi-Fi currently assigned: the existing, inactive recovery AP is not activated.
+        text=ingress.render([binding],{'wlan0':['192.168.1.5']},_hotspot_reader=reader)
+        self.assertIn('ip daddr 10.84.0.1 fib daddr type local tcp dport 443',text)
+        reader.assert_called_once_with(identity)
+        self.assertEqual(text,ingress.render([binding],{'wlan0':['10.84.0.1']},_hotspot_reader=lambda _:profile))
+        for key,value in [('id','other'),('interface','eth0'),('mode','infrastructure'),('method','auto'),('addresses','10.84.0.2/24'),('ipv6','auto')]:
+            with self.subTest(key=key),self.assertRaises(ValueError):ingress.render([binding],{},_hotspot_reader=lambda _:{**profile,key:value})
+        del binding['hotspot_profile']
+        with self.assertRaises(f.Rejected):ingress.render([binding],{})
+    def test_hotspot_metadata_reads_only_fixed_nonsecret_nm_fields(self):
+        identity='ddae7300-1111-4111-8111-111111111111'
+        runner=MagicMock(return_value=(identity+'\nwlan0\nap\nshared\n10.84.0.1/24\ndisabled\n').encode())
+        self.assertEqual('10.84.0.1/24',ingress.read_hotspot(identity,_runner=runner)['addresses'])
+        args=runner.call_args.args[0]
+        self.assertEqual('/usr/bin/nmcli',args[0]);self.assertNotIn('--show-secrets',args)
+        self.assertNotIn('wifi-sec',args[4]);self.assertIn('show',args)
+        with self.assertRaises(ValueError):ingress.read_hotspot('--invalid',_runner=runner)
     def test_rule_scope_has_no_snat_and_preserves_loopback_and_backend_boundaries(self):
         text = ingress.render([{'interface':'eth0','address':'192.168.1.5'},{'interface':'wlan0','address':'fd12::1'}],{'eth0':['192.168.1.5'],'wlan0':['fd12::1']})
         for expected in ['table inet initiativetracker_browser443','iifname "eth0" ip daddr 192.168.1.5 fib daddr type local tcp dport 443 dnat ip to 192.168.1.5:5445',

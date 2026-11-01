@@ -62,6 +62,10 @@ Read-only generation/preflight commands (reviewed tools installed separately):
 # Run on the hub; generation checks the selected address is actually assigned.
 python3 /usr/local/lib/initiativetracker-https/local_resolution.py hotspot-template \
   --inventory INVENTORY.json --id FULL_GUID --address CURRENT_HOTSPOT_PRIVATE_IP
+# Alternatively, while the existing AP is inactive: non-secret profile proof only.
+python3 /usr/local/lib/initiativetracker-https/local_resolution.py hotspot-template \
+  --inventory INVENTORY.json --id FULL_GUID --address APPROVED_FIXED_HOTSPOT_PRIVATE_IP \
+  --hotspot-profile EXISTING_APPROVED_AP_PROFILE_UUID --interface EXISTING_WIFI_INTERFACE
 # Generate a desktop mapping; it does not edit that desktop.
 python3 /usr/local/lib/initiativetracker-https/local_resolution.py client-hosts \
   --inventory INVENTORY.json --id FULL_GUID --address CURRENT_LAN_PRIVATE_IP
@@ -124,6 +128,14 @@ independently, update only the owned block, and repeat acceptance. Never accept 
 familiar short hostname as identity if the full GUID differs.
 
 ## Hotspot exact DNS and the loopback leakage boundary
+
+Inactive preparation requires an existing owner-selected NetworkManager UUID,
+present interface, exact profile/interface/address match, AP/shared IPv4 mode and
+IPv6 disabled. The helper reads only those non-secret fields; it never activates,
+edits or creates a profile. Do not substitute a Wi-Fi MAC, SSID or guessed UUID.
+This permits staging the fixed exact DNS record and guarded ingress rules before
+switching the single radio; ordinary home connectivity remains unchanged during
+preparation. Actual NM shared-DNS/radio acceptance is still required on the Pi.
 
 Use the **existing NetworkManager shared-mode dnsmasq instance**, not a competing
 wildcard/open resolver. Verify the installed NetworkManager/dnsmasq version and
