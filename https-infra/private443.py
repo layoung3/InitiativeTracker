@@ -25,7 +25,7 @@ def render(bindings, assigned):
     for interface,address in selected:
         family = 'ip6' if ':' in address else 'ip'
         target = '['+address+']:5445' if family == 'ip6' else address+':5445'
-        lines.append(f'  iifname "{interface}" {family} daddr {address} tcp dport 443 dnat {family} to {target}')
+        lines.append(f'  iifname "{interface}" {family} daddr {address} fib daddr type local tcp dport 443 dnat {family} to {target}')
     lines += [' }',' chain output { type nat hook output priority dstnat; policy accept;',
         '  ip daddr 127.0.0.1 tcp dport 443 dnat ip to 127.0.0.1:5445',
         '  ip6 daddr ::1 tcp dport 443 dnat ip6 to [::1]:5445',' }',

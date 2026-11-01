@@ -13,7 +13,7 @@ import foundation as f
 class Private443Tests(unittest.TestCase):
     def test_rule_scope_has_no_snat_and_preserves_loopback_and_backend_boundaries(self):
         text = ingress.render([{'interface':'eth0','address':'192.168.1.5'},{'interface':'wlan0','address':'fd12::1'}],{'eth0':['192.168.1.5'],'wlan0':['fd12::1']})
-        for expected in ['table inet initiativetracker_browser443','iifname "eth0" ip daddr 192.168.1.5 tcp dport 443 dnat ip to 192.168.1.5:5445',
+        for expected in ['table inet initiativetracker_browser443','iifname "eth0" ip daddr 192.168.1.5 fib daddr type local tcp dport 443 dnat ip to 192.168.1.5:5445',
             'dnat ip6 to [fd12::1]:5445','ip daddr 127.0.0.1 tcp dport 443','ip6 daddr ::1 tcp dport 443',
             'ct original proto-dst 443','tcp dport 5445 drop','tcp dport 443 drop']:
             self.assertIn(expected,text)
