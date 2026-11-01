@@ -38,7 +38,7 @@ jobs:
           $tokens = $null; $parseErrors = $null
           [System.Management.Automation.Language.Parser]::ParseInput($snippet, [ref]$tokens, [ref]$parseErrors) | Out-Null
           if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
-          $gitExecutable = (Get-Command git -CommandType Application).Source
+          $gitExecutable = (Get-Command git -CommandType Application | Select-Object -First 1).Source
           $script:transferCount = 0
           # Exercise archive/export/hash commands unchanged. Fetch and SCP alone
           # are offline mocks; no SSH target, network or installed device exists.
