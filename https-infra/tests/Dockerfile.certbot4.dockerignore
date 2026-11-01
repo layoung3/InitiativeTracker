@@ -1,0 +1,5 @@
+**
+!https-infra/
+!https-infra/**
+**/__pycache__/
+**/*.pyc

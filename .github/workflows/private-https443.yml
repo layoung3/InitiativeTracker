@@ -1,0 +1,18 @@
+name: Private HTTPS 443 deployment
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  debian-backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build disposable Debian backend qualification image
+        run: docker build -f https-infra/tests/Dockerfile.certbot4 -t it-private-https443-tests .
+      - name: Qualify actual Certbot/Cloudflare packages without network access
+        run: docker run --rm --network none it-private-https443-tests

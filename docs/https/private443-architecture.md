@@ -83,6 +83,14 @@ existing reviewed 5.9 profile separate. No unmanaged global pip or mixed plugin
 families. Capture signed APT candidate/provenance/version/license receipts and
 permit reviewed Debian revision updates rather than permanent package holds.
 
+The native profile may admit only the exact root-owned Debian vendor cli.ini
+SHA-256 `c0d5962eea9582f552fd2a235e0c0c3869c6c84c20359c8926eee8809d4d6872`
+(two benign renewal/log settings), with an explicit bounded log-backup CLI
+override. Any modification, symlink, other ambient config or use under the legacy
+5.9 profile is still rejected. Actual installed parser tests must demonstrate
+additive defaults and rejection of a modified vendor file. This narrowly scoped
+exception requires security review; it is not a claim that --config isolates files.
+
 Certbot's package timer may enable/start during installation. Future install
 commands must preserve existing state and explicitly prevent unintended vendor
 timer/cron activation; plain apt install is not an inert first stage. Smallest

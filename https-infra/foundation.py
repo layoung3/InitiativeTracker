@@ -407,7 +407,7 @@ def renew(settings, *, apply=False, _runner=run):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['preflight', 'physical-preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue'])
+    parser.add_argument('action', choices=['preflight', 'physical-preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue', 'stage'])
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--generation')
     parser.add_argument('--address', action='append', default=[])
@@ -427,9 +427,9 @@ def main():
                 result = resolve_preflight(settings['hostname'], selected)
                 print(json.dumps(result))
                 return 0 if result['ready'] else 1
-        elif args.action == 'issue':
+        elif args.action in {'issue', 'stage'}:
             import certbot_adapter
-            print(json.dumps(certbot_adapter.execute(settings, 'issue', apply=args.apply)))
+            print(json.dumps(certbot_adapter.execute(settings, args.action, apply=args.apply)))
         elif args.action == 'rollback':
             print(json.dumps(rollback(settings, args.generation, apply=args.apply)))
         elif args.action == 'activate':
