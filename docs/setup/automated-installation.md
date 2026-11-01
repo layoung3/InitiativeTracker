@@ -39,9 +39,15 @@ Verify the pin and artwork before inspection. Executable bits are tracked in Git
 From that source checkout, the artwork precheck is **Pi Bash, read-only**:
 
 ```bash
-test "$(git rev-parse HEAD)" = d9470510eba7af584d5c8f8ba05250d275979a62
+test "$(git rev-parse HEAD)" = d9470510eba7af584d5c8f8ba05250d275979a62 || {
+  printf '%s\n' 'STOP: source revision mismatch or Git failure; do not commission.' >&2
+  exit 1
+}
 printf '%s  %s\n' 17822fd1b2b7f54f3b084ce19b24d51f50f30e0495529ba8679586145def40b1 \
-  InitiativeTracker.Web/wwwroot/images/colophon.png | sha256sum --check -
+  InitiativeTracker.Web/wwwroot/images/colophon.png | sha256sum --check - || {
+  printf '%s\n' 'STOP: missing or incorrect artwork; do not commission.' >&2
+  exit 1
+}
 ```
 
 An exported checkout without `.git` must instead have its pinned source/archive

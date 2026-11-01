@@ -206,6 +206,62 @@ class BrandingDocumentationTests(unittest.TestCase):
             auto.write_text(text)
             with self.assertRaises(RuntimeError):self.run_action('apply')
         self.assertFalse(self.backups.exists())
+    def test_labwc_supported_quoting_preserves_real_shell_path_expansion(self):
+        for role,supervised in [('hub',False),('hub',True),('satellite',False)]:
+            if hasattr(self,'local'):
+                shutil.rmtree(self.home);self.home.mkdir(mode=0o700)
+            self.setup_role(role,supervised)
+            auto=self.home/'.config/labwc/autostart'
+            component=self.local/('initiativetracker-hub-launch' if role=='hub' else 'kiosk.py')
+            config=self.home/f'.config/initiativetracker-{role}/kiosk.json'
+            for style in ['absolute-single','absolute-double','home','braced-home']:
+                def quote(path):
+                    if style=='absolute-single':return shlex.quote(str(path))
+                    if style=='absolute-double':return '"'+str(path)+'"'
+                    return '"'+('$HOME/' if style=='home' else '${HOME}/')+str(path.relative_to(self.home))+'"'
+                with self.subTest(role=role,supervised=supervised,style=style):
+                    # Shell only prints the token; no launcher/script is executed.
+                    expanded=subprocess.run(['bash','-c',"printf '%s' "+quote(component)],env={**os.environ,'HOME':str(self.home)},check=True,capture_output=True,text=True)
+                    self.assertEqual(str(component),expanded.stdout)
+                    command=quote(component)+(' --supervise '+quote(config) if supervised else '') if role=='hub' else '/usr/bin/python3 -I '+quote(component)+' '+quote(config)
+                    auto.write_text(command+' & # approved shape with trailing comment\n')
+                    self.assertIn('INSPECT ONLY',self.run_action('inspect'));self.assertFalse(self.backups.exists())
+    def test_labwc_extra_arguments_literal_home_and_shell_control_stop_before_writes(self):
+        for role,supervised in [('hub',False),('hub',True),('satellite',False)]:
+            if hasattr(self,'local'):
+                shutil.rmtree(self.home);self.home.mkdir(mode=0o700)
+            self.setup_role(role,supervised)
+            auto=self.home/'.config/labwc/autostart';original=auto.read_text().splitlines()[-1]
+            command=original.removesuffix(' &')
+            component=self.local/('initiativetracker-hub-launch' if role=='hub' else 'kiosk.py')
+            config=self.home/f'.config/initiativetracker-{role}/kiosk.json'
+            invalid=[command+' --bogus &',command+' extra &',command+' && true &',command+'; true &',command+' | cat &',command+' > /tmp/never-write &',original+' true',original+'; true',original+' && true',command+' &\n'+command+' extra &']
+            for prefix in ['$HOME/','${HOME}/','~/']:
+                invalid.append(original.replace(shlex.quote(str(component)),"'"+prefix+str(component.relative_to(self.home))+"'"))
+            invalid.append(original.replace(shlex.quote(str(component)),'$HOME/'+str(component.relative_to(self.home))))
+            if supervised or role=='satellite':
+                invalid.append(original.replace(shlex.quote(str(config)),"'$HOME/"+str(config.relative_to(self.home))+"'"))
+            for text in invalid:
+                with self.subTest(role=role,supervised=supervised,command=text):
+                    auto.write_text(text+'\n')
+                    with self.assertRaisesRegex(RuntimeError,'Unsupported Labwc'):self.run_action('apply')
+                    self.assertFalse(self.backups.exists());self.assertEqual(b'previous customer artwork',self.target.read_bytes())
+    def test_fresh_source_precheck_fails_closed_before_commissioning(self):
+        guide=(ROOT/'docs/setup/automated-installation.md').read_text()
+        snippet=guide.split('```bash\n',1)[1].split('```',1)[0]
+        marker=self.base/'commissioning-must-not-start'
+        for head in ['wrong-revision','git-failure',self.api['PIN']]:
+            with self.subTest(head=head):
+                git_body='return 1' if head=='git-failure' else 'printf "%s\\n" '+shlex.quote(head)
+                shell='git() { '+git_body+'; }\n'+snippet+'\nprintf reached > '+shlex.quote(str(marker))+'\n'
+                result=subprocess.run(['bash','-c',shell],cwd=ROOT,text=True,capture_output=True)
+                if head==self.api['PIN']:
+                    self.assertEqual(0,result.returncode,result.stderr);self.assertTrue(marker.exists());marker.unlink()
+                else:
+                    self.assertNotEqual(0,result.returncode);self.assertFalse(marker.exists());self.assertNotIn('colophon.png: OK',result.stdout)
+        shell='git() { printf "%s\\n" '+shlex.quote(self.api['PIN'])+'; }\n'+snippet+'\nprintf reached > '+shlex.quote(str(marker))+'\n'
+        result=subprocess.run(['bash','-c',shell],cwd=self.base,text=True,capture_output=True)
+        self.assertNotEqual(0,result.returncode);self.assertFalse(marker.exists())
     def test_later_customer_artwork_is_not_overwritten_on_rollback(self):
         self.setup_role();self.run_action('apply');self.target.write_bytes(b'later artwork')
         with self.assertRaisesRegex(RuntimeError,'changed since apply'):self.run_action('rollback',self.backup())
