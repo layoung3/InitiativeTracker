@@ -1,5 +1,12 @@
 # Certificate and local DNS setup (review before installation)
 
+For the owner's subsequently confirmed Cloudflare/`colophon.stream` deployment,
+use the new [private-443 staged plan](private443-deployment.md) and
+[XB8/hotspot/client resolution guide](private-name-resolution.md). They add a
+separately qualified Debian 13 Certbot 4 profile; the generic 5.9/5445 examples
+below describe the original foundation and are not the final no-port deployment.
+The new 443 transport is pending architecture review and implementation.
+
 Nothing in this guide has been applied to the 0.1.5 hub. Examples are placeholders and deliberately fail until the owner supplies a domain. No domain, provider or certificate account has been chosen on the owner's behalf.
 
 ## Owner prerequisites and dependency decision

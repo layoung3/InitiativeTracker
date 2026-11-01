@@ -285,3 +285,12 @@ recovery, no repeated errors. On offline boot, eventual `ACTIVATE_PRIVATE_HOTSPO
 is expected only after required discovery; record actual timestamps. Previously
 observed external-network reboot success does not prove physical offline fallback.
 Keep logs private if they reveal local network names; share sanitized outcomes.
+
+## Trusted HTTPS hostname resolution
+
+The owner-confirmed `hub-84eaee7c.colophon.stream` target has a separate
+[private hostname resolution plan](../https/private-name-resolution.md) and
+[staged HTTPS deployment guide](../https/private443-deployment.md). Treat the
+home XB8 as non-cooperative; no router change or automatic phone DNS support is
+assumed. Exact hotspot answers must exclude the hub's physical-screen loopback
+mapping. These approval-gated additions do not change existing network recovery.

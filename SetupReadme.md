@@ -102,3 +102,14 @@ shared transcript.
 ## Optional shared trusted HTTPS checkpoint
 
 The disabled-by-default [shared HTTPS foundation](docs/https/architecture-security.md) provides direct browser TLS, protected certificate activation/renewal orchestration and local DNS preflight. Read the [certificate/DNS setup guide](docs/https/certificate-dns-setup.md), [staged migration/rollback plan](docs/https/migration-rollback.md) and [validation limits](docs/https/validation.md) before requesting any installation. It does not choose a domain, install a DNS/ACME backend, change either Pi, enable redirects or merge N8/N9.
+
+The owner-confirmed Cloudflare/`colophon.stream` setup is being prepared in
+[private port-443 deployment](docs/https/private443-deployment.md), with a separate
+[XB8/client, hotspot and physical-screen resolution guide](docs/https/private-name-resolution.md).
+The normal target is `https://hub-84eaee7c.colophon.stream`. The XB8 remains
+unchanged: external-network support requires a verified client-specific resolver
+path; hotspot DNS and hub-only loopback mapping have different scopes. Transport
+review, separate installation approvals and physical acceptance remain required.
+Optional Colophon startup branding is documented separately in the
+[reviewed PR #7 guide](https://github.com/layoung3/InitiativeTracker/blob/a193c5eca8b5f626dc62dc81bf72b961f950cf8d/docs/setup/branding.md);
+reconcile that PR's canonical additions when both changes are integrated.
