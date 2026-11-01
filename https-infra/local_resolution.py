@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Exact-host resolver templates and a read-only client preflight; never edit DNS."""
+import argparse
+import http.client
+import json
+import re
+from pathlib import Path
+import socket
+import ssl
+import uuid
+
+import device_names
+import foundation as f
+import private443
+
+
+def hotspot_dns(host, addresses, assigned, *, profile=None, interface=None, _hotspot_reader=private443.read_hotspot):
+    # NetworkManager owns the shared instance, interfaces, upstreams and DHCP.
+    # Importing the hub's /etc/hosts would expose its physical-screen loopback name.
+    if (profile is None) != (interface is None):raise f.Rejected('Hotspot profile and interface must be supplied together')
+    if profile is None:return f.render_dns(host, addresses, assigned)
+    f.hostname(host)
+    if len(addresses) != 1 or not isinstance(interface,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}',interface) or interface == 'lo':
+        raise f.Rejected('Select one fixed hotspot address and its interface')
+    address = private443.validate_hotspot({'address':addresses[0],'interface':interface,'hotspot_profile':profile},_reader=_hotspot_reader)
+    # Fixed profile proof, not a claim the inactive AP is currently assigned.
+    return f'no-hosts\nlocal=/{host}/\nhost-record={host},{address}\n'
+
+
+def client_hosts(host, addresses):
+    f.hostname(host)
+    selected = sorted({f.local_address(item) for item in addresses})
+    if not selected:
+        raise f.Rejected('At least one current private address is required')
+    return ''.join(address + '\t' + host + '\n' for address in selected)
+
+
+def physical_hosts(host):
+    f.hostname(host)
+    return '127.0.0.1\t' + host + '\n::1\t' + host + '\n'
+
+
+def https_identity(host, expected_id, addresses, *, _connection=http.client.HTTPSConnection):
+    f.hostname(host)
+    if not isinstance(expected_id, str):
+        raise f.Rejected('An approved stored identity is required')
+    expected = uuid.UUID(expected_id)
+    approved = {f.local_address(address) for address in addresses}
+    if expected.int == 0 or not approved:
+        raise f.Rejected('An approved stored identity is required')
+    # Default public trust, SNI and hostname validation. No CLI CA/verify bypass.
+    connection = _connection(host, 443, timeout=8, context=ssl.create_default_context())
+    try:
+        connection.connect()
+        # HTTPSConnection may resolve again. Reject changed DNS/routing before
+        # sending any HTTP bytes, preserving ordinary public trust/SNI/Host.
+        if f.local_address(connection.sock.getpeername()[0]) not in approved:
+            raise f.Rejected('Connected TLS peer differs from approved private addresses')
+        connection.request('GET', '/system/hub-info', headers={'Accept':'application/json', 'Connection':'close'})
+        response = connection.getresponse()
+        if response.status != 200 or response.getheader('Content-Type', '').split(';')[0].strip().lower() != 'application/json':
+            raise f.Rejected('The canonical TLS endpoint did not return hub identity')
+        body = response.read(8193)
+        if len(body) > 8192:
+            raise f.Rejected('Hub identity response exceeds limit')
+        value = json.loads(body)
+        if not isinstance(value, dict) or not isinstance(value.get('hubId'), str) or type(value.get('protocolVersion')) is not int or value['protocolVersion'] != 1:
+            raise f.Rejected('Invalid hub identity response schema')
+        if uuid.UUID(value['hubId']) != expected:
+            raise f.Rejected('The full hub identity differs from the approved inventory')
+    except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException):
+        raise f.Rejected('Canonical TLS/identity verification failed') from None
+    finally:
+        connection.close()
+
+
+def client_preflight(host, expected_id, addresses, *, _resolver=socket.getaddrinfo, _identity=https_identity):
+    f.hostname(host)
+    expected = {f.local_address(item) for item in addresses}
+    if not expected:
+        raise f.Rejected('Explicit current private addresses are required')
+    resolution = f.resolve_preflight(host, expected, _resolver)
+    if not resolution['ready']:
+        return {'ready':False, 'reason':resolution['reason'], 'browser_verification_required':True}
+    try:
+        _identity(host, expected_id, expected)
+    except f.Rejected:
+        return {'ready':False, 'reason':'tls-or-identity-failed', 'browser_verification_required':True}
+    return {'ready':True, 'reason':'os-resolver-and-public-tls-identity-verified', 'browser_verification_required':True}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['hotspot-template','client-hosts','physical-hosts','client-preflight'])
+    parser.add_argument('--inventory', type=Path, required=True)
+    parser.add_argument('--id', required=True, help='Approved existing full hub GUID')
+    parser.add_argument('--address', action='append', default=[], help='Current private hub address, repeat for each advertised family')
+    parser.add_argument('--hotspot-profile',help='Existing approved AP/shared profile UUID; allows safe inactive preparation')
+    parser.add_argument('--interface',help='Explicit interface bound in the selected AP profile')
+    args = parser.parse_args()
+    try:
+        if args.action != 'hotspot-template' and (args.hotspot_profile is not None or args.interface is not None):
+            raise f.Rejected('Profile preparation options are only for hotspot DNS')
+        if args.inventory.stat().st_size > 1_048_576:
+            raise f.Rejected('Inventory exceeds limit')
+        item = device_names.lookup(json.loads(args.inventory.read_text()), 'hub', args.id)
+        host = item['hostname']
+        if args.action == 'hotspot-template':
+            if args.hotspot_profile is not None and args.interface not in private443.assigned_interfaces():
+                raise f.Rejected('Selected hotspot interface is not present')
+            print(hotspot_dns(host, args.address, f.assigned_addresses(),profile=args.hotspot_profile,interface=args.interface), end='')
+        elif args.action == 'client-hosts':
+            print(client_hosts(host, args.address), end='')
+        elif args.action == 'physical-hosts':
+            if args.address:
+                raise f.Rejected('Physical mapping must be hub-local loopback only')
+            print(physical_hosts(host), end='')
+        else:
+            result = client_preflight(host, item['id'], args.address)
+            print(json.dumps(result))
+            return 0 if result['ready'] else 1
+        return 0
+    except (OSError, ValueError, KeyError, TypeError):
+        print('Exact-host configuration/preflight rejected; no resolver settings were changed.')
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

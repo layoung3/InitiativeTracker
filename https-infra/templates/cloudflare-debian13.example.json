@@ -1,0 +1,21 @@
+{
+  "hostname": "hub-84eaee7c.colophon.stream",
+  "port": 5445,
+  "public_port": 443,
+  "store": "/var/lib/initiativetracker-browser-tls",
+  "resolution": "hotspot",
+  "renewal_timeout_seconds": 900,
+  "acme": {
+    "backend_profile": "debian13-cloudflare4",
+    "executable": "/usr/bin/certbot",
+    "expected_version": "4.0.0",
+    "state_directory": "/var/lib/initiativetracker-issuer",
+    "dns_plugin": "cloudflare",
+    "credentials_file": "/var/lib/initiativetracker-issuer/cloudflare.ini",
+    "propagation_seconds": 60,
+    "directory_url": "https://acme-v02.api.letsencrypt.org/directory",
+    "email": "OWNER_SELECTED_ACCOUNT_CONTACT",
+    "scope_reviewed": false,
+    "terms_approved": false
+  }
+}

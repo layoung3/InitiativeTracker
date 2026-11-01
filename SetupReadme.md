@@ -5,7 +5,9 @@ hub. The owner-observed deployed baseline is **0.1.5** on Debian 13 Trixie ARM64
 with the application and LightDM active and health/database/storage checks passing
 on the existing hub. See [the evidence record](docs/setup/evidence-and-gaps.md)
 for verification limits. This guide was
-checked against `master` commit `d9470510eba7af584d5c8f8ba05250d275979a62` (merged N9/0.1.6 source).
+reconciled with `master` commit `0a7e1a7ac86480b012fcfc46702d1b2d396a3bff`
+(merged N9/0.1.6 source and branding documentation), plus the private HTTPS
+checkpoint on this task branch. The reported device installation remains 0.1.5.
 
 **A release package is not a complete device image.** Merged source includes an
 [automated fresh-device installer](docs/setup/automated-installation.md), including
@@ -26,6 +28,7 @@ Complete hardware acceptance before handover.
 | Review N9 application branding and fresh/existing desktop loading artwork | [Pinned artwork paths, copy/backup/rollback and compatibility gates](docs/setup/branding.md) |
 | Update an already configured hub | [Canonical hub release procedure](docs/setup/hub-release.md) |
 | Image a new Pi and install the hub | [Fresh hub installation](docs/setup/fresh-hub.md) |
+| Prepare private trusted HTTPS, Cloudflare issuance and port 443 | [Approval-gated HTTPS stages and rollback](docs/https/private443-deployment.md) |
 | Install hub networking and understand fallback | [Hub networking](docs/setup/networking.md) |
 | Set up a browser-only satellite | [Fresh satellite installation](docs/setup/satellite.md) |
 | Diagnose or restore a device | [Troubleshooting and recovery](docs/setup/recovery.md) |
@@ -85,7 +88,7 @@ record of actions executed during this documentation task.
 
 ## Evidence labels
 
-- **Source-verified:** checked against the commit above; does not prove installed
+- **Source-verified:** checked against the baseline and task-branch source above; does not prove installed
   files, radio behavior, permissions or a physical touchscreen work.
 - **Previously observed:** reported deployment/audit evidence supplied by the
   owner, including successful graphical updating and external Wi-Fi after reboot.
@@ -127,3 +130,12 @@ which is not installed by N9. Follow the [single 0.1.6 deployment/rollback plan]
 ## Optional shared trusted HTTPS checkpoint
 
 The disabled-by-default [shared HTTPS foundation](docs/https/architecture-security.md) provides direct browser TLS, protected certificate activation/renewal orchestration and local DNS preflight. Read the [certificate/DNS setup guide](docs/https/certificate-dns-setup.md), [staged migration/rollback plan](docs/https/migration-rollback.md) and [validation limits](docs/https/validation.md) before requesting any installation. It does not choose a domain, install a DNS/ACME backend, change either Pi, enable redirects or install the merged N9 application. N8 remains a separate hardware-validation checkpoint.
+
+The owner-confirmed Cloudflare/`colophon.stream` setup is being prepared in
+[private port-443 deployment](docs/https/private443-deployment.md), with a separate
+[XB8/client, hotspot and physical-screen resolution guide](docs/https/private-name-resolution.md).
+Review [443 software evidence and physical acceptance limits](docs/https/private443-validation.md).
+The normal target is `https://hub-84eaee7c.colophon.stream`. The XB8 remains
+unchanged: external-network support requires a verified client-specific resolver
+path; hotspot DNS and hub-only loopback mapping have different scopes. Independent transport
+review, separate installation approvals and physical acceptance remain required.

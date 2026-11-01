@@ -4,6 +4,10 @@
 
 Source-verified against merged master **`d9470510eba7af584d5c8f8ba05250d275979a62`** (PR #5). These are future operator instructions, not a record of Pi changes. No device access, deployment, restart, reboot or production migration was performed. A documentation merge grants none of those approvals. Keep the working 0.1.5 cards/installations intact.
 
+This procedure was merged with master at `0a7e1a7ac86480b012fcfc46702d1b2d396a3bff`.
+The source/artifact pins and hashes below intentionally remain at the verified
+N9 snapshot; a documentation merge does not change the approved bytes.
+
 ## Three separate kinds of artwork
 
 | Use | Repository source / installed location | Provisioning and limits |
@@ -367,7 +371,7 @@ Expected: old PNG bytes, UID/GID/mode/atime/mtime restored, or PNG removed if or
 
 ## Customer application-logo replacement without source edits
 
-Once an approved 0.1.6 deployment, persistent data, migration and trusted HTTPS are commissioned, obtain fresh secure DM authorization on the deployment-approved canonical application URL. Its external port/hostname and TLS termination belong to the separate HTTPS deployment guide; do not assume an internal listener port is the customer URL. Open **DM → Branding & banners** (`/appearance/application/00000000-0000-0000-0000-000000000000`), set the application name/logo visibility or upload a replacement **PNG/JPEG** logo, using **Save branding** for name/visibility and **Upload logo** for the image. Image validation, orientation, resizing and metadata stripping apply; arbitrary paths, HTML, SVG and external URLs are not accepted. The application logo is intentionally public. Restore default logo returns to the bundled Colophon artwork.
+Once an approved 0.1.6 deployment, persistent data, migration and trusted HTTPS are commissioned, obtain fresh secure DM authorization on the deployment-approved canonical application URL. Its external port/hostname and TLS transport belong to the separately approved [private-443 deployment guide](../https/private443-deployment.md); do not assume an internal listener port is the customer URL. Open **DM → Branding & banners** (`/appearance/application/00000000-0000-0000-0000-000000000000`), set the application name/logo visibility or upload a replacement **PNG/JPEG** logo, using **Save branding** for name/visibility and **Upload logo** for the image. Image validation, orientation, resizing and metadata stripping apply; arbitrary paths, HTML, SVG and external URLs are not accepted. The application logo is intentionally public. Restore default logo returns to the bundled Colophon artwork.
 
 Settings/reference live in `PresentationSettings`/`PresentationAssets`; normalized generated PNGs live in the persistent `Tracker:DataDirectory/Media/` (normally `/var/lib/initiativetracker/Media`), outside versioned releases. Preserve coherent DB/media/keys/identity backups using the single release plan. Do not write a logo file directly into this private store or replace the release's static defaults. Application-logo changes do not update desktop-local PNGs, loading text or OS splash. A customer's desktop/OS brand bundle needs its own reviewed asset/hash receipt; this bounded recipe deliberately accepts only the supplied original Colophon PNG. Character silhouette and neutral banner defaults remain unchanged.
 

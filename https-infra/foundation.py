@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import fcntl
+import functools
 import ipaddress
 import json
 import os
@@ -185,6 +186,8 @@ def config(path):
     hostname(value['hostname'])
     if value.get('port', 5445) != 5445:
         raise Rejected('This checkpoint reserves browser TLS port 5445; agent TLS is separate')
+    if value.get('public_port',5445) not in {443,5445} or type(value.get('public_port',5445)) is not int:
+        raise Rejected('Select the reviewed direct 5445 or canonical 443 browser authority')
     root = Path(value['store'])
     if not root.is_absolute() or root == Path('/'):
         raise Rejected('Use an absolute dedicated persistent store')
@@ -220,8 +223,9 @@ def physical_resolution_preflight(host, resolver=socket.getaddrinfo):
 
 def render_dns(host, addresses, assigned):
     addresses = resolution(host, addresses, assigned)
-    # host-record is exact; local prevents upstream leakage of this private runtime name.
-    return '\n'.join([f'local=/{host}/', f'host-record={host},' + ','.join(sorted(addresses)), ''])
+    # Never import the hub-only physical loopback mapping from /etc/hosts.
+    # Review effective extra-host imports separately. local prevents upstream leakage.
+    return '\n'.join(['no-hosts', f'local=/{host}/', f'host-record={host},' + ','.join(sorted(addresses)), ''])
 
 def assigned_addresses():
     values = json.loads(run(['/usr/sbin/ip', '-j', 'address', 'show']).decode())
@@ -259,14 +263,18 @@ def write_active(root, value):
     finally:
         temp.unlink(missing_ok=True)
 
-def probe(host, port, generation, expected_leaf, *, _test_context=None):
+def probe(host, port, generation, expected_leaf, *, authority_port=None, _test_context=None):
     # Local connection + exact SNI; no DNS dependency or certificate bypass in deployment.
     context = _test_context or ssl.create_default_context()
+    public_port = port if authority_port is None else authority_port
+    if port != 5445 or public_port not in {443,5445}:
+        raise Rejected('Invalid certificate probe target/authority')
+    authority = host if public_port == 443 else f'{host}:{public_port}'
     with socket.create_connection(('127.0.0.1', port), timeout=3) as raw:
         with context.wrap_socket(raw, server_hostname=host) as connection:
             if hashlib.sha256(connection.getpeercert(binary_form=True)).hexdigest() != expected_leaf:
                 raise Rejected('Serving leaf does not match expected certificate')
-            connection.sendall(f'GET /system/https-status HTTP/1.0\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n'.encode('ascii'))
+            connection.sendall(f'GET /system/https-status HTTP/1.0\r\nHost: {authority}\r\nConnection: close\r\n\r\n'.encode('ascii'))
             response = b''
             while chunk := connection.recv(4096):
                 response += chunk
@@ -302,8 +310,9 @@ def wait_for_probe(callback, host, port, generation, expected_leaf):
                 raise Rejected('Application TLS activation failed') from None
             time.sleep(1)
 
-def activate(settings, fullchain, key, *, dry_run=True, _probe=probe, _test_ca=None):
+def activate(settings, fullchain, key, *, dry_run=True, _probe=None, _test_ca=None):
     host = hostname(settings['hostname'])
+    _probe = _probe or functools.partial(probe,authority_port=settings.get('public_port',5445))
     validate_certificate(host, fullchain, key, _test_ca=_test_ca)
     expected_leaf = leaf_fingerprint(fullchain.read_bytes())
     root = private_path(settings['store'], directory=True)
@@ -407,7 +416,7 @@ def renew(settings, *, apply=False, _runner=run):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['preflight', 'physical-preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue'])
+    parser.add_argument('action', choices=['preflight', 'physical-preflight', 'dns-template', 'activate', 'renew', 'rollback', 'issue', 'stage'])
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--generation')
     parser.add_argument('--address', action='append', default=[])
@@ -427,9 +436,9 @@ def main():
                 result = resolve_preflight(settings['hostname'], selected)
                 print(json.dumps(result))
                 return 0 if result['ready'] else 1
-        elif args.action == 'issue':
+        elif args.action in {'issue', 'stage'}:
             import certbot_adapter
-            print(json.dumps(certbot_adapter.execute(settings, 'issue', apply=args.apply)))
+            print(json.dumps(certbot_adapter.execute(settings, args.action, apply=args.apply)))
         elif args.action == 'rollback':
             print(json.dumps(rollback(settings, args.generation, apply=args.apply)))
         elif args.action == 'activate':

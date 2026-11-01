@@ -22,7 +22,7 @@ that this fresh-image procedure or draft automation passed on new hardware.
 
 For N9 artwork use the [single branding guide](branding.md): bundled release PNG,
 separately provisioned desktop PNG/launcher/supervisor, actual owner/modes and
-existing-device compatibility/backup/rollback. Its source pin is merged master
+existing-device compatibility/backup/rollback. Its deliberately retained installer/artwork pin is the merged N9 snapshot
 `d9470510eba7af584d5c8f8ba05250d275979a62`. The legacy manual baseline below does
 not itself provision N9 loading support; do not combine its original launcher with
 a PNG and claim N9 support. Merged source is 0.1.6; any app start invokes migration

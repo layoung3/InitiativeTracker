@@ -1,5 +1,10 @@
 # Validation and evidence boundaries
 
+The original PR #6 evidence below is historical. Current merged N9, port-443,
+ARM64/native, Chromium and branding-command scope is recorded in
+[private-443 validation](private443-validation.md) and the merged [branding guide](../setup/branding.md).
+An old receipt does not certify a later source head or physical commissioning.
+
 Run from the repository root:
 
 ```sh
@@ -17,9 +22,9 @@ The Python suite also executes a real fake-backend process against the Certbot C
 
 `published_tls_smoke.py` actually launches the published app with disposable database/data and process-only synthetic trust. It verifies no-certificate TLS rejection, real Kestrel serving and rotation, normal public-root rejection of synthetic certificates, wrong SNI, invalid candidate retention, actual reload/rollback, more than 16 accepted generations without a restart, HTTP sensitive rejection and continuing legacy health. It makes no trust-store, DNS, firewall or Pi changes. Environment test trust is confined to that process and has no production configuration counterpart. Its CA is not evidence of acceptance by public browsers or a real CA. ARM64 publish is a build check; this checkpoint does not claim ARM64 execution or physical-Pi validation.
 
-No public issuance, DNS propagation/plugin API, real domain, real browser public trust, true internet-disconnected venue, systemd/PID1, router DHCP, NetworkManager DNS, cold-boot clock, desktop/kiosk/updater handoff, physical recovery or N8/N9 combined deployment has been validated. See the migration guide for required owner configuration and hardware stages. This branch does not contain those frozen branches' private-media or agent implementations.
+No public issuance, DNS propagation/plugin API, real domain, real browser public trust, true internet-disconnected venue, systemd/PID1, router DHCP, NetworkManager DNS, cold-boot clock, desktop/kiosk/updater handoff, physical recovery or N8/N9 combined deployment has been validated. See the migration guide for required owner configuration and hardware stages. At that original checkpoint N9 private-media source was still separate. It is now merged and tested through actual handlers; N8 agent implementation remains a frozen, separately reviewed checkpoint.
 
-The approved secure authorization suite now exercises physical HTTPS-only proof, browser/origin/purpose/session binding, CSRF, cookie attributes, legacy cookie/PIN denial, explicit player/display approval, role/profile mixing, expiry, attempt/queue bounds, atomic redemption, cancellation/revocation races, immutable identity checks, real legacy mutation handlers, durable revocation/restart and fenced persistence failure. The published TLS test includes real Kestrel authorization handlers and restart survival. The frozen-N9 overlay runs its actual handlers and storage/ownership policies with the candidate auth modules; its results are stored separately in CI. It changes no PR heads or production data.
+The approved secure authorization suite now exercises physical HTTPS-only proof, browser/origin/purpose/session binding, CSRF, cookie attributes, legacy cookie/PIN denial, explicit player/display approval, role/profile mixing, expiry, attempt/queue bounds, atomic redemption, cancellation/revocation races, immutable identity checks, real legacy mutation handlers, durable revocation/restart and fenced persistence failure. The published TLS test includes real Kestrel authorization handlers and restart survival. The original frozen-N9 overlay ran its handlers and storage/ownership policies before integration; current N9 CI runs the actual merged source, including the no-port browser flow. It changes no PR heads or production data.
 
 `SecureGrantDurabilityTests` verifies actual Linux directory synchronization and ordered store/ancestor, fence-create, rename and fence-delete boundaries. Deterministic failures at each stage return unavailable and require recovery; actual protected revocation handlers additionally verify restart fencing after each commit-stage failure. Unsupported directory durability rejects existing secure state. These tests establish syscall/error handling and ordering, not physical power-cut behavior or dishonest storage-controller resistance.
 

@@ -1,0 +1,95 @@
+name: Private HTTPS 443 deployment
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  debian-backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build disposable Debian backend qualification image
+        run: docker build -f https-infra/tests/Dockerfile.certbot4 -t it-private-https443-tests .
+      - name: Qualify actual Certbot/Cloudflare packages without network access
+        run: docker run --rm --network none it-private-https443-tests
+      - name: Verify hotspot DNS answers with hub-local loopback hosts present
+        run: docker run --rm --network none it-private-https443-tests /usr/bin/python3 -I https-infra/tests/dnsmasq_qualification.py
+  kernel-ingress:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish unprivileged disposable Kestrel application
+        run: dotnet publish InitiativeTracker.Web -c Release -r linux-x64 --self-contained true -o "$RUNNER_TEMP/private443-app"
+      - name: Build disposable kernel test image
+        run: docker build -f https-infra/tests/Dockerfile.certbot4 -t it-private443-kernel .
+      - name: Reuse pinned trusted-browser tooling in a disposable profile
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libnss3-tools
+          npm install --prefix "$RUNNER_TEMP/private443-browser-tooling" playwright@1.58.2
+          npm audit --prefix "$RUNNER_TEMP/private443-browser-tooling" --audit-level=low
+          docker pull mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d
+      - name: Actual IPv4/IPv6 NAT in an internal Docker network (no host network/ports)
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="it-private443-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker logs "$fixture-hub" || true
+            docker rm -f "$fixture-hub" >/dev/null 2>&1 || true
+            docker network rm "$fixture" >/dev/null 2>&1 || true
+            docker volume rm "$fixture-private" "$fixture-public" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create --internal --ipv6 --subnet 192.168.253.0/24 --subnet fd25:443:5445::/64 "$fixture"
+          docker volume create "$fixture-private"
+          docker volume create "$fixture-public"
+          docker run -d --name "$fixture-hub" --network "$fixture" --ip 192.168.253.2 --ip6 fd25:443:5445::2 --cap-add NET_ADMIN \
+            -e IT_DISPOSABLE_KERNEL_TEST=1 -v "$fixture-private:/fixture" -v "$fixture-public:/public" \
+            -v "$RUNNER_TEMP/private443-app:/app:ro" it-private443-kernel /usr/bin/python3 -I https-infra/tests/private443_socket_smoke.py hub
+          ready=false
+          for attempt in $(seq 1 120); do
+            if docker exec "$fixture-hub" test -f /public/ready; then ready=true; break; fi
+            test "$(docker inspect -f '{{.State.Running}}' "$fixture-hub")" = true || exit 1
+            sleep 1
+          done
+          test "$ready" = true
+          docker run --rm --network "$fixture" --ip 192.168.253.3 --ip6 fd25:443:5445::3 --cap-drop ALL \
+            -e IT_DISPOSABLE_KERNEL_TEST=1 -v "$fixture-public:/public:ro" it-private443-kernel \
+            /usr/bin/python3 -I https-infra/tests/private443_socket_smoke.py remote
+          for mode in hotspot home; do
+            docker exec "$fixture-hub" touch "/public/switch-$mode"
+            ready=false
+            for attempt in $(seq 1 30); do
+              if docker exec "$fixture-hub" test -f "/public/$mode-ready"; then ready=true; break; fi
+              test "$(docker inspect -f '{{.State.Running}}' "$fixture-hub")" = true || exit 1
+              sleep 1
+            done
+            test "$ready" = true
+            role=remote
+            if test "$mode" = hotspot; then role=remote-hotspot; fi
+            docker run --rm --network "$fixture" --ip 192.168.253.3 --ip6 fd25:443:5445::3 --cap-drop ALL \
+              -e IT_DISPOSABLE_KERNEL_TEST=1 -v "$fixture-public:/public:ro" it-private443-kernel \
+              /usr/bin/python3 -I https-infra/tests/private443_socket_smoke.py "$role"
+          done
+          mkdir -m 0700 "$RUNNER_TEMP/private443-browser"
+          docker cp "$fixture-hub:/public/ca.pem" "$RUNNER_TEMP/private443-browser/ca.pem"
+          python3 -I https-infra/tests/prepare_443_browser.py --source scripts/tests/n9-live-ui.test.cjs --sandbox "$RUNNER_TEMP/private443-browser"
+          # Shared disposable hub namespace models its physical browser. No host
+          # networking, published ports, elevated browser capabilities or TLS bypass.
+          docker run --rm --init --network "container:$fixture-hub" --cap-drop ALL --user "$(id -u):$(id -g)" --shm-size=512m \
+            -e NODE_PATH=/tooling/node_modules -e N9_APP_URL=https://hub-fixture.colophon.stream \
+            -e N9_TLS_SANDBOX=/tmp/private443-browser-fixture \
+            -v "$RUNNER_TEMP/private443-browser-tooling:/tooling:ro" -v "$RUNNER_TEMP/private443-browser:/tmp/private443-browser-fixture" \
+            mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d \
+            node /tmp/private443-browser-fixture/run.cjs

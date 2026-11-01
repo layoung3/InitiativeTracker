@@ -85,7 +85,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_exact_dns_template_no_public_update(self):
         text = f.render_dns(self.host, ['192.168.4.1', 'fd12::2'], ['192.168.4.1', 'fd12::2'])
-        self.assertEqual(text, f'local=/{self.host}/\nhost-record={self.host},192.168.4.1,fd12::2\n')
+        self.assertEqual(text, f'no-hosts\nlocal=/{self.host}/\nhost-record={self.host},192.168.4.1,fd12::2\n')
 
     def test_offline_dns(self):
         def offline(*a, **kw):

@@ -8,7 +8,11 @@ after explicit device-specific approval. These fresh installers always refuse
 an existing installation. They are not an existing-hub upgrade mechanism.
 
 Use only on a separately approved **new/disposable commissioning installation**.
-The current source pin is merged master `d9470510eba7af584d5c8f8ba05250d275979a62`.
+The deliberately pinned installer/artwork snapshot is merged N9 source
+`d9470510eba7af584d5c8f8ba05250d275979a62` (0.1.6). Master later merged the
+branding documentation at `0a7e1a7ac86480b012fcfc46702d1b2d396a3bff`; that
+does not change the source/artifact prechecks below. HTTPS tools and configuration
+use the independently reviewed source and [stages](../https/private443-deployment.md).
 Do not run these commands on the owner's working hub or satellite. Source merging
 is not installation, reboot, certificate or production-migration approval. A fresh
 hub installation starts the application and runs its automatic migrations; obtain

@@ -6,12 +6,14 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Connections.Features;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 
 namespace InitiativeTracker.Web.Infrastructure;
 
-public sealed record BrowserTlsSettings(bool Enabled, string Host, int Port, string Store)
+public sealed record BrowserTlsSettings(bool Enabled, string Host, int Port, string Store, int PublicPort = 5445, string Ingress = "direct")
 {
+    public bool KernelRedirect => Ingress == "kernel443";
     public static bool ValidHostname(string? host) => host is { Length: <= 253 } && host == host.ToLowerInvariant() &&
         host.Split('.') is { Length: >= 3 } labels && labels.All(label => Regex.IsMatch(label, @"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")) &&
         !labels[^1].All(char.IsDigit) && !new[] { "local", "localhost", "test", "invalid", "example", "internal", "lan", "home", "arpa", "onion" }.Contains(labels[^1]);
@@ -22,11 +24,14 @@ public sealed record BrowserTlsSettings(bool Enabled, string Host, int Port, str
         var host = configuration["BrowserTls:Host"] ?? "";
         var port = configuration.GetValue<int?>("BrowserTls:Port") ?? 5445;
         var store = configuration["BrowserTls:Store"] ?? "";
+        var ingress = configuration["BrowserTls:Ingress"] ?? "direct";
+        var publicPort = configuration.GetValue<int?>("BrowserTls:PublicPort") ?? (ingress == "kernel443" ? 443 : 5445);
         if (enabled && (!OperatingSystem.IsLinux() || !ValidHostname(host) || port != 5445 ||
+            ingress is not ("direct" or "kernel443") || publicPort != (ingress == "kernel443" ? 443 : 5445) ||
             !Path.IsPathFullyQualified(store) || Path.GetFullPath(store).StartsWith(Path.GetFullPath(contentRoot) + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
             Path.GetFullPath(store) == Path.GetFullPath(contentRoot) || store == "/" || configuration.GetValue<bool>("Tracker:UseHttpsRedirection")))
             throw new InvalidOperationException("Browser TLS requires Linux, a public FQDN, port 5445, a separate persistent store and redirection disabled.");
-        return new(enabled, host, port, store);
+        return new(enabled, host, port, store, publicPort, ingress);
     }
 }
 
@@ -42,9 +47,10 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
     public bool Ready { get { lock (gate) return current is not null && Validate(current.Certificate, current.Chain, settings.Host); } }
     public BrowserTlsSettings Settings => settings;
     public bool Enabled => settings.Enabled;
-    public string Origin => new UriBuilder("https", settings.Host, settings.Port).Uri.GetLeftPart(UriPartial.Authority);
+    public string Origin => new UriBuilder("https", settings.Host, settings.PublicPort).Uri.GetLeftPart(UriPartial.Authority);
     public bool Physical(HttpContext context) => TrustedRequest(context) && context.Connection.RemoteIpAddress is { } remote && IPAddress.IsLoopback(remote) &&
-        context.Connection.LocalIpAddress is { } local && IPAddress.IsLoopback(local);
+        context.Connection.LocalIpAddress is { } local && IPAddress.IsLoopback(local) &&
+        (!settings.KernelRedirect || context.Features.Get<BrowserIngress>() is { Physical: true });
 
     public static bool Validate(X509Certificate2 certificate, X509Certificate2Collection intermediates, string host,
         X509Certificate2? testRoot = null, DateTime? testTime = null)
@@ -120,7 +126,8 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or CryptographicException or InvalidOperationException or JsonException or KeyNotFoundException)
             {
                 // Do not log exception text, paths, keys, provider output or certificate contents.
-                if (!reportedReloadFailure) logger.LogWarning("Browser certificate reload rejected; retaining any valid previous generation.");
+                if (!reportedReloadFailure) logger.LogWarning("Browser certificate reload rejected ({FailureKind}); retaining any valid previous generation.",
+                    exception is UnauthorizedAccessException ? "permission" : exception is IOException ? "file" : exception is CryptographicException ? "certificate" : "validation");
                 reportedReloadFailure = true;
             }
         }
@@ -143,9 +150,17 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
         }
     }
 
-    public bool TrustedRequest(HttpContext context) => settings.Enabled && context.Request.IsHttps &&
+    private bool TlsAuthority(HttpContext context) => settings.Enabled && context.Request.IsHttps &&
         context.Features.Get<ITlsHandshakeFeature>() is not null && context.Connection.LocalPort == settings.Port &&
-        (context.Request.Host.Port ?? 443) == settings.Port && string.Equals(context.Request.Host.Host, settings.Host, StringComparison.OrdinalIgnoreCase) && Ready;
+        (context.Request.Host.Port ?? 443) == settings.PublicPort && string.Equals(context.Request.Host.Host, settings.Host, StringComparison.OrdinalIgnoreCase);
+    internal bool MatchesCanonicalTransport(HttpContext context) => TlsAuthority(context) &&
+        (!settings.KernelRedirect || context.Features.Get<BrowserIngress>() is { Canonical: true } ingress && ingress.Matches(context));
+    public bool TrustedRequest(HttpContext context) => MatchesCanonicalTransport(context) && Ready;
+    internal bool MatchesStatusProbeTransport(HttpContext context) => settings.KernelRedirect && TlsAuthority(context) &&
+        !context.Request.PathBase.HasValue && string.Equals(context.Request.Path.Value, "/system/https-status", StringComparison.Ordinal) && !context.Request.QueryString.HasValue &&
+        (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
+        context.Features.Get<BrowserIngress>() is { LocalProbe: true } ingress && ingress.Matches(context);
+    public bool StatusProbe(HttpContext context) => MatchesStatusProbeTransport(context) && Ready;
 
     public static void CheckPath(string path, bool directory)
     {
@@ -197,11 +212,20 @@ public static class BrowserTls
             // Preserve configured HTTP endpoints; keep the normal fallback when no endpoints exist.
             if (!context.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any())
                 options.ListenAnyIP(context.Configuration.GetValue<int?>("Tracker:LanPort") ?? 5000);
-            options.ListenAnyIP(settings.Port, listen => listen.UseHttps(new TlsHandshakeCallbackOptions
+            options.ListenAnyIP(settings.Port, listen =>
             {
-                OnConnection = connection => new ValueTask<SslServerAuthenticationOptions>(
-                    options.ApplicationServices.GetRequiredService<BrowserCertificateStore>().Handshake(connection.ClientHelloInfo.ServerName))
-            }));
+                if (settings.KernelRedirect) listen.Use(next => connection =>
+                {
+                    var ingress = BrowserIngress.Capture(connection.Features.Get<IConnectionSocketFeature>()?.Socket);
+                    if (ingress is not null) connection.Features.Set(ingress);
+                    return next(connection);
+                });
+                listen.UseHttps(new TlsHandshakeCallbackOptions
+                {
+                    OnConnection = connection => new ValueTask<SslServerAuthenticationOptions>(
+                        options.ApplicationServices.GetRequiredService<BrowserCertificateStore>().Handshake(connection.ClientHelloInfo.ServerName))
+                });
+            });
         });
     }
 
@@ -223,6 +247,7 @@ public static class BrowserTls
         var origin = context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>();
         if (context.Request.Path.StartsWithSegments("/secure-access") && !origin.Enabled) { context.Response.StatusCode = 404; return; }
         if (context.Request.Path.StartsWithSegments("/secure-access") && !origin.TrustedRequest(context)) { context.Response.StatusCode = 426; return; }
+        if (store.StatusProbe(context)) { await next(context); return; } // Status only; never general authority.
         if (store.Settings.Enabled && context.Connection.LocalPort == store.Settings.Port && !origin.TrustedRequest(context))
         { context.Response.StatusCode = 421; context.Response.Headers.CacheControl = "no-store"; return; }
         // The newly configured public hostname never serves an HTTP fallback, including login forms.
@@ -230,6 +255,13 @@ public static class BrowserTls
         if (store.Settings.Enabled && (Sensitive(context.Request) ||
             string.Equals(context.Request.Host.Host, store.Settings.Host, StringComparison.OrdinalIgnoreCase)) && !origin.TrustedRequest(context))
         { context.Response.StatusCode = 426; context.Response.Headers.CacheControl = "no-store"; return; }
+        // Canonical browser WebSocket handshakes carry Origin. Keep legacy HTTP
+        // gameplay migration independent; do not accept a cross-site upgrade at 443.
+        if (store.Settings.KernelRedirect && context.Request.Path.StartsWithSegments("/hubs/encounter") &&
+            (HttpMethods.IsConnect(context.Request.Method) || context.Request.Headers.Upgrade.ToString().Split(',').Any(value => value.Trim().Equals("websocket", StringComparison.OrdinalIgnoreCase))) &&
+            origin.TrustedRequest(context) &&
+            context.Request.Headers.Origin.ToString() != origin.Origin)
+        { context.Response.StatusCode = 403; context.Response.Headers.CacheControl = "no-store"; return; }
         await next(context);
     }
 }

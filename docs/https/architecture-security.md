@@ -1,6 +1,13 @@
 # Shared trusted HTTPS checkpoint
 
-This is an independent master-based checkpoint, disabled by default. It does not merge N8 or N9, install anything, run a production migration, change a Pi, or issue a certificate. Base: `d584b7963ca6bb7916f21d9ee94082f9f2821f34`. Reviewed source contracts: N8 `93e93d37ffa5dfdc809434751f6b641087d7913c`, N9 `1e86dc520f9aa5e228b5639f1e31e9f7f19e0caa`.
+This records the original PR #6 foundation architecture. Its initial base and
+frozen contracts below are historical. N9/0.1.6 and branding are now merged in
+master `0a7e1a7ac86480b012fcfc46702d1b2d396a3bff`; the current opt-in 443
+transport and review are in [private-443 architecture](private443-architecture.md),
+with authoritative [deployment stages](private443-deployment.md). Direct 5445 is
+retained compatibility behavior, not this hub's normal browser address.
+
+The original independent master-based checkpoint was disabled by default and did not merge N8 or N9, install anything, run a production migration, change a Pi, or issue a certificate. Base: `d584b7963ca6bb7916f21d9ee94082f9f2821f34`. Reviewed source contracts: N8 `93e93d37ffa5dfdc809434751f6b641087d7913c`, N9 `1e86dc520f9aa5e228b5639f1e31e9f7f19e0caa`.
 
 ## Architecture and implementation
 

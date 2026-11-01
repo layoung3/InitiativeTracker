@@ -621,10 +621,10 @@ app.MapPost(
             policy.RequireRole(
                 "Player"));
 
-app.MapGet("/system/https-status", (HttpContext context, BrowserCertificateStore certificates) =>
+app.MapMethods("/system/https-status", ["GET", "HEAD"], (HttpContext context, BrowserCertificateStore certificates) =>
 {
     context.Response.Headers.CacheControl = "no-store";
-    return Results.Json(new { ready = certificates.TrustedRequest(context), generation = certificates.Generation, expiresAtUtc = certificates.ExpiresAtUtc });
+    return Results.Json(new { ready = certificates.TrustedRequest(context) || certificates.StatusProbe(context), generation = certificates.Generation, expiresAtUtc = certificates.ExpiresAtUtc });
 }).AllowAnonymous();
 
 app.Run();
