@@ -458,11 +458,12 @@ m.main()
         self.cli('--rollback', directory)
         atomic = self.manager.atomic
         calls = 0
+        lock_probes = []
         def fail_second(*args):
             nonlocal calls
-            # Also probe during exception restoration, in a separate process.
+            # Record, then assert outside the transaction's broad recovery catch.
             contender = subprocess.run(['flock', '-n', str(self.lock), 'true'], timeout=5)
-            self.assertEqual(contender.returncode, 1, 'transaction/recovery lost shared lock')
+            lock_probes.append(contender.returncode)
             calls += 1
             if calls == 2:
                 raise OSError('fixture failure')
@@ -470,6 +471,7 @@ m.main()
         with patch.object(self.manager, 'atomic', side_effect=fail_second):
             with self.assertRaisesRegex(upgrade.UpgradeError, 'original scripts restored'):
                 self.cli('--apply')
+        self.assertEqual(lock_probes, [1, 1, 1], 'replacement/failure/restoration lost shared lock')
         # Acquire after failed apply, then complete real apply and explicit rollback.
         self.cli('--apply')
         directories = list(self.manager.path(upgrade.BACKUPS).iterdir())
