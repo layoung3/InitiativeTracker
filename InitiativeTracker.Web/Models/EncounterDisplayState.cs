@@ -15,6 +15,7 @@ public class EncounterDisplayState
 
 public class CombatantDisplayState
 {
+    public string PortraitUrl { get; set; } = Services.MediaPaths.DefaultPortrait;
     public Guid Id { get; set; }
 
     public string Name { get; set; } = string.Empty;

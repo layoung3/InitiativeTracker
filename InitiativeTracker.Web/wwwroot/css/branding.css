@@ -1,0 +1,25 @@
+.tracker-brand{display:flex;align-items:center;gap:1.25rem;min-width:0}
+.tracker-brand-logo{width:clamp(4.5rem,12vw,7rem);height:auto;object-fit:contain;border-radius:1rem;flex-shrink:0}
+.tracker-brand-name{display:block;font-size:clamp(1.3rem,4vw,2rem);font-weight:650;line-height:1.25;overflow-wrap:anywhere}
+.tracker-brand-tagline{display:block;font-size:.95rem;opacity:.7;margin-top:.35rem}
+.tracker-waiting{max-width:42rem;margin:clamp(1rem,6vh,4rem) auto;padding:clamp(1.25rem,4vw,3rem);border:1px solid #64748b55;border-radius:1.5rem;background:var(--bs-body-bg,#142231)}
+.tracker-waiting .tracker-brand{justify-content:center;margin-bottom:2rem}
+.tracker-waiting h1{font-size:clamp(1.4rem,4vw,2rem)}
+.tracker-portrait{width:4rem;height:4rem;object-fit:cover;border-radius:50%;flex-shrink:0;background:#202b38}
+.tracker-portrait--sheet{width:7rem;height:7rem;border-radius:1rem}
+.tracker-portrait--combat{width:3rem;height:3rem}
+.tracker-banner{display:block;width:100%;height:clamp(6rem,18vw,12rem);object-fit:cover;background:#1b2d38;border-radius:.75rem .75rem 0 0}
+.tracker-campaign-banner{height:clamp(4rem,11vw,9rem);border-radius:.75rem}
+.tracker-identity{display:flex;gap:1rem;align-items:center;min-width:0}
+.tracker-identity>div{min-width:0;overflow-wrap:anywhere}
+.tracker-media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:1.5rem}
+.tracker-media-grid form{min-width:0}
+.tracker-media-preview{display:block;max-width:100%;width:100%;height:10rem;object-fit:contain;background:#202b38;border-radius:.75rem;margin-bottom:1rem}
+.tracker-media-grid input[type=file]{max-width:100%}
+.tracker-media-grid button{min-height:44px}
+.tracker-display-portrait{float:left;margin-right:.75rem}
+.combatant-name:has(.tracker-display-portrait){display:flow-root}
+.tracker-campaign-backdrop{width:100%;height:100%;object-fit:cover;opacity:.2}
+@media(max-width:600px){.tracker-display-portrait{width:2rem;height:2rem;margin-right:.4rem}}
+@media(max-width:420px){.tracker-waiting .tracker-brand{flex-direction:column;text-align:center}.tracker-portrait--sheet{width:5rem;height:5rem}.setup-heading{gap:1rem;align-items:flex-start}}
+@media(prefers-reduced-motion:reduce){.tracker-waiting .spinner-border{animation:none}}

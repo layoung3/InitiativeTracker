@@ -11,11 +11,17 @@ const restartForm =
 let pairingComplete =
     false;
 
+let pairingPollInFlight = false;
+
 async function checkPairingStatus() {
 
-    if (pairingComplete) {
+    if (pairingComplete || pairingPollInFlight) {
         return;
     }
+
+    pairingPollInFlight = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     try {
 
@@ -23,7 +29,8 @@ async function checkPairingStatus() {
             await fetch(
                 "/display/pair?handler=Status",
                 {
-                    cache: "no-store"
+                    cache: "no-store",
+                    signal: controller.signal
                 });
 
         if (!response.ok) {
@@ -34,13 +41,17 @@ async function checkPairingStatus() {
         const result =
             await response.json();
 
+        if (pairingComplete) return;
+
+        statusElement.textContent = "Waiting for DM approval…";
+
 
         if (result.status === "approved") {
 
             pairingComplete =
                 true;
 
-            statusElement.innerHTML =
+            statusElement.textContent =
                 "Connected. Opening display...";
 
             window.location.href =
@@ -83,9 +94,17 @@ async function checkPairingStatus() {
     }
     catch (error) {
 
+        if (!pairingComplete) {
+            statusElement.textContent = "Hub connection unavailable. Retrying automatically…";
+        }
+
         console.error(
             "Pairing status check failed.",
             error);
+    }
+    finally {
+        clearTimeout(timeout);
+        pairingPollInFlight = false;
     }
 }
 

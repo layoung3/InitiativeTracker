@@ -17,7 +17,9 @@ after(async () => { await browser?.close(); });
 async function fixture(html, width = 1280) {
     const page = await browser.newPage({ viewport: { width, height: 800 } });
     await page.route('http://n7.test/', route => route.fulfill({ contentType: 'text/html', body: html }));
+    await page.route('http://n7.test/images/default-character.svg', route => route.fulfill({contentType:'image/svg+xml',body:source('images/default-character.svg')}));
     await page.goto('http://n7.test/');
+    await page.addStyleTag({content:source('css/branding.css')});
     await page.evaluate(() => {
         window.hubEvents = {};
         window.signalR = {

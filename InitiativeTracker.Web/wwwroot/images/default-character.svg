@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" role="img" aria-labelledby="title">
+  <title id="title">Neutral cloaked adventurer silhouette</title>
+  <rect width="320" height="320" rx="28" fill="#202b38"/>
+  <circle cx="160" cy="133" r="97" fill="#2c3b4c"/>
+  <path d="M49 304c8-72 37-108 75-119l-17-24c-17-33-3-94 26-112 16-11 38-11 54 0 29 18 43 79 26 112l-17 24c38 11 67 47 75 119Z" fill="#9aa9b7"/>
+  <path d="M119 123c5-31 20-50 41-57 21 7 36 26 41 57l-18 53h-46Z" fill="#202b38"/>
+  <path d="m106 199 54 43 54-43-31 105h-46Z" fill="#526579"/>
+  <path d="m151 240 9 9 9-9-9 47Z" fill="#c1ccd4"/>
+</svg>

@@ -100,7 +100,9 @@ public static class SecureAccess
     {
         context.Response.Headers.CacheControl = "no-store, private";
         context.Response.Headers.Pragma = "no-cache";
-        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        // no-referrer turns Chromium's legitimate form Origin into null.
+        // same-origin preserves exact-origin CSRF checks without cross-origin leakage.
+        context.Response.Headers["Referrer-Policy"] = "same-origin";
         context.Response.Headers["X-Frame-Options"] = "DENY";
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
         context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
@@ -164,6 +166,8 @@ public static class SecureAccess
                 { context.Response.StatusCode = 403; return; }
                 if (!context.RequestServices.GetRequiredService<SecureAccessService>().MediaOwnershipUnchanged(context))
                 { context.Response.StatusCode = 404; return; }
+                // Request-local validated snapshot; consumers must revalidate durable authority after awaits.
+                context.Items[typeof(SecureGrant)] = grant;
             }
             if (IdentityMutation(context.Request) && context.User.Identity?.IsAuthenticated == true &&
                 (IsPage(context.Request, "/Player/Index", "/player") ? context.User.IsInRole("Player") : context.User.IsInRole("DM")))

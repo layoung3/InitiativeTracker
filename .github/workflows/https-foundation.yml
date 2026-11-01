@@ -30,8 +30,6 @@ jobs:
         run: node --test scripts/tests/n7-ui.test.cjs
       - name: Application and TLS contract tests
         run: dotnet test -c Release --logger 'trx;LogFileName=https-checkpoint.trx'
-      - name: Frozen N9 secure authorization integration (disposable source overlay only)
-        run: python3 https-infra/tests/n9_secure_overlay.py --evidence "$RUNNER_TEMP/n9-secure-overlay-evidence"
       - name: Direct and transitive dependency audit
         run: |
           dotnet restore InitiativeTracker.slnx --force -p:NuGetAudit=true -p:NuGetAuditMode=all -warnaserror:NU1900,NU1901,NU1902,NU1903,NU1904
@@ -53,4 +51,3 @@ jobs:
           path: |
             **/TestResults/*.trx
             dependency-audit.json
-            ${{ runner.temp }}/n9-secure-overlay-evidence/*.trx

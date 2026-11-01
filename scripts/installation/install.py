@@ -545,6 +545,11 @@ def desktop_install(host, desktop, settings):
         host.mkdir(home + '/.local/share/initiativetracker-satellite/chromium', 0o700, owner)
     host.write(config + '/kiosk.json', json.dumps(settings_file) + '\n', 0o600, owner)
     host.copy(REPO / 'scripts/installation/kiosk.py', local + '/kiosk.py', 0o755, owner)
+    if role == 'satellite':
+        host.copy(REPO / 'scripts/installation/templates/waiting.html', local + '/waiting.html', 0o644, owner)
+    artwork = REPO / 'InitiativeTracker.Web/wwwroot/images/colophon.png'
+    if artwork.is_file():
+        host.copy(artwork, local + '/colophon.png', 0o644, owner)
     autostart = home + '/.config/labwc/autostart'
     target = host.safe(autostart)
     text = target.read_text() if target.exists() else ''

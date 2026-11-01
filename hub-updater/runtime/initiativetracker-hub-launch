@@ -16,6 +16,30 @@ TARGET_URL="${BASE_URL}/setup"
 PROFILE_DIR="${HOME}/.config/initiativetracker-hub/chromium"
 UPDATE_CHECKER="/usr/local/bin/initiativetracker-check-update"
 
+# A local dialog provides touch-friendly feedback before the web app is ready.
+# It never owns the persistent Chromium profile, and is closed before the
+# existing graphical checker gets control. Closing it does not cancel startup.
+LOADING_PID=""
+close_loading()
+{
+    if [[ -n "$LOADING_PID" ]]; then
+        kill "$LOADING_PID" 2>/dev/null || true
+        wait "$LOADING_PID" 2>/dev/null || true
+        LOADING_PID=""
+    fi
+}
+show_loading()
+{
+    local artwork="${HOME}/.local/lib/initiativetracker-hub/colophon.png"
+    local icon_args=()
+    [[ ! -f "$artwork" ]] || icon_args=(--icon-name="$artwork")
+    zenity --info --no-wrap --width=440 --title='Colophon · Initiative Tracker' \
+        --text="$1" "${icon_args[@]}" >/dev/null 2>&1 &
+    LOADING_PID=$!
+}
+trap close_loading EXIT
+trap 'close_loading; exit 130' HUP INT TERM
+
 mkdir -p \
     "$PROFILE_DIR"
 
@@ -34,12 +58,15 @@ wait_for_hub()
       fi
         sleep 2
     done
+    close_loading
     zenity --error --timeout=15 --title='InitiativeTracker needs attention' \
       --text='Hub health did not become ready. Check the application service locally. The kiosk will retry.' 2>/dev/null || true
     return 1
 }
 
+show_loading 'Starting your table…\nWaiting for the local hub. No keyboard is needed.'
 wait_for_hub || exit 75
+close_loading
 
 if [[ -x "$UPDATE_CHECKER" ]]; then
     "$UPDATE_CHECKER" ||
@@ -47,7 +74,9 @@ if [[ -x "$UPDATE_CHECKER" ]]; then
 fi
 
 # The updater may have restarted the application.
+show_loading 'Preparing your table…\nThe display opens automatically when the hub is ready.'
 wait_for_hub || exit 75
+close_loading
 
 exec /usr/bin/chromium \
     --kiosk \

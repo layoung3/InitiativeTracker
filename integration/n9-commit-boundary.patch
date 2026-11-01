@@ -1,0 +1,415 @@
+--- a/InitiativeTracker.Web/Infrastructure/N9PresentationAuthority.cs
++++ b/InitiativeTracker.Web/Infrastructure/N9PresentationAuthority.cs
+@@ -18,4 +18,23 @@
+         var current = service.Validate(entry.Id, entry.Generation, entry.Epoch, browser, origin.Origin);
+         return current is not null && service.MatchesLegacy(current, context.User) && service.MediaOwnershipUnchanged(context);
+     }
++    public static int Commit(HttpContext context, Func<int> commit)
++    {
++        var origin = context.RequestServices.GetService<ITrustedBrowserOrigin>();
++        if (origin is null) throw new SecureAccessDenied();
++        if (!origin.Enabled && context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())
++            return commit();
++        if (!origin.Enabled || !origin.TrustedRequest(context) || context.Items[typeof(SecureGrant)] is not SecureGrant entry ||
++            SecureAccess.Browser(context) is not { } browser) throw new SecureAccessDenied();
++        return context.RequestServices.GetRequiredService<SecureAccessService>()
++            .CommitAuthorized(entry, browser, origin.Origin, context.User, commit);
++    }
++
+ }
++
++/// <summary>Thin injectable adapter; all authority stays in SecureAccessService.</summary>
++public class N9PresentationCommitter(IHttpContextAccessor contexts)
++{
++    public virtual int Commit(Func<int> commit) => N9PresentationAuthority.Commit(
++        contexts.HttpContext ?? throw new SecureAccessDenied(), commit);
++}
+--- a/InitiativeTracker.Web/Pages/Appearance/Index.cshtml.cs
++++ b/InitiativeTracker.Web/Pages/Appearance/Index.cshtml.cs
+@@ -14,7 +14,7 @@
+ [RequestSizeLimit(6 * 1024 * 1024)]
+ [RequestFormLimits(MultipartBodyLengthLimit = 5 * 1024 * 1024 + 65536)]
+ public sealed class IndexModel(MediaPolicy policy, MediaStore store, BrandingService branding,
+-    IWebHostEnvironment environment, IHubContext<EncounterHub> hub, ILogger<IndexModel> logger) : PageModel
++    IWebHostEnvironment environment, IHubContext<EncounterHub> hub, ILogger<IndexModel> logger, N9PresentationCommitter commits) : PageModel
+ {
+     public string Scope { get; private set; } = "";
+     public Guid SubjectId { get; private set; }
+@@ -58,7 +58,7 @@
+         {
+             if (Upload is null) throw new MediaValidationException("Choose a PNG or JPEG image.");
+             await store.ReplaceAsync(scope, subjectId, kind, Upload,
+-                () => policy.Subject(User, scope, subjectId, write: true), cancellationToken);
++                () => policy.Subject(User, scope, subjectId, write: true), commits.Commit, cancellationToken);
+             return await Changed(scope, subjectId);
+         }
+         catch (UnauthorizedAccessException) { return NotFound(); }
+@@ -77,13 +77,13 @@
+         if (!Load(scope, subjectId) || !MediaPaths.IsAllowed(scope, kind)) return NotFound();
+         try
+         {
+-            await store.RemoveAsync(scope, subjectId, kind, () => policy.Subject(User, scope, subjectId, write: true), cancellationToken);
++            await store.RemoveAsync(scope, subjectId, kind, () => policy.Subject(User, scope, subjectId, write: true), commits.Commit, cancellationToken);
+             return await Changed(scope, subjectId);
+         }
+         catch (UnauthorizedAccessException) { return NotFound(); }
+         catch (MediaBusyException exception) { return Failure(exception.Message, 429); }
+         catch (MediaValidationException exception) { return Failure(exception.Message, 400); }
+-        catch (Exception exception) when (exception is IOException or Microsoft.EntityFrameworkCore.DbUpdateException)
++        catch (Exception exception) when (exception is IOException or Microsoft.Data.Sqlite.SqliteException or Microsoft.EntityFrameworkCore.DbUpdateException)
+         {
+             logger.LogWarning(exception, "Image removal could not be saved.");
+             return Failure("Image could not be removed. Try again.",503);
+@@ -95,8 +95,13 @@
+         if (RequiresHttps) return StatusCode(426);
+         if (!Load(scope, subjectId) || scope != "application") return NotFound();
+         if (!HasPersistentStorage) return Failure("Configure persistent Tracker:DataDirectory outside the application directory before saving branding.",400);
+-        try { branding.Save(ApplicationName ?? "", ShowApplicationLogo); return await Changed(scope, subjectId); }
++        try { branding.Save(ApplicationName ?? "", ShowApplicationLogo, commits.Commit); return await Changed(scope, subjectId); }
+         catch (MediaValidationException exception) { return Failure(exception.Message, 400); }
++        catch (Exception exception) when (exception is IOException or Microsoft.Data.Sqlite.SqliteException or Microsoft.EntityFrameworkCore.DbUpdateException)
++        {
++            logger.LogWarning(exception, "Branding could not be saved.");
++            return Failure("Branding could not be saved. Try again.", 503);
++        }
+     }
+ 
+     private IActionResult Failure(string message, int status)
+--- a/InitiativeTracker.Web/Program.cs
++++ b/InitiativeTracker.Web/Program.cs
+@@ -87,6 +87,7 @@
+ builder.Services.AddSingleton<BrandingService>();
+ builder.Services.AddSingleton<ImageNormalizer>();
+ builder.Services.AddHttpContextAccessor();
++builder.Services.AddSingleton<N9PresentationCommitter>();
+ builder.Services.AddSingleton<MediaPolicy>();
+ builder.Services.AddSingleton(provider => new MediaStore(
+     provider.GetRequiredService<IDbContextFactory<InitiativeTrackerDbContext>>(),
+--- a/InitiativeTracker.Web/Services/BrandingService.cs
++++ b/InitiativeTracker.Web/Services/BrandingService.cs
+@@ -16,16 +16,24 @@
+         return db.PresentationSettings.AsNoTracking().SingleOrDefault(x => x.Id == 1);
+     }
+ 
+-    public void Save(string name, bool showLogo)
++    public void Save(string name, bool showLogo, Func<Func<int>,int> commitAuthorized)
+     {
+         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 80 || name.Any(char.IsControl))
+             throw new MediaValidationException("Use an application name of 1–80 characters, without control characters.");
+-        using var db = factory.CreateDbContext();
+-        var row = db.PresentationSettings.Find(1);
+-        if (row is null) { row = new PresentationSettings(); db.PresentationSettings.Add(row); }
+-        row.ApplicationName = name.Trim();
+-        row.ShowApplicationLogo = showLogo;
+-        db.SaveChanges();
++        commitAuthorized(() =>
++        {
++            using var db = factory.CreateDbContext();
++            db.Database.SetCommandTimeout(1);
++            if (db.Database.GetDbConnection() is Microsoft.Data.Sqlite.SqliteConnection sqlite) sqlite.DefaultTimeout = 1;
++            using var transaction = db.Database.BeginTransaction();
++            var row = db.PresentationSettings.Find(1);
++            if (row is null) { row = new PresentationSettings(); db.PresentationSettings.Add(row); }
++            row.ApplicationName = name.Trim();
++            row.ShowApplicationLogo = showLogo;
++            var changed = db.SaveChanges();
++            transaction.Commit();
++            return changed;
++        });
+     }
+ 
+     public static string NormalizeName(string? value)
+--- a/InitiativeTracker.Web/Services/MediaStore.cs
++++ b/InitiativeTracker.Web/Services/MediaStore.cs
+@@ -32,7 +32,7 @@
+     }
+ 
+     public async Task ReplaceAsync(string scope, Guid subjectId, string kind, IFormFile upload,
+-        Func<MediaSubject?> authorize, CancellationToken cancellationToken = default)
++        Func<MediaSubject?> authorize, Func<Func<int>,int> commitAuthorized, CancellationToken cancellationToken = default)
+     {
+         if (!MediaPaths.IsAllowed(scope, kind) || authorize() is null) throw new UnauthorizedAccessException();
+         if (!AllowsPersistentWrites) throw new MediaValidationException("Configure persistent Tracker:DataDirectory outside the application directory before changing images.");
+@@ -59,19 +59,22 @@
+             var image = normalizer.Normalize(input, kind);
+             cancellationToken.ThrowIfCancellationRequested();
+             var subject = authorize() ?? throw new UnauthorizedAccessException();
+-            using var db = factory.CreateDbContext();
+-            Prune(db);
+-            var row = db.PresentationAssets.Find(scope, subjectId, kind);
+-            var previousId = row?.BlobId;
+-            var previousPath = previousId.HasValue ? BlobPath(previousId.Value) : null;
+-            var previousBytes = previousPath is not null && File.Exists(previousPath)
+-                && !File.GetAttributes(previousPath).HasFlag(FileAttributes.ReparsePoint) ? new FileInfo(previousPath).Length : 0;
+-            var rows = db.PresentationAssets.AsNoTracking().ToList();
+-            var owned = rows.Where(x => x.OwnerProfileId == subject.OwnerProfileId).ToList();
+-            if ((row is null && (rows.Count >= MaxAssets || (subject.OwnerProfileId.HasValue && owned.Count >= MaxProfileAssets)))
+-                || (subject.OwnerProfileId.HasValue && owned.Sum(x => x.Length) - (row?.Length ?? 0) + image.Bytes.Length > MaxProfileBytes)
+-                || StoredBytes() - previousBytes + image.Bytes.Length > MaxStorageBytes)
+-                throw new MediaValidationException("Image storage limit reached. Remove an unused portrait or banner first.");
++            PresentationAsset? previous;
++            using (var snapshot = factory.CreateDbContext())
++            {
++                LimitDatabaseWait(snapshot);
++                previous = snapshot.PresentationAssets.AsNoTracking().SingleOrDefault(x => x.Scope == scope && x.SubjectId == subjectId && x.Kind == kind);
++                var rows = snapshot.PresentationAssets.AsNoTracking().ToList();
++                var owned = rows.Where(x => x.OwnerProfileId == subject.OwnerProfileId).ToList();
++                var oldPath = previous is null ? null : BlobPath(previous.BlobId);
++                var oldBytes = oldPath is not null && File.Exists(oldPath)
++                    && !File.GetAttributes(oldPath).HasFlag(FileAttributes.ReparsePoint) ? new FileInfo(oldPath).Length : 0;
++                if ((previous is null && (rows.Count >= MaxAssets || (subject.OwnerProfileId.HasValue && owned.Count >= MaxProfileAssets)))
++                    || (subject.OwnerProfileId.HasValue && owned.Sum(x => x.Length) - (previous?.Length ?? 0) + image.Bytes.Length > MaxProfileBytes)
++                    || StoredBytes() - oldBytes + image.Bytes.Length > MaxStorageBytes)
++                    throw new MediaValidationException("Image storage limit reached. Remove an unused portrait or banner first.");
++            }
++            var previousId = previous?.BlobId;
+             var blobId = Guid.NewGuid();
+             var temporary = Path.Combine(DirectoryPath, blobId.ToString("N") + ".tmp");
+             var destination = BlobPath(blobId);
+@@ -85,23 +88,40 @@
+                     output.Flush(flushToDisk: true);
+                 }
+                 File.Move(temporary, destination);
+-                if (row is null)
++                cancellationToken.ThrowIfCancellationRequested();
++                // No write transaction is held while waiting for the shared gate.
++                // Only bounded database ownership/CAS checks and the atomic write run inside.
++                commitAuthorized(() =>
+                 {
+-                    row = new PresentationAsset { Scope = scope, SubjectId = subjectId, Kind = kind };
+-                    db.PresentationAssets.Add(row);
+-                }
+-                row.BlobId = blobId;
+-                row.OwnerProfileId = subject.OwnerProfileId;
+-                row.Width = image.Width;
+-                row.Height = image.Height;
+-                row.Length = image.Bytes.Length;
+-                row.UpdatedAtUtc = DateTime.UtcNow;
+-                db.SaveChanges();
++                    using var db = factory.CreateDbContext();
++                    LimitDatabaseWait(db);
++                    using var transaction = db.Database.BeginTransaction();
++                    DemandOwnership(db, scope, subjectId, subject.OwnerProfileId);
++                    var row = db.PresentationAssets.Find(scope, subjectId, kind);
++                    if (row?.BlobId != previousId || row?.OwnerProfileId != previous?.OwnerProfileId)
++                        throw new UnauthorizedAccessException();
++                    if (row is null)
++                    {
++                        row = new PresentationAsset { Scope = scope, SubjectId = subjectId, Kind = kind };
++                        db.PresentationAssets.Add(row);
++                    }
++                    row.BlobId = blobId;
++                    row.OwnerProfileId = subject.OwnerProfileId;
++                    row.Width = image.Width;
++                    row.Height = image.Height;
++                    row.Length = image.Bytes.Length;
++                    row.UpdatedAtUtc = DateTime.UtcNow;
++                    var changed = db.SaveChanges();
++                    transaction.Commit();
++                    return changed;
++                });
+             }
+             catch
+             {
++                // Transaction disposal precedes this handler. An ambiguous provider
++                // failure must never cause deletion of a referenced candidate.
+                 TryDelete(temporary);
+-                TryDelete(destination);
++                DeleteCandidateIfUnreferenced(blobId);
+                 throw;
+             }
+             if (previousId.HasValue) TryDelete(BlobPath(previousId.Value));
+@@ -109,21 +129,36 @@
+         finally { gate.Release(); }
+     }
+ 
+-    public async Task RemoveAsync(string scope, Guid id, string kind, Func<MediaSubject?> authorize, CancellationToken cancellationToken = default)
++    public async Task RemoveAsync(string scope, Guid id, string kind, Func<MediaSubject?> authorize, Func<Func<int>,int> commitAuthorized, CancellationToken cancellationToken = default)
+     {
+         if (!MediaPaths.IsAllowed(scope, kind) || authorize() is null) throw new UnauthorizedAccessException();
+         if (!AllowsPersistentWrites) throw new MediaValidationException("Configure persistent Tracker:DataDirectory outside the application directory before changing images.");
+         if (!await gate.WaitAsync(0, cancellationToken)) throw new MediaBusyException();
+         try
+         {
+-            if (authorize() is null) throw new UnauthorizedAccessException();
+-            using var db = factory.CreateDbContext();
+-            var row = db.PresentationAssets.Find(scope, id, kind);
+-            if (row is null) return;
+-            db.Remove(row);
+-            db.SaveChanges();
+-            TryDelete(BlobPath(row.BlobId));
+-            Prune(db);
++            var subject = authorize() ?? throw new UnauthorizedAccessException();
++            PresentationAsset? previous;
++            using (var snapshot = factory.CreateDbContext())
++            {
++                LimitDatabaseWait(snapshot);
++                previous = snapshot.PresentationAssets.AsNoTracking().SingleOrDefault(x => x.Scope == scope && x.SubjectId == id && x.Kind == kind);
++            }
++            cancellationToken.ThrowIfCancellationRequested();
++            commitAuthorized(() =>
++            {
++                using var db = factory.CreateDbContext();
++                LimitDatabaseWait(db);
++                using var transaction = db.Database.BeginTransaction();
++                DemandOwnership(db, scope, id, subject.OwnerProfileId);
++                var row = db.PresentationAssets.Find(scope, id, kind);
++                if (row?.BlobId != previous?.BlobId || row?.OwnerProfileId != previous?.OwnerProfileId)
++                    throw new UnauthorizedAccessException();
++                var changed = 0;
++                if (row is not null) { db.Remove(row); changed = db.SaveChanges(); }
++                transaction.Commit();
++                return changed;
++            });
++            if (previous is not null) TryDelete(BlobPath(previous.BlobId));
+         }
+         finally { gate.Release(); }
+     }
+@@ -182,6 +217,39 @@
+         }
+     }
+ 
++    private static void DemandOwnership(InitiativeTrackerDbContext db, string scope, Guid id, Guid? owner)
++    {
++        var matches = scope switch
++        {
++            "character" => owner.HasValue && db.PlayerCharacters.AsNoTracking().Any(x => x.Id == id && x.IsActive && x.PlayerProfileId == owner.Value),
++            "profile" => owner == id && db.PlayerProfiles.AsNoTracking().Any(x => x.Id == id),
++            "application" => id == Guid.Empty && owner is null,
++            _ => false
++        };
++        if (!matches) throw new UnauthorizedAccessException();
++    }
++
++    private static void LimitDatabaseWait(InitiativeTrackerDbContext db)
++    {
++        db.Database.SetCommandTimeout(1);
++        if (db.Database.GetDbConnection() is Microsoft.Data.Sqlite.SqliteConnection sqlite)
++            sqlite.DefaultTimeout = 1;
++    }
++
++    private void DeleteCandidateIfUnreferenced(Guid id)
++    {
++        try
++        {
++            using var check = factory.CreateDbContext();
++            LimitDatabaseWait(check);
++            if (!check.PresentationAssets.AsNoTracking().Any(x => x.BlobId == id)) TryDelete(BlobPath(id));
++        }
++        catch (Exception exception) when (exception is System.Data.Common.DbException or IOException or UnauthorizedAccessException)
++        {
++            logger.LogWarning(exception, "Candidate cleanup deferred because its reference could not be confirmed.");
++        }
++    }
++
+     private long StoredBytes() => Directory.EnumerateFiles(DirectoryPath).Sum(path => new FileInfo(path).Length);
+     private string BlobPath(Guid id) => Path.Combine(DirectoryPath, id.ToString("N") + ".png");
+     private void TryDelete(string path)
+--- a/InitiativeTracker.Tests/N9MediaTests.cs
++++ b/InitiativeTracker.Tests/N9MediaTests.cs
+@@ -29,7 +29,13 @@
+     public N9MediaTests()
+     {
+         app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+-            .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory));
++            .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory)
++            .ConfigureServices(services =>
++            {
++                // Pruning is invoked explicitly in these storage tests; do not race a timer.
++                foreach(var hosted in services.Where(item=>item.ServiceType==typeof(Microsoft.Extensions.Hosting.IHostedService) && item.ImplementationType==typeof(MediaMaintenanceService)).ToArray())
++                    services.Remove(hosted);
++            }));
+         client = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+     }
+ 
+@@ -269,16 +275,16 @@
+         var file=new FormFile(source,0,input.Length,"Upload","photo.png");
+         bool authorized=true;
+         MediaSubject? Authorize() => authorized ? new("Fixture",owner) : null;
+-        var first=Store.ReplaceAsync("character",id,"portrait",file,Authorize);
++        var first=Store.ReplaceAsync("character",id,"portrait",file,Authorize, action => action());
+         await source.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+-        await Assert.ThrowsAsync<MediaBusyException>(() => Store.ReplaceAsync("character",id,"banner",file,Authorize));
++        await Assert.ThrowsAsync<MediaBusyException>(() => Store.ReplaceAsync("character",id,"banner",file,Authorize, action => action()));
+         authorized=false;
+         source.Release.TrySetResult();
+         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => first);
+         Assert.Empty(Directory.GetFiles(Store.DirectoryPath));
+         authorized=true;
+         using var valid=new MemoryStream(input);
+-        await Store.ReplaceAsync("character",id,"portrait",new FormFile(valid,0,input.Length,"Upload","photo.png"),Authorize);
++        await Store.ReplaceAsync("character",id,"portrait",new FormFile(valid,0,input.Length,"Upload","photo.png"),Authorize, action => action());
+         Assert.NotNull(Store.Read("character",id,"portrait"));
+     }
+ 
+@@ -301,6 +307,51 @@
+         Assert.NotNull(recreated.Read("character",id,"portrait"));
+         await recreated.PruneAsync(); Assert.False(File.Exists(orphan));Assert.False(File.Exists(interrupted));
+         Assert.Single(Directory.GetFiles(Store.DirectoryPath));
++    }
++
++    [Theory]
++    [InlineData("replace")]
++    [InlineData("remove")]
++    [InlineData("settings")]
++    public async Task RejectedCommitRollsBackAndNeverPrunesReferencedImages(string operation)
++    {
++        var owner=Guid.NewGuid(); var id=Character(owner); SignIn("Player",owner);
++        await Upload(id,Raster(),await Token(id));
++        var settings=app.Services.GetRequiredService<BrandingService>();
++        settings.Save("Original",true, action=>action());
++        Guid previous;
++        Guid inactiveId;
++        using(var db=Factory.CreateDbContext())
++        {
++            previous=db.PresentationAssets.Single().BlobId;
++            var inactive=new PlayerCharacter{PlayerProfileId=owner,Name="Inactive art",IsActive=false};
++            var old=new PresentationAsset{Scope="character",SubjectId=inactive.Id,Kind="portrait",BlobId=Guid.NewGuid(),OwnerProfileId=owner,Length=3};
++            db.AddRange(inactive,old); db.SaveChanges(); inactiveId=inactive.Id;
++            File.WriteAllBytes(Path.Combine(Store.DirectoryPath,old.BlobId.ToString("N")+".png"),new byte[]{1,2,3});
++        }
++        var files=Directory.GetFiles(Store.DirectoryPath).ToDictionary(path=>Path.GetFileName(path),File.ReadAllBytes);
++        int Deny(Func<int> commit)
++        {
++            using var check=Factory.CreateDbContext();
++            Assert.Equal(previous,check.PresentationAssets.Single(x=>x.SubjectId==id).BlobId);
++            Assert.Equal("Original",settings.ApplicationName);
++            throw new UnauthorizedAccessException();
++        }
++        if(operation=="replace")
++        {
++            var input=Raster(200,100); using var stream=new MemoryStream(input);
++            await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>Store.ReplaceAsync("character",id,"portrait",new FormFile(stream,0,input.Length,"Upload","fixture.png"),()=>new("Unit storage fixture",owner),Deny));
++        }
++        if(operation=="remove") await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>Store.RemoveAsync("character",id,"portrait",()=>new("Unit storage fixture",owner),Deny));
++        if(operation=="settings") Assert.Throws<UnauthorizedAccessException>(()=>settings.Save("Rejected",false,Deny));
++        using(var check=Factory.CreateDbContext())
++        {
++            Assert.Equal(previous,check.PresentationAssets.Single(x=>x.SubjectId==id).BlobId);
++            Assert.Single(check.PresentationAssets.Where(x=>x.SubjectId==inactiveId));
++            Assert.Equal("Original",check.PresentationSettings.Single().ApplicationName);
++        }
++        Assert.Equal(files.Keys.Order(),Directory.GetFiles(Store.DirectoryPath).Select(Path.GetFileName).Order());
++        foreach(var file in files) Assert.Equal(file.Value,File.ReadAllBytes(Path.Combine(Store.DirectoryPath,file.Key)));
+     }
+ 
+     [Fact]
+--- a/InitiativeTracker.Tests/SecureAccessWebTests.cs
++++ b/InitiativeTracker.Tests/SecureAccessWebTests.cs
+@@ -88,7 +88,7 @@
+         public readonly Clock Clock;
+         public readonly WebApplicationFactory<EncounterStateService> App;
+         public readonly FailureSwitch Failure = new();
+-        public Host(string? directory = null, Clock? clock = null, bool endpoints = true)
++        public Host(string? directory = null, Clock? clock = null, bool endpoints = true, Action<IServiceCollection>? configure = null)
+         {
+             DirectoryPath = directory ?? Path.Combine(Path.GetTempPath(), "secure-web-" + Guid.NewGuid());
+             Clock = clock ?? new Clock();
+@@ -103,6 +103,7 @@
+                     services.AddSingleton(Failure);
+                     services.RemoveAll<SecureGrantPersistence>(); services.AddSingleton<SecureGrantPersistence, FaultPersistence>();
+                     if (endpoints) services.AddSingleton<IStartupFilter, FixturePipeline>();
++                    configure?.Invoke(services);
+                 }));
+         }
+         public SecureAccessService Access => App.Services.GetRequiredService<SecureAccessService>();

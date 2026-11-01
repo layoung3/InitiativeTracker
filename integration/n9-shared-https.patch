@@ -1,0 +1,144 @@
+--- a/InitiativeTracker.Web/Program.cs
++++ b/InitiativeTracker.Web/Program.cs
+@@ -86,6 +86,7 @@
+ builder.Services.AddSingleton<CharacterService>();
+ builder.Services.AddSingleton<BrandingService>();
+ builder.Services.AddSingleton<ImageNormalizer>();
++builder.Services.AddHttpContextAccessor();
+ builder.Services.AddSingleton<MediaPolicy>();
+ builder.Services.AddSingleton(provider => new MediaStore(
+     provider.GetRequiredService<IDbContextFactory<InitiativeTrackerDbContext>>(),
+--- a/InitiativeTracker.Web/Infrastructure/SecureAccess.cs
++++ b/InitiativeTracker.Web/Infrastructure/SecureAccess.cs
+@@ -164,6 +164,8 @@
+                 { context.Response.StatusCode = 403; return; }
+                 if (!context.RequestServices.GetRequiredService<SecureAccessService>().MediaOwnershipUnchanged(context))
+                 { context.Response.StatusCode = 404; return; }
++                // Request-local validated snapshot; consumers must revalidate durable authority after awaits.
++                context.Items[typeof(SecureGrant)] = grant;
+             }
+             if (IdentityMutation(context.Request) && context.User.Identity?.IsAuthenticated == true &&
+                 (IsPage(context.Request, "/Player/Index", "/player") ? context.User.IsInRole("Player") : context.User.IsInRole("DM")))
+--- /dev/null
++++ b/InitiativeTracker.Web/Infrastructure/N9PresentationAuthority.cs
+@@ -0,0 +1,21 @@
++using Microsoft.Extensions.Hosting;
++
++namespace InitiativeTracker.Web.Infrastructure;
++
++/// <summary>N9 consumes shared authority; it never creates or promotes secure grants.</summary>
++public static class N9PresentationAuthority
++{
++    public static bool HasCurrent(HttpContext? context)
++    {
++        if (context is null) return false;
++        var origin = context.RequestServices.GetService<ITrustedBrowserOrigin>();
++        if (origin is null) return false;
++        // Explicit disposable fixture compatibility, never a production transport fallback.
++        if (!origin.Enabled) return context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment();
++        if (!origin.TrustedRequest(context) || context.Items[typeof(SecureGrant)] is not SecureGrant entry ||
++            SecureAccess.Browser(context) is not { } browser) return false;
++        var service = context.RequestServices.GetRequiredService<SecureAccessService>();
++        var current = service.Validate(entry.Id, entry.Generation, entry.Epoch, browser, origin.Origin);
++        return current is not null && service.MatchesLegacy(current, context.User) && service.MediaOwnershipUnchanged(context);
++    }
++}
+--- a/InitiativeTracker.Web/Services/MediaPolicy.cs
++++ b/InitiativeTracker.Web/Services/MediaPolicy.cs
+@@ -1,3 +1,4 @@
++using InitiativeTracker.Web.Infrastructure;
+ using System.Security.Claims;
+ using InitiativeTracker.Web.Data;
+ using Microsoft.EntityFrameworkCore;
+@@ -18,11 +19,12 @@
+ }
+ 
+ public sealed class MediaPolicy(IDbContextFactory<InitiativeTrackerDbContext> factory, EncounterStateService encounter,
+-    GameSessionService session, PlayerRegistryService players, DeviceRegistryService devices)
++    GameSessionService session, PlayerRegistryService players, DeviceRegistryService devices, IHttpContextAccessor contexts)
+ {
+     // Null is an intentional uniform denial: unauthorized IDs disclose no existence.
+     public MediaSubject? Subject(ClaimsPrincipal user, string scope, Guid id, bool write)
+     {
++        if (!N9PresentationAuthority.HasCurrent(contexts.HttpContext)) return null;
+         if (user.Identity?.IsAuthenticated != true) return null;
+         if (!Guid.TryParse(user.FindFirstValue("session_id"), out var sessionId) || sessionId != session.CurrentSession.SessionId)
+             return null;
+--- a/InitiativeTracker.Web/Pages/Appearance/Index.cshtml.cs
++++ b/InitiativeTracker.Web/Pages/Appearance/Index.cshtml.cs
+@@ -1,3 +1,4 @@
++using InitiativeTracker.Web.Infrastructure;
+ using InitiativeTracker.Web.Hubs;
+ using InitiativeTracker.Web.Services;
+ using Microsoft.AspNetCore.Authorization;
+@@ -21,6 +22,7 @@
+     public string[] Kinds => Scope == "application" ? ["logo", "banner"] : Scope == "profile" ? ["portrait"] : ["portrait", "banner"];
+     public bool RequiresHttps => !Request.IsHttps && !environment.IsDevelopment();
+     public bool HasPersistentStorage => store.AllowsPersistentWrites;
++    public bool RequiresSecureAuthorization => !N9PresentationAuthority.HasCurrent(HttpContext);
+     [BindProperty] public IFormFile? Upload { get; set; }
+     [BindProperty] public string? ApplicationName { get; set; }
+     [BindProperty] public bool ShowApplicationLogo { get; set; }
+--- a/InitiativeTracker.Web/Pages/Appearance/Index.cshtml
++++ b/InitiativeTracker.Web/Pages/Appearance/Index.cshtml
+@@ -11,8 +11,9 @@
+     </div>
+     @if (TempData["AppearanceNotice"] is string notice) { <p class="alert alert-success" role="status">@notice</p> }
+     <div asp-validation-summary="All" class="text-danger mb-3" role="alert"></div>
+-    @if (Model.RequiresHttps) { <p class="alert alert-warning">Image changes require a trusted HTTPS connection. Open the hub's configured HTTPS address.</p> }
++    @if (Model.RequiresHttps) { <p class="alert alert-warning">Private images and changes require configured trusted HTTPS and fresh browser approval through Secure authorization. HTTPS alone and ordinary game sign-in do not grant permission.</p> }
+     @if (!Model.HasPersistentStorage) { <p class="alert alert-warning">Configure a persistent data directory outside the application directory before saving images or branding.</p> }
++    <p class="small text-muted">Private images and changes require fresh Secure authorization on the trusted HTTPS origin; ordinary game sign-in or HTTPS alone is insufficient.</p>
+     <p>PNG or JPEG, up to 5 MiB, 4096 pixels per side and 12 million total pixels. Images are resized and saved without embedded metadata.</p>
+     <p class="small text-muted">@(Model.Scope == "profile" ? "Player portraits are private to you and the DM." : Model.Scope == "character" ? "Character art is private to its owner and the DM until the character is visible in the current encounter." : "The logo is public on application entry pages. The campaign banner is shared with joined players and paired displays on this hub; this setting applies to one installation.")</p>
+     @if (Model.Scope == "application")
+@@ -21,7 +22,7 @@
+             <label asp-for="ApplicationName" class="form-label">Application name</label>
+             <input asp-for="ApplicationName" maxlength="80" required class="form-control mb-3" />
+             <label class="form-check mb-3"><input asp-for="ShowApplicationLogo" class="form-check-input" /> Show branding on application entry pages</label>
+-            <button type="submit" class="btn btn-primary align-self-start" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Save branding</button>
++            <button type="submit" class="btn btn-primary align-self-start" disabled="@(Model.RequiresHttps || Model.RequiresSecureAuthorization || !Model.HasPersistentStorage)">Save branding</button>
+         </form>
+     }
+     <div class="tracker-media-grid">
+@@ -35,11 +36,11 @@
+                     <input type="hidden" name="kind" value="@kind" />
+                     <label class="form-label" for="upload-@kind">Choose @kind</label>
+                     <input type="file" name="Upload" id="upload-@kind" accept="image/png,image/jpeg" required class="form-control mb-3" />
+-                    <button type="submit" class="btn btn-primary" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Upload @kind</button>
++                    <button type="submit" class="btn btn-primary" disabled="@(Model.RequiresHttps || Model.RequiresSecureAuthorization || !Model.HasPersistentStorage)">Upload @kind</button>
+                 </form>
+                 <form method="post" asp-page-handler="Remove">
+                     <input type="hidden" name="kind" value="@kind" />
+-                    <button type="submit" class="btn btn-outline-secondary" disabled="@(Model.RequiresHttps || !Model.HasPersistentStorage)">Restore default @kind</button>
++                    <button type="submit" class="btn btn-outline-secondary" disabled="@(Model.RequiresHttps || Model.RequiresSecureAuthorization || !Model.HasPersistentStorage)">Restore default @kind</button>
+                 </form>
+             </section>
+         }
+--- a/InitiativeTracker.Web/Pages/Shared/_Layout.cshtml
++++ b/InitiativeTracker.Web/Pages/Shared/_Layout.cshtml
+@@ -40,6 +40,13 @@
+ 
+         <main class="app-main"
+               role="main">
++            @inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
++            @if (SecureOrigin.Enabled && User.Identity?.IsAuthenticated == true)
++            {
++                <nav class="container py-2 small" aria-label="Private feature authorization">
++                    <a href="@(SecureOrigin.Origin + "/secure-access")">Secure authorization for private images and character changes</a>
++                </nav>
++            }
+             @RenderBody()
+         </main>
+ 
+--- a/InitiativeTracker.Tests/N9MediaTests.cs
++++ b/InitiativeTracker.Tests/N9MediaTests.cs
+@@ -315,7 +315,7 @@
+         Assert.Equal((HttpStatusCode)426,(await http.GetAsync(MediaPaths.CharacterPortrait(id))).StatusCode);
+         using var https=production.CreateClient(new WebApplicationFactoryClientOptions{AllowAutoRedirect=false,BaseAddress=new Uri("https://localhost")});
+         https.DefaultRequestHeaders.Add("Cookie",client.DefaultRequestHeaders.GetValues("Cookie"));
+-        Assert.Equal(HttpStatusCode.OK,(await https.GetAsync(MediaPaths.CharacterPortrait(id))).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound,(await https.GetAsync(MediaPaths.CharacterPortrait(id))).StatusCode); // HTTPS without the configured foundation grants nothing.
+         // TestServer exercises transport policy; this is not actual certificate/TLS validation.
+     }
+ 

@@ -88,7 +88,7 @@ public sealed class SecureAccessWebTests
         public readonly Clock Clock;
         public readonly WebApplicationFactory<EncounterStateService> App;
         public readonly FailureSwitch Failure = new();
-        public Host(string? directory = null, Clock? clock = null, bool endpoints = true)
+        public Host(string? directory = null, Clock? clock = null, bool endpoints = true, Action<IServiceCollection>? configure = null)
         {
             DirectoryPath = directory ?? Path.Combine(Path.GetTempPath(), "secure-web-" + Guid.NewGuid());
             Clock = clock ?? new Clock();
@@ -103,6 +103,7 @@ public sealed class SecureAccessWebTests
                     services.AddSingleton(Failure);
                     services.RemoveAll<SecureGrantPersistence>(); services.AddSingleton<SecureGrantPersistence, FaultPersistence>();
                     if (endpoints) services.AddSingleton<IStartupFilter, FixturePipeline>();
+                    configure?.Invoke(services);
                 }));
         }
         public SecureAccessService Access => App.Services.GetRequiredService<SecureAccessService>();

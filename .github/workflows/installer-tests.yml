@@ -7,7 +7,10 @@ on:
       - 'hub-updater/**'
       - 'hub-bootstrap/**'
       - 'pi-network/**'
+      - 'https-infra/**'
+      - 'docs/https/**'
       - '.github/workflows/installer-tests.yml'
+      - 'docs/N9-*.md'
   workflow_dispatch:
 permissions:
   contents: read

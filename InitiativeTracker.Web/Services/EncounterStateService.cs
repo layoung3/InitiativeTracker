@@ -605,6 +605,7 @@ public class EncounterStateService
 
                             return new CombatantDisplayState
                             {
+                                PortraitUrl = MediaPaths.CharacterPortrait(c.PlayerCharacterId),
                                 Id = c.Id,
                                 Name = c.Name,
                                 ExhaustionLevel = c.ExhaustionLevel,

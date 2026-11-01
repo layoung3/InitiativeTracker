@@ -22,6 +22,7 @@
 </div>
 
 <div class="container-fluid dm-page px-3 px-lg-4 py-3 py-lg-4">
+    <img src="@InitiativeTracker.Web.Services.MediaPaths.CampaignBanner" class="tracker-banner tracker-campaign-banner mb-3" data-tracker-media alt="Campaign banner" />
 
     <header class="dm-header d-flex
         flex-column
@@ -80,6 +81,8 @@
                class="btn btn-outline-primary">
                 Stored Players
             </a>
+
+            <a href="/appearance/application/00000000-0000-0000-0000-000000000000" class="btn btn-outline-primary">Branding &amp; banners</a>
 
             <a href="/display"
                target="_blank"
@@ -463,6 +466,7 @@
 
 
                                             <div class="dm-combatant-name-heading">
+                                                <img src="@InitiativeTracker.Web.Services.MediaPaths.CharacterPortrait(combatant.PlayerCharacterId)" class="tracker-portrait tracker-portrait--combat" data-tracker-media alt="Portrait of @combatant.Name" />
                                                 <input type="text"
                                                        name="name"
                                                        value="@combatant.Name"
@@ -839,6 +843,7 @@
                                             gap-1">
 
                                             <div class="dm-combatant-name-heading">
+                                                <img src="@InitiativeTracker.Web.Services.MediaPaths.CharacterPortrait(combatant.PlayerCharacterId)" class="tracker-portrait tracker-portrait--combat" data-tracker-media alt="Portrait of @combatant.Name" />
                                                 <span class="fw-bold fs-5">@combatant.Name</span>
                                                 @if (combatant.ExhaustionLevel > 0)
                                                 {
