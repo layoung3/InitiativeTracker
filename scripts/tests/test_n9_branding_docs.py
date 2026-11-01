@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import shutil
 import stat
 import re
@@ -182,6 +183,19 @@ class BrandingDocumentationTests(unittest.TestCase):
                 with self.assertRaises(OSError):self.run_action('apply')
                 self.assertEqual(b'untouched',outside.read_bytes());self.assertFalse(self.backups.exists())
                 if self.source.is_symlink():self.source.unlink();shutil.copyfile(ROOT/'InitiativeTracker.Web/wwwroot/images/colophon.png',self.source)
+    def test_fifo_asset_and_source_are_refused_without_blocking(self):
+        self.setup_role()
+        for path in [self.target,self.source]:
+            with self.subTest(path=path):
+                path.unlink();os.mkfifo(path,0o600)
+                def timeout(signum,frame):raise TimeoutError('Special-file inspection blocked')
+                old_handler=signal.signal(signal.SIGALRM,timeout);signal.alarm(3)
+                try:
+                    with self.assertRaisesRegex(RuntimeError,'regular file'):self.run_action('apply')
+                finally:signal.alarm(0);signal.signal(signal.SIGALRM,old_handler)
+                self.assertFalse(self.backups.exists());path.unlink()
+                if path==self.target:path.write_bytes(b'previous customer artwork')
+                else:shutil.copyfile(ROOT/'InitiativeTracker.Web/wwwroot/images/colophon.png',path)
     def test_hardlinked_asset_is_refused(self):
         self.setup_role();os.link(self.target,self.base/'hardlink')
         with self.assertRaisesRegex(RuntimeError,'hardlinks'):self.run_action('apply')

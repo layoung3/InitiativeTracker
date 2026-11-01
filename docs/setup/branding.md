@@ -156,7 +156,7 @@ def directory(path, create=False, owner=None, private=False):
         os.close(fd); raise
 
 def read_file(fd, name, missing=False):
-    try: handle = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NOATIME, dir_fd=fd)
+    try: handle = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NOATIME | os.O_NONBLOCK, dir_fd=fd)
     except FileNotFoundError:
         if missing: return None, None
         raise
@@ -375,7 +375,7 @@ This is **application/desktop loading artwork after Linux and the graphical sess
 
 The exact embedded command is exercised by
 `scripts/tests/test_n9_branding_docs.py` in disposable fake homes/backups only:
-21 cases run as an ordinary UID and again as root against fake homes only, covering
+22 cases run as an ordinary UID and again as root against fake homes only, covering
 both roles, direct/supervised hubs, other usernames and spaces,
 existing/absent art, metadata restoration, later edits, interrupted replacement,
 symlink/hardlink/ACL/xattr refusals, pinned archive extraction and local links.
