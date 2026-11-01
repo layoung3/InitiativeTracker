@@ -1,12 +1,13 @@
 # Satellite display readability for 0.1.6
 
 The primary target is the roughly 7-inch satellite in **portrait** (480×800 and
-600×1024 representative CSS viewports). The hub is also portrait and its current
+600×1024 representative CSS viewports), with 800×1280 also measured for a
+possible higher-resolution portrait viewport. The hub is also portrait and its current
 DM/management view is preserved.
 
 Authenticated **Display-role** sessions on `/display` now use a compact layout
-at widths below 768 CSS pixels, with landscape regression coverage on short
-viewports up to 1100 wide and 650 high. The second
+at widths below 768 CSS pixels, in portrait up to 1024 CSS pixels wide, and
+on short landscape viewports up to 1100 wide and 650 high. The landscape
 rule includes assumed 7-inch panels at 800×480 and 1024×600. These are test
 viewports, not a claim about the installed panel's resolution, scaling or usable
 browser area. No kiosk command, zoom, resolution, startup file or Pi was changed.
@@ -77,14 +78,19 @@ for another cumulative run; the existing media tests expect a fresh encounter.
 Without `N9_APP_URL`, the six synthetic layout cases run and the real application
 case explicitly skips. CI supplies the URL, so that case must pass there.
 
-The primary portrait matrix is 480×800 and 600×1024. Landscape regression sizes
+The primary portrait matrix is 480×800, 600×1024 and 800×1280. Landscape regression sizes
 are 800×480 and 1024×600; desktop sizes are 1280×800 and 1920×1080.
 Assertions cover document/list overflow; each wrapped text line's bounds; text
 size and primary contrast; name/portrait/initiative/HP/condition separation;
 empty, 3-, 8- and 24-entry orders; long spaced names and 72-character unbroken
 names; condition/exhaustion badges; hidden NPC/HP projections; initial no-JS
-markup; active rows deep in the order; touch scrolling and controls; portrait
-node retention; synchronized themes; and pairing revocation. Existing tests also
+markup at all three portrait sizes and 800×480; active rows deep in the order; touch scrolling and controls; portrait
+node retention; synchronized themes; and pairing revocation. Portrait touch swipes and appearance controls run at
+480×800, 600×1024 and 800×1280, with 800×480 as a regression. A targeted test
+publishes an incoming turn during a pending manual End scroll, verifies the
+round/turn header stays fixed, and verifies the next event recenters the active row
+after manual navigation settles. Existing native keyboard scrolling is preserved;
+a coincident native End animation may finish after a turn event. Existing tests also
 exercise 40-turn scrolling with normal and reduced motion.
 
 For before/after screenshots, export `initiative-display.css` and

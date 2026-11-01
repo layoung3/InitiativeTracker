@@ -9,7 +9,8 @@ const {chromium}=require('playwright');
 const base=process.env.N9_APP_URL;
 const assets=path.resolve(__dirname,'../../InitiativeTracker.Web/wwwroot');
 const output=process.env.SATELLITE_SCREENSHOTS;
-const sizes=[[800,480],[1024,600],[480,800],[600,1024],[1280,800],[1920,1080]];
+const sizes=[[480,800],[600,1024],[800,1280],[800,480],[1024,600],[1280,800],[1920,1080]];
+const isCompact=(width,height)=>width<768||(width<=1100&&height<=650)||(width<=1024&&height>=width);
 let browser;
 before(async()=>{browser=await chromium.launch({headless:true,executablePath:process.env.N7_CHROMIUM_PATH||undefined});if(output)fs.mkdirSync(output,{recursive:true});});
 after(async()=>{await browser?.close();});
@@ -61,7 +62,7 @@ async function measurements(page,compact,settle=true){
         }
     }
     if(result.current){
-        assert(result.current.y>=result.list.y-1&&result.current.bottom<=result.list.bottom+1,'active row visible after automatic list scroll');
+        assert(result.current.y>=result.list.y-1&&result.current.bottom<=result.list.bottom+1,'active row visible after automatic list scroll '+JSON.stringify({current:result.current,list:result.list}));
         if(result.normalColor)assert.notEqual(result.currentColor,result.normalColor,'active border distinct from other rows');
     }
     return result;
@@ -84,7 +85,7 @@ for(const [width,height]of sizes)test(`satellite layout ${width}x${height}: empt
         await page.evaluate(()=>{window.events={};window.signalR={HubConnectionState:{Disconnected:'Disconnected'},HubConnectionBuilder:class{withUrl(){return this;}withAutomaticReconnect(){return this;}build(){return{state:'Disconnected',start:async()=>{},on:(n,c)=>window.events[n]=c,onclose(){},onreconnecting(){},onreconnected(){},invoke:async n=>n==='GetDisplayTheme'?'dark':{combatants:[],isStarted:false}};}}};});
         await page.addScriptTag({content:fs.readFileSync(path.join(assets,'js/initiative-display.js'),'utf8')});
         await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
-        const compact=width<768||(width<=1100&&height<=650);
+        const compact=isCompact(width,height);
         for(const count of [0,3,8,24]){
             await page.evaluate(state=>window.events.EncounterUpdated(state),states(count));
             const metrics=await measurements(page,compact);
@@ -107,6 +108,23 @@ for(const [width,height]of sizes)test(`satellite layout ${width}x${height}: empt
             const state=states(8);state.currentTurnNumber=active+1;state.combatants.forEach((c,i)=>c.isCurrent=i===active);
             await page.evaluate(state=>window.events.EncounterUpdated(state),state);await measurements(page,compact);
         }
+        // Publish a new turn while a manual End scroll is still pending.
+        await page.evaluate(state=>window.events.EncounterUpdated(state),states(24));
+        await page.locator('#initiativeList').focus();await page.keyboard.press('End');
+        const incoming=states(24);incoming.currentTurnNumber=1;incoming.combatants.forEach((c,i)=>c.isCurrent=i===0);
+        await page.evaluate(state=>window.events.EncounterUpdated(state),incoming);
+        await page.waitForTimeout(300);
+        assert.equal(await page.evaluate(()=>scrollY),0,'incoming turn during pending manual scroll keeps document fixed');
+        assert.equal(await page.locator('.initiative-header').evaluate(el=>el.getBoundingClientRect().top),0,'pending scroll never moves round/turn header');
+        // Manual navigation can finish after a coincident event; the next event
+        // must still follow its current row once native scrolling has settled.
+        await page.evaluate(()=>new Promise(resolve=>{
+            const list=document.querySelector('#initiativeList');let previous=list.scrollTop,stable=0;
+            const frame=()=>{const current=list.scrollTop;stable=current===previous?stable+1:0;previous=current;if(stable>=3)resolve();else requestAnimationFrame(frame);};
+            requestAnimationFrame(frame);
+        }));
+        await page.evaluate(state=>window.events.EncounterUpdated(state),incoming);
+        await measurements(page,compact);
         // Shared HTTPS layouts prepend this navigation; it must consume bounded space.
         await page.evaluate(()=>{const nav=document.createElement('nav');nav.className='container py-2 small';nav.setAttribute('aria-label','Private feature authorization');nav.innerHTML='<a href="/secure-access">Secure authorization for private images and character changes</a>';document.querySelector('.app-main').prepend(nav);});
         await page.evaluate(state=>window.events.EncounterUpdated(state),states(8));
@@ -191,20 +209,22 @@ test('actual paired satellite: initial Razor, privacy, SignalR turns, touch appe
         }finally{await hubContext.close();}
 
         // One initial and one live rendering of the same state; scripts disabled on initial page.
-        const initial=await browser.newContext({storageState:await context.storageState(),javaScriptEnabled:false,viewport:{width:800,height:480}});
-        try{
-            const page=await initial.newPage();await page.goto(base+'/display');
-            assert.equal(await page.locator('.combatant-initiative').count(),24);
-            assert.equal(await page.locator('.condition-badges').first().innerText(),'Poisoned');
-            assert.equal(await page.locator('[aria-current=true]').count(),1);
-            await measurements(page,true,false);await screenshot(page,'actual-800x480-initial-no-js');
-        }finally{await initial.close();}
+        for(const [width,height]of [[480,800],[600,1024],[800,1280],[800,480]]){
+            const initial=await browser.newContext({storageState:await context.storageState(),javaScriptEnabled:false,viewport:{width,height}});
+            try{
+                const page=await initial.newPage();await page.goto(base+'/display');
+                assert.equal(await page.locator('.combatant-initiative').count(),24);
+                assert.equal(await page.locator('.condition-badges').first().innerText(),'Poisoned');
+                assert.equal(await page.locator('[aria-current=true]').count(),1);
+                await measurements(page,true,false);await screenshot(page,`actual-${width}x${height}-initial-no-js`);
+            }finally{await initial.close();}
+        }
         const receipt=[];
         for(const [width,height]of sizes){
             await display.setViewportSize({width,height});
             await display.reload();await display.locator('.display-connection-status.is-connected').waitFor();
             await display.locator('img.tracker-display-portrait').evaluateAll(images=>Promise.all(images.map(image=>image.decode())));
-            const metrics=await measurements(display,width<768||(width<=1100&&height<=650));
+            const metrics=await measurements(display,isCompact(width,height));
             receipt.push({width,height,visible:metrics.visible,header:metrics.header});
             await screenshot(display,`actual-${width}x${height}-order`);
             if(process.env.SATELLITE_BASELINE_DIRECTORY){
@@ -234,27 +254,36 @@ test('actual paired satellite: initial Razor, privacy, SignalR turns, touch appe
         for(let i=0;i<18;i++)await post('NextTurn');
         await display.waitForFunction(()=>document.querySelector('#turnDisplay').textContent.includes('20'));
         await measurements(display,true);await screenshot(display,'actual-800x480-active-20');
-        const list=display.locator('#initiativeList');
-        await list.evaluate(el=>el.scrollTo({top:0,behavior:'instant'}));
-        const touch=await context.newCDPSession(display);
-        await display.bringToFront();
-        await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:400,y:350}]});
-        for(const y of [310,270,230,190,150]){
-            await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:400,y}]});
-            await display.waitForTimeout(20);
+        let expectedTurn=20;
+        for(const [width,height]of [[800,480],[480,800],[600,1024],[800,1280]]){
+            await display.setViewportSize({width,height});
+            const list=display.locator('#initiativeList');
+            await list.evaluate(el=>el.scrollTo({top:0,behavior:'instant'}));
+            const touch=await context.newCDPSession(display);
+            await display.bringToFront();
+            await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:width/2,y:350}]});
+            for(const y of [310,270,230,190,150]){
+                await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:width/2,y}]});
+                await display.waitForTimeout(20);
+            }
+            await display.waitForTimeout(150);
+            await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+            await display.waitForFunction(()=>document.querySelector('#initiativeList').scrollTop>0);
+            await touch.detach();
+            assert.equal(await display.evaluate(()=>scrollY),0,'touch scrolling never moves the document');
+            assert.equal(await display.locator('.initiative-header').evaluate(el=>el.getBoundingClientRect().top),0);
+            await post('NextTurn');expectedTurn++;
+            await display.waitForFunction(turn=>document.querySelector('#turnDisplay').textContent.includes(String(turn)),expectedTurn);
+            await measurements(display,true);await screenshot(display,`actual-${width}x${height}-touch`);
+            await display.getByRole('button',{name:'Display appearance',exact:true}).tap();await display.locator('#displayAppearancePanel.show').waitFor();
+            await display.getByRole('button',{name:'Close',exact:true}).tap();
+            await display.locator('#displayAppearancePanel').waitFor({state:'hidden'});
         }
-        await display.waitForTimeout(150);
-        await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-        await display.waitForFunction(()=>document.querySelector('#initiativeList').scrollTop>0);
-        await touch.detach();
-        assert.equal(await display.evaluate(()=>scrollY),0,'touch scrolling never moves the document');
-        assert.equal(await display.locator('.initiative-header').evaluate(el=>el.getBoundingClientRect().top),0);
-        // The next encounter event returns the active row after manual touch browsing.
-        await post('NextTurn');await display.waitForFunction(()=>document.querySelector('#turnDisplay').textContent.includes('21'));
+        await display.setViewportSize({width:800,height:480});
+        await display.reload();await display.locator('.display-connection-status.is-connected').waitFor();
+        await display.waitForFunction(()=>{const current=document.querySelector('.initiative-row.is-current'),list=document.querySelector('#initiativeList');if(!current||!list)return false;const row=current.getBoundingClientRect(),bounds=list.getBoundingClientRect();return row.top>=bounds.top-1&&row.bottom<=bounds.bottom+1;});
         await post('SetDisplayTheme',{theme:'light'});await display.waitForFunction(()=>document.documentElement.dataset.displayTheme==='light');
         await measurements(display,true);await screenshot(display,'actual-800x480-light');
-        await display.getByRole('button',{name:'Display appearance',exact:true}).tap();await display.locator('#displayAppearancePanel.show').waitFor();
-        await display.getByRole('button',{name:'Close',exact:true}).tap();
         assert.equal(new URL(display.url()).pathname,'/display','pairing survives gameplay/theme changes');
         if(output)fs.writeFileSync(path.join(output,'actual-receipt.json'),JSON.stringify(receipt,null,2));
         await dm.goto(base+'/dm/devices');
