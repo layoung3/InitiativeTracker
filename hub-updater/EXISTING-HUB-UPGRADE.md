@@ -90,7 +90,7 @@ stops this procedure rather than silently repairing privileges/configuration.
 ## 2. Prepare a sealed reviewed bundle
 
 On the workstation, from a clean reviewed checkout at the **explicitly approved
-final commit SHA containing the archive-integrity correction**, export tracked
+final commit SHA containing the archive-integrity and Debian lock-path corrections**, export tracked
 sources only. Do not bundle private Pi files, browser profiles, databases, config
 backups or untracked files. This is preparation guidance, not a request to replace
 the already transferred archive or change the working hub now.
@@ -222,6 +222,43 @@ It makes no sudoers or application/network changes. A complete identical repeat
 is a no-op. A failure attempts to restore already-replaced scripts and prints the
 private backup path; a power loss or recovery failure still needs local review.
 
+### Debian's shared updater lock
+
+The component helper and both original/reviewed graphical installers coordinate
+on exactly `/run/lock/initiativetracker-updater.lock` using nonblocking exclusive
+`flock` on the same inode. Debian's root:root `/run/lock` mode `1777` is supported;
+do **not** change its permissions or delete/recreate a lock file to clear a busy
+or unsafe-lock error. A file's existence alone does not mean an update is running.
+The helper closes its descriptor on success or failure and leaves the inode in
+place, so a waiting or subsequently started updater sees the same lock.
+
+Only that directory receives the sticky-directory exception. Its ancestors must
+be root:root and not group/world writable; directory symlinks are refused. A
+root:root regular lock with no group/world write permission and one hard link is
+required. An existing `0644` lock from the graphical installer's umask is valid;
+the helper preserves its bytes/mode/inode. A missing lock is created exclusively
+as `0600`. File symlinks, extra hard links, nonregular files, unsafe owners/groups
+or permissions and inode changes are refused without truncation, chmod or unlink.
+Descriptor/path identity is checked before and after acquiring the lock.
+Root administrators capable of replacing root-controlled paths remain trusted.
+Source, script, configuration, backup and receipt trust/hash checks are unchanged.
+
+If the lock is busy, leave the files in place, determine locally which approved
+update holds it and wait for it to finish before a separately approved retry.
+For an unsafe lock, stop and retain diagnostics for review; this procedure does
+not authorize repairing ownership, removing files or changing system permissions.
+Continue to pause kiosk/update activity: the immutable graphical installer opens
+and truncates the lock and creates its working directories **before** attempting
+`flock`; lock contention prevents its update transaction, not all preliminary
+filesystem activity. The component helper never runs either graphical installer.
+
+The earlier helper at `e26477f89836e243c4d2e11b4e2e89d1ef223f5f`
+called the generic root-controlled path validator on the lock pathname. That
+validator reached `/run/lock`, rejected its group/world write bits in mode `1777`,
+and stopped after confirmation but **before** opening the lock, inspecting for
+apply, creating a backup or replacing a component. The original three installed
+hashes remain the provenance checks; no checksum adjustment is part of this fix.
+
 ## 4. Validate without launching an application update
 
 Keep the existing kiosk/desktop integration. Use metadata/hash checks, read-only
@@ -279,7 +316,13 @@ No privileges are silently removed or added as part of rollback.
 
 Cloud fixture/CI tests cover alternate homes/real UID/GID/modes, state preservation,
 backup privacy, cancellation, hash rejection, partial-failure recovery and script
-rollback. They do not establish real ARM64 desktop/radio/update behavior. First
+rollback. The Debian container also exercises the CLI dispatch with a synthetic
+0.1.5 installation and sticky `1777` lock directory: inspect/apply/verify/no-op/
+rollback, unsafe files/ancestry, creation/inode races, unprivileged replacement
+attempts and real process contention with both graphical locking stanzas and a
+second component CLI. Those stanzas only acquire locks in disposable paths; they
+do not execute an application update. They do not establish real ARM64
+desktop/radio/update behavior. First
 complete the [fresh disposable-Pi checklist](../docs/setup/automated-installation.md)
 on a separate card/Pi with synthetic game data and new pairing. Exercise the
 component upgrade/rollback there against the exact approved original snapshots,

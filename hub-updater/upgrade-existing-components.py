@@ -6,6 +6,7 @@ or touches application releases/data/network/pairing. Apply/rollback need root,
 an interactive confirmation, and a root-controlled reviewed bundle/backup.
 """
 import argparse
+from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
@@ -52,6 +53,55 @@ class Components:
         if not value.startswith('/') or '..' in Path(value).parts:
             raise UpgradeError('Expected an absolute managed path')
         return self.root / value.lstrip('/')
+
+    @contextmanager
+    def updater_lock(self):
+        """Hold the graphical updater's inode; never truncate, chmod or unlink it.
+
+        Only /run/lock may be root-owned sticky 1777. Open directory descriptors
+        without following links, then validate the file descriptor before flock.
+        The sticky bit protects a root-owned file from unprivileged replacement.
+        Administrators able to replace root-owned paths remain trusted.
+        """
+        directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        fd = None
+        try:
+            for part in ('', 'run', 'lock'):
+                if part:
+                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                    dir_fd=directory)
+                    os.close(directory)
+                    directory = child
+                info = os.fstat(directory)
+                sticky_lock = part == 'lock' and stat.S_IMODE(info.st_mode) == 0o1777
+                if info.st_uid != 0 or info.st_gid != 0 or (info.st_mode & 0o022 and not sticky_lock):
+                    raise UpgradeError('Unsafe updater lock directory ownership/mode: ' + (part or '/'))
+            name = Path(LOCK).name
+            flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+            try:
+                fd = os.open(name, flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=directory)
+            except FileExistsError:
+                fd = os.open(name, flags, dir_fd=directory)
+
+            def validate():
+                info = os.fstat(fd)
+                entry = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 0 or
+                        info.st_mode & 0o022 or info.st_nlink != 1 or
+                        (info.st_dev, info.st_ino) != (entry.st_dev, entry.st_ino)):
+                    raise UpgradeError('Unsafe updater lock file type/ownership/mode/link identity; inspect locally')
+
+            validate()
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise UpgradeError('An application update is running; component replacement refused') from exc
+            validate()
+            yield fd
+        finally:
+            if fd is not None:
+                os.close(fd)
+            os.close(directory)
 
     def no_links(self, path, trusted=False):
         for node in (path, *path.parents):
@@ -279,13 +329,7 @@ def main():
         raise UpgradeError('Apply/rollback requires root and separately approved local commissioning')
     print('Do not use this on a working Pi without explicit approval. Pause kiosk/update activity locally; keep recovery access. No updater or application release will be executed.')
     confirmation('ROLLBACK-COMPONENTS' if args.rollback else 'REPLACE-COMPONENTS')
-    manager.no_links(manager.path(LOCK), trusted=True)
-    fd = os.open(manager.path(LOCK), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise UpgradeError('An application update is running; component replacement refused') from exc
+    with manager.updater_lock():
         if args.rollback:
             manager.rollback(args.rollback)
             print('Previous scripts restored. Validate metadata and unchanged health locally; do not execute the updater as a test.')
