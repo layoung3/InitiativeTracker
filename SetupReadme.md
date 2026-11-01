@@ -108,7 +108,7 @@ The owner-confirmed Cloudflare/`colophon.stream` setup is being prepared in
 [XB8/client, hotspot and physical-screen resolution guide](docs/https/private-name-resolution.md).
 The normal target is `https://hub-84eaee7c.colophon.stream`. The XB8 remains
 unchanged: external-network support requires a verified client-specific resolver
-path; hotspot DNS and hub-only loopback mapping have different scopes. Transport
+path; hotspot DNS and hub-only loopback mapping have different scopes. Independent transport
 review, separate installation approvals and physical acceptance remain required.
 Optional Colophon startup branding is documented separately in the
 [reviewed PR #7 guide](https://github.com/layoung3/InitiativeTracker/blob/a193c5eca8b5f626dc62dc81bf72b961f950cf8d/docs/setup/branding.md);

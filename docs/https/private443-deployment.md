@@ -2,9 +2,9 @@
 
 **Draft PR #8; no stage is authorized by this document.** The existing hub is
 Debian 13 ARM64, running 0.1.5. Source master is 0.1.6. Neither Pi has been
-accessed or changed. The [443 architecture](private443-architecture.md) is still
-under review; its transport, activation and renewal integration are not yet a
-deployment-ready implementation. Stop before any stage whose software/physical
+accessed or changed. The [443 architecture](private443-architecture.md) now has an
+opt-in source implementation; independent review and exact-head software/physical
+acceptance are required. Stop before any stage whose software/physical
 acceptance receipt or separate owner approval is missing.
 
 ## Fixed choices and decisions still needed
@@ -115,10 +115,10 @@ test ! -e /var/log/letsencrypt || exit 1
 sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py mask --apply || exit 1
 sudo apt-get update || exit 1
 apt-cache policy certbot python3-certbot python3-certbot-dns-cloudflare python3-acme python3-cloudflare
-sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates nftables iproute2 || exit 1
+sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates nftables iproute2 curl || exit 1
 # STOP: approve the displayed signed-repository candidate versions and transaction.
 sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify --persistent || exit 1
-sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates nftables iproute2 || exit 1
+sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates nftables iproute2 curl || exit 1
 sudo systemctl disable certbot.timer || exit 1
 sudo systemctl mask certbot.service certbot.timer || exit 1
 sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify --persistent || exit 1
@@ -238,13 +238,7 @@ releases. Do not publish or attach them as CI/release artifacts. A failed issuan
 leaves the running 0.1.5 installation untouched. Retain successful state and account
 for renewal; do not reissue repeatedly to work around setup mistakes/rate limits.
 
-## Later gates: application, HTTPS activation, renewal and rollback
-
-The 443 ingress implementation/acceptance is still pending architecture review.
-Do not apply the old 5445 app drop-in as if it delivered the approved normal URL.
-Final commands for ingress installation, certificate activation, automated renewal
-and their exact rollback will be added after that implementation passes tests.
-Until then, this is an explicit software blocker, not an owner configuration task.
+## Stage 6: graphical updater, application and database — distinct approvals
 
 Preserve the [consolidated 0.1.6 gates](0.1.6-integration-release-plan.md): corrected
 graphical updater components are outside publish output and need their own
@@ -253,6 +247,228 @@ update starts the app. Keep `/var/lib/initiativetracker/Media`, database,
 `DataProtection-Keys`, identity/pairing and secure state consistent in backups.
 Automatic/manual whole-data restoration must fence stale secure grants before
 any app restart. Do not roll the guarded updater back to an unfenced version.
+
+Use the existing graphical versioned-update procedure with the approved final
+archive/manifest/hash; do not manually switch release symlinks, bootstrap an
+existing hub, or start the new app as a diagnostic. Initially leave TLS disabled,
+HTTP health/gameplay/discovery and satellite origins unchanged. Verify the expected
+0.1.6 version, additive migration, identity/pairing, media modes and combat before
+the separately approved TLS configuration below. Installing files does not approve
+starting a binary against production data or running the migration.
+
+## Stage 7: private TLS store and app listener — separate configuration approval
+
+The following fresh-store example stops if a store/drop-in already exists; review
+and back it up rather than overwriting an earlier installation. Inspect an
+existing TLS group and its membership before accepting it. No issuer group or
+credentials may be granted to the app. After application/migration and service
+configuration approvals:
+
+```bash
+set -euo pipefail
+REVIEWED_SOURCE=/absolute/path/to/verified-source
+getent group initiativetracker-tls || sudo groupadd --system initiativetracker-tls
+test ! -e /var/lib/initiativetracker-browser-tls
+sudo install -d -o root -g initiativetracker-tls -m 2750 /var/lib/initiativetracker-browser-tls
+sudo install -d -o root -g root -m 0755 /etc/systemd/system/initiativetracker.service.d
+test ! -e /etc/systemd/system/initiativetracker.service.d/browser-tls443.conf
+sudo install -o root -g root -m 0644 \
+  "$REVIEWED_SOURCE/https-infra/templates/browser-tls443.conf.example" \
+  /etc/systemd/system/initiativetracker.service.d/browser-tls443.conf
+sudo systemctl daemon-reload
+# This restart requires the app/database approvals above, not just file approval.
+sudo systemctl restart initiativetracker.service
+systemctl is-active --quiet initiativetracker.service
+```
+
+Kestrel still binds unprivileged 5445 and keeps existing HTTP endpoints. No bind
+capability, proxy daemon, forwarded-header middleware, redirect or HSTS migration
+is introduced. TLS can initially reject handshakes without active material while
+the graphical updater's HTTP health path works. Check that path and the retained
+legacy origins before continuing. Do not use the old direct-5445 drop-in for the
+new canonical authority. Python settings must have `port: 5445, public_port: 443`.
+
+## Stage 8: exact local DNS and owned kernel ingress — network approval
+
+Follow the [scoped resolver guide](private-name-resolution.md) for per-client XB8,
+hotspot `no-hosts` isolation and hub-only loopback. No global router/DNS change is
+required. Review actual interface names/current addresses; do not copy fixture
+addresses into production. Source-preserving destination **port** translation
+keeps the destination address and peer intact for IPv4/IPv6. Kestrel captures
+Linux original-destination metadata before TLS. Missing/malformed/wrong-family
+metadata cannot grant canonical or physical authority. Physical also requires
+original loopback destination port 443 and genuine loopback peer/local addresses.
+
+Create root-owned 0600 `/etc/initiativetracker-https/bindings.json` only after an
+absence/backup receipt, containing the selected current private bindings, e.g.:
+
+```json
+[{"interface":"OWNER_INTERFACE","address":"OWNER_CURRENT_PRIVATE_IP"}]
+```
+
+Only advertise ULA IPv6 if it is assigned, reachable and accepted by clients.
+Generated rules always include hub-only IPv4/IPv6 loopback OUTPUT; no public/global
+ingress binding is accepted. The renderer checks selected addresses against the
+actual interface, refuses ambiguous/duplicate/unassigned bindings and emits only
+the dedicated `inet initiativetracker_browser443` table. Never flush rulesets or
+NetworkManager tables. Check for an existing port-443 listener/table before the
+first install; hold on any conflict. Under separate network-stage approval:
+
+```bash
+set -euo pipefail
+REVIEWED_SOURCE=/absolute/path/to/verified-source
+IT_443_LISTENERS=$(sudo /usr/bin/ss -H -ltn 'sport = :443')
+test -z "$IT_443_LISTENERS"
+sudo /usr/sbin/nft -j list tables | /usr/bin/python3 -I -c \
+  'import json,sys; d=json.load(sys.stdin); assert not any(x.get("table",{}).get("family")=="inet" and x["table"].get("name")=="initiativetracker_browser443" for x in d["nftables"])'
+IT_443_RULES=$(mktemp)
+trap 'rm -f "$IT_443_RULES"' EXIT
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/private443.py \
+  --bindings /etc/initiativetracker-https/bindings.json > "$IT_443_RULES"
+sudo /usr/sbin/nft --check -f "$IT_443_RULES"
+sha256sum "$IT_443_RULES"
+# STOP: review exact interface/address rules and retain their approved hash.
+sudo install -o root -g root -m 0600 "$IT_443_RULES" /etc/initiativetracker-https/private443.nft
+sudo install -o root -g root -m 0644 \
+  "$REVIEWED_SOURCE/https-infra/templates/private443.service.example" \
+  /etc/systemd/system/initiativetracker-browser443.service
+sudo systemctl daemon-reload
+sudo systemctl start initiativetracker-browser443.service
+systemctl is-active --quiet initiativetracker-browser443.service
+rm -f "$IT_443_RULES"
+trap - EXIT
+```
+
+The oneshot does not start/restart the app. It has only the network-admin
+capability; the app gets no added capabilities. Rules deny direct remote 5445 and
+unconfigured 443 ingress. Other firewall chains can still reject traffic: do not
+globally bypass them. Address/interface changes require stopping sensitive use,
+rendering/reviewing current bindings and the corresponding resolver change; a
+controlled restart removes/reinstalls **only this table**. No privileged automatic
+DHCP/DNS rewriting daemon is introduced. Legacy recovery remains independently
+operational. Enable this unit at boot only after the following acceptance gate.
+
+## Stage 9: certificate promotion and trusted-origin acceptance
+
+Record the previous non-secret `active.json` generation (or absence) privately.
+After separate certificate-installation approval:
+
+```bash
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/foundation.py activate \
+  --config /etc/initiativetracker-https/settings.json
+# Separate promotion approval:
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/foundation.py activate \
+  --config /etc/initiativetracker-https/settings.json --apply
+curl --fail --silent --show-error \
+  --resolve hub-84eaee7c.colophon.stream:443:127.0.0.1 \
+  https://hub-84eaee7c.colophon.stream/system/https-status
+curl --fail --silent --show-error --output /dev/null \
+  --resolve hub-84eaee7c.colophon.stream:443:127.0.0.1 \
+  https://hub-84eaee7c.colophon.stream/system/health
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/foundation.py physical-preflight \
+  --config /etc/initiativetracker-https/settings.json
+```
+
+No `-k`, private CA or warning bypass. `--resolve` affects only this curl call;
+the separate physical preflight/browser verifies the actual hub-local resolver.
+The activation probe connects backend loopback 5445 with canonical SNI/Host 443,
+checks the actual peer-leaf fingerprint and served generation, and commits or
+rolls back the manifest. Only exact GET/HEAD `/system/https-status` without query
+or path base has the direct-loopback exception; it never sets general trust or
+physical authority. `/system/health` and all application/proof routes still need
+validated canonical ingress, so status alone is not a full ingress acceptance.
+
+Verify from each selected client: expected A/AAAA/full GUID, normal no-port URL,
+public browser trust and unrelated internet access on XB8. Verify from the actual
+hub graphical browser that the HTTPS physical screen loads; remote GET/POST must
+be forbidden, even with spoofed forwarding headers. Do not output/photograph its
+codes. Establish fresh DM physical recovery and player/display approval, ownership,
+CSRF, banners/portraits, real-time combat/WebSockets and retained legacy gameplay.
+An old 5445-origin cookie must not authorize 443. Preserve Chromium profiles and
+pairing; no URL/token QR shortcut grants secure authority. Only then, with boot
+activation approval:
+
+```bash
+sudo systemctl enable initiativetracker-browser443.service
+```
+
+## Stage 10: automatic renewal and monitoring — separate service approval
+
+The owner-approved production issuer retains CA account/token state; the app
+cannot read it. The root renewal service's only browser-key access is the dedicated
+TLS store. It uses the same adapter/export/validate/atomic activation pipeline,
+retains valid last-known-good material on failure, and verifies the actual served
+leaf/generation. It does not restart the app or affect N8 agent pins.
+
+After staged success, actual production trust and separate automation approval:
+
+```bash
+set -euo pipefail
+REVIEWED_SOURCE=/absolute/path/to/verified-source
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify --persistent
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/foundation.py renew \
+  --config /etc/initiativetracker-https/settings.json
+sudo install -o root -g root -m 0644 \
+  "$REVIEWED_SOURCE/https-infra/templates/initiativetracker-certificate-renew.service.example" \
+  /etc/systemd/system/initiativetracker-certificate-renew.service
+sudo install -o root -g root -m 0644 \
+  "$REVIEWED_SOURCE/https-infra/templates/initiativetracker-certificate-renew.timer.example" \
+  /etc/systemd/system/initiativetracker-certificate-renew.timer
+sudo systemctl daemon-reload
+# Separate first real renewal/API/promotion approval; backend may decide not due.
+sudo systemctl start initiativetracker-certificate-renew.service
+systemctl show initiativetracker-certificate-renew.service -p Result -p ExecMainStatus
+sudo systemctl enable --now initiativetracker-certificate-renew.timer
+systemctl list-timers initiativetracker-certificate-renew.timer
+```
+
+Review/backup existing units first; do not overwrite a prior service blindly.
+Verify directory/file modes and group inheritance: issuer 0700/files0600;
+TLS store/generations2750 root:TLS-group; PFX/manifest0640. No keys/tokens in
+appsettings, release archives, startup logs, URLs or command arguments. Private
+Certbot logs/account backups stay root-only. A failed renewal must leave the
+previous served valid leaf intact; inspect only static service result/status in
+shared evidence, and private logs locally. Recheck the served certificate and
+generation after a due renewal, not just the exported file. Configure an
+owner-selected alert/check with repair time based on actual expiry/lifetime and
+offline travel; the timer alone does not send an alert. Issuance/renewal needs
+outbound CA/Cloudflare/DNS access; offline play has the documented trust/time limit.
+
+## Stage 11: exact rollback by changed component
+
+Keep separate before/after file, unit state, generation, source/hash and backup
+receipts; stop if the current state differs unexpectedly. Never restore broad
+system/network directories over later unrelated changes.
+
+| Failure/change | Controlled rollback |
+|---|---|
+| Issuer/API/staging | Stop automation; keep private state for diagnosis/retry. Inspect stale challenge TXT privately; separately approve exact cleanup/token revocation. Do not delete a CA account or broaden scope automatically. |
+| Candidate certificate | Failed activation retains/restores the old manifest and verifies its served fingerprint. On unconfirmed recovery hold sensitive use. For explicit manual rollback, use the generation command below; expired/untrusted material is rejected. |
+| Renewal service | `systemctl disable --now initiativetracker-certificate-renew.timer`; ensure the service is inactive before file restoration. Restore only its saved units/config/state. Keep the vendor masks while independent foundation renewal ownership exists. |
+| Kernel ingress | `systemctl disable --now initiativetracker-browser443.service`; verify its dedicated table is absent and unrelated tables unchanged. Direct remote 5445 remains rejected by the app. Restore only this stage's unit/rules/bindings receipts. Never flush all rules. |
+| Host/client/hotspot DNS | Remove only the owned mapping/snippet or restore exact unchanged backup; preserve upstreams/router and recheck internet/legacy recovery. Never distribute hub loopback to clients. |
+| App TLS profile or canonical-origin rollback | Stop app, preserve private data/config, fence secure grants with the reviewed helper linked below, restore only the approved drop-in and restart under app/DB approval. Origin changes require fresh physical recovery; do not revive old 5445 tickets by toggling configuration. |
+| App/database/media rollback | Use the guarded graphical updater and consolidated stopped-data restore, preserving DB/Media/keys/identity consistency and fencing secure grants before restart. Do not downgrade via manual symlink manipulation or roll back current valid issuer/browser state with app data. |
+
+Explicit certificate rollback, only after approval and a recorded valid prior
+generation (never guess or read secrets to choose it):
+
+```bash
+IT_PREVIOUS_TLS_GENERATION=APPROVED_PREVIOUS_32_HEX_GENERATION
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/foundation.py rollback \
+  --config /etc/initiativetracker-https/settings.json --generation "$IT_PREVIOUS_TLS_GENERATION"
+# Separate rollback approval:
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/foundation.py rollback \
+  --config /etc/initiativetracker-https/settings.json --generation "$IT_PREVIOUS_TLS_GENERATION" --apply
+```
+
+For origin/data rollback use the **exact hash-checked, durable fence command** in
+[the consolidated recovery plan](0.1.6-integration-release-plan.md#failure-and-exact-rollback-decisions)
+while the app is stopped, targeting the restored/current approved private data
+tree as appropriate, before any restart. Do not merely delete secure state or
+remove a fence, reseed identity or replace Data Protection keys. Fresh physical
+recovery establishes the new epoch. A manual stale backup restored without the
+fence can revive revoked authority; no external anti-rollback anchor is claimed.
 
 No HTTP redirect, legacy-cookie promotion, satellite-origin rewrite, Chromium
 profile reset or network-agent enrollment is implicit. A changed canonical origin

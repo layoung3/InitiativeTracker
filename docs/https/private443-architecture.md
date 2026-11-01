@@ -16,19 +16,21 @@ this task initially owns HTTPS code/tests, docs/https and its new deployment gui
 - XB8-T/CGM4981COM is treated as non-cooperative. No router replacement, bridge
   mode, hardware purchase, router DNS change or whole-network DNS assumption.
 
-## Proposed transport decision, before implementation
+## Reviewed transport decision and opt-in source implementation
 
 | Option | Security/operational assessment |
 |---|---|
 | TLS-terminating proxy | Adds a second key/reload boundary or replaces existing Kestrel TLS; needs a nonforgeable proxy provenance contract. Forwarded Host/Proto/For alone cannot become authority. |
 | Ordinary TCP passthrough proxy | Keeps TLS but turns remote peers into loopback at Kestrel, exposing anonymous physical proof if trusted as local. Not acceptable without additional trusted ingress handling. |
 | Direct Kestrel 443 | Preserves real peer identity and is simple, but requires a reviewed bind capability or inherited privileged socket. Socket activation must not restart an intentionally stopped app during graphical updater backup/restore. |
-| Source-preserving kernel redirect 443 to 5445 | Preferred candidate matching the requested retained listener: one TLS terminator/store/reload, genuine socket peer identity, no app bind capability or forwarded-header trust. New root-owned nftables rules remain separately approval-gated. |
+| Source-preserving kernel port translation 443 to 5445 | Selected for source implementation after independent architecture review: one TLS terminator/store/reload, genuine socket peer identity, no app bind capability or forwarded-header trust. New root-owned nftables rules remain separately approval-gated. |
 
-The proposed kernel profile separates canonical authority 443 from backend 5445.
-Evaluate kernel original-destination metadata on accepted sockets as an additional
-independent direct-backend rejection check; unavailable/malformed metadata must
-fail closed. No application route may treat a header as proof of this metadata.
+The opt-in `kernel443` profile separates canonical authority 443 from backend 5445.
+It captures immutable kernel original-destination metadata on accepted sockets,
+before TLS, checking Linux sockaddr length/family, private/loopback destination,
+actual backend port, original port 443 and preserved local address. Missing or
+malformed metadata fails canonical trust closed. No application route may treat a
+header as proof. Existing direct-5445 installations keep their default profile.
 Network templates must support approved private interfaces/addresses only, reject
 direct remote 5445, handle IPv4/IPv6 deliberately, and include local OUTPUT rules
 for genuine loopback physical access. Never flush NetworkManager/other nft tables.
@@ -38,10 +40,19 @@ Canonical origin is `https://hub-84eaee7c.colophon.stream`. Exact Host/Origin,
 __Host Secure cookies, CSRF and WebSockets remain end-to-end at Kestrel. Existing
 5445-origin grants do not transfer: fresh secure enrollment/recovery is required.
 Physical proof GET and POST require genuine loopback socket peer/local addresses
-AND trusted canonical transport. Internal certificate acknowledgement is a
-separate narrowly scoped loopback status probe, retaining peer-leaf fingerprint
-and generation checks; backend connection port and HTTP authority must separate.
+AND trusted canonical transport with original loopback destination port 443.
+Internal acknowledgement is a separate exact GET/HEAD `/system/https-status`
+loopback probe, without query or path base. It never sets `TrustedRequest` or
+`Physical`, nor admits private application routes. It retains peer-leaf fingerprint
+and generation checks with backend connection port and HTTP authority separated.
 No direct backend URL may become an alternate private application origin.
+
+The generated nftables table uses address-preserving DNAT, rather than a generic
+redirect that might select another primary interface address. Only explicit current
+private interface/address pairs are accepted. No SNAT, proxy, global firewall flush
+or app capability is added. The separate root network unit owns only this table;
+stopping it cannot downgrade sensitive operations to direct backend/HTTP authority.
+Existing firewall chains may still deny connectivity and must be reviewed narrowly.
 
 ## Identity and collision scope
 

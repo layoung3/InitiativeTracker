@@ -69,7 +69,7 @@ def probe(generation,leaf,authority_port=443):
     try:f.probe(HOST,5445,generation,leaf,authority_port=authority_port,_test_context=context())
     except (OSError,ValueError) as error:
         # Class only, never a TLS/provider message, code, cookie, key or body.
-        print('Fixture probe failed: '+type(error).__name__,flush=True);raise
+        print('Fixture probe failed: '+type(error).__name__+' verify-code='+str(getattr(error,'verify_code',None)),flush=True);raise
 
 
 def wait_app(process):
@@ -124,9 +124,11 @@ def hub():
         (ROOT/name).mkdir(mode=0o2750);os.chown(ROOT/name,0,65000);os.chmod(ROOT/name,0o2750)
     (ROOT/'data').mkdir(mode=0o700);os.chown(ROOT/'data',65000,65000)
     def openssl(*args):subprocess.run(['/usr/bin/openssl',*args],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    openssl('req','-x509','-newkey','rsa:2048','-nodes','-keyout','ca.key','-out','ca.pem','-subj','/CN=Disposable Kernel Test Root','-days','3','-addext','basicConstraints=critical,CA:TRUE')
+    openssl('req','-x509','-newkey','rsa:2048','-nodes','-keyout','ca.key','-out','ca.pem','-subj','/CN=Disposable Kernel Test Root','-days','3',
+        '-addext','basicConstraints=critical,CA:TRUE','-addext','keyUsage=critical,keyCertSign,cRLSign',
+        '-addext','subjectKeyIdentifier=hash','-addext','authorityKeyIdentifier=keyid:always')
     (PUBLIC/'ca.pem').write_bytes((ROOT/'ca.pem').read_bytes());(PUBLIC/'ca.pem').chmod(0o644)
-    (ROOT/'leaf.ext').write_text(f'subjectAltName=DNS:{HOST}\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\n')
+    (ROOT/'leaf.ext').write_text(f'subjectAltName=DNS:{HOST}\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n')
     for name in ['first','second']:
         openssl('req','-new','-newkey','rsa:2048','-nodes','-keyout',name+'.key','-out',name+'.csr','-subj','/CN='+HOST)
         openssl('x509','-req','-in',name+'.csr','-CA','ca.pem','-CAkey','ca.key','-CAcreateserial','-out',name+'.pem','-days','2','-extfile','leaf.ext')

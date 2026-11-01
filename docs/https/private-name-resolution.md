@@ -113,7 +113,7 @@ python3 local_resolution.py client-preflight --inventory INVENTORY.json \
 
 It rejects any extra/missing A/AAAA (including loopback) and a wrong full GUID.
 Its success still explicitly requires actual browser and internet acceptance.
-The 443 deployment implementation is pending review, so a failure on today's
+The 443 profile is opt-in and uncommissioned, so a failure on today's
 0.1.5 HTTP-only installation is expected, not authority to bypass TLS.
 
 For client rollback remove only the owned block, preserving later unrelated
