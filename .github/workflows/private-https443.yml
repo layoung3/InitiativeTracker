@@ -16,3 +16,5 @@ jobs:
         run: docker build -f https-infra/tests/Dockerfile.certbot4 -t it-private-https443-tests .
       - name: Qualify actual Certbot/Cloudflare packages without network access
         run: docker run --rm --network none it-private-https443-tests
+      - name: Verify hotspot DNS answers with hub-local loopback hosts present
+        run: docker run --rm --network none it-private-https443-tests /usr/bin/python3 -I https-infra/tests/dnsmasq_qualification.py
