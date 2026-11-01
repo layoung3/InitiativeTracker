@@ -49,6 +49,9 @@ class ComponentTests(unittest.TestCase):
         shutil.copytree(ROOT / 'hub-updater', self.bundle)
         self.manager = upgrade.Components(self.desktop, root=self.root, bundle=self.bundle)
         self.owner = (self.desktop.pw_uid, self.desktop.pw_gid)
+        self.lock = self.manager.path(upgrade.LOCK)
+        self.lock.parent.mkdir(parents=True)
+        self.lock.parent.chmod(0o1777)  # Debian default, fixture root only.
         for name, target in self.manager.targets.items():
             path = self.manager.path(target)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -232,6 +235,247 @@ class ComponentTests(unittest.TestCase):
             with self.assertRaisesRegex(archived.UpgradeError, error):
                 manager.inspect()
             path.write_bytes(data)
+
+    def cli(self, *args):
+        # Real main dispatch, root/mode checks, lock, and lifecycle; only the
+        # selected fixture root and interactive approval transport are replaced.
+        with patch.object(upgrade, 'Components', return_value=self.manager), \
+                patch.object(upgrade, 'confirmation'), \
+                patch.object(upgrade.sys, 'argv', ['upgrade', '--desktop-user', self.desktop.pw_name, *map(str, args)]):
+            return upgrade.main()
+
+    def test_debian_sticky_directory_reproduces_old_failure_before_any_replacement(self):
+        original = {p: self.manager.read(self.manager.path(p)) for p in self.manager.targets.values()}
+        # This was the exact main() gate before open/flock/apply/rollback.
+        with self.assertRaisesRegex(upgrade.UpgradeError, 'Root-controlled path'):
+            self.manager.no_links(self.lock, trusted=True)
+        self.assertFalse(self.lock.exists())
+        self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
+        self.assertEqual({p: self.manager.read(self.manager.path(p)) for p in original}, original)
+
+    def test_cli_inspect_apply_verify_noop_rollback_keep_same_lock_and_state(self):
+        # Existing graphical updater creates 0644 under umask 022. Preserve it.
+        self.lock.write_bytes(b'existing-lock-content')
+        self.lock.chmod(0o644)
+        inode = self.lock.stat().st_ino
+        before = self.preserved()
+        originals = {p: self.manager.read(self.manager.path(p)) for p in self.manager.targets.values()}
+        self.assertEqual(self.cli('--inspect'), 0)
+        self.assertEqual(self.cli('--apply'), 0)
+        directory, = self.manager.path(upgrade.BACKUPS).iterdir()
+        self.assertEqual(self.cli('--inspect'), 0)
+        self.assertEqual(self.cli('--apply'), 0)
+        self.assertEqual(list(self.manager.path(upgrade.BACKUPS).iterdir()), [directory])
+        self.assertEqual(self.cli('--rollback', directory), 0)
+        self.assertEqual({p: self.manager.read(self.manager.path(p)) for p in originals}, originals)
+        self.assertEqual(self.preserved(), before)
+        self.assertEqual(self.lock.stat().st_ino, inode)
+        self.assertEqual(stat.S_IMODE(self.lock.parent.stat().st_mode), 0o1777)
+
+    def test_lock_creation_preserves_inode_and_releases_after_exception(self):
+        with self.assertRaisesRegex(RuntimeError, 'fixture'):
+            with self.manager.updater_lock():
+                inode = self.lock.stat().st_ino
+                self.assertEqual((self.lock.stat().st_uid, self.lock.stat().st_gid, stat.S_IMODE(self.lock.stat().st_mode)), (0, 0, 0o600))
+                raise RuntimeError('fixture')
+        with self.manager.updater_lock():
+            self.assertEqual(self.lock.stat().st_ino, inode)
+        self.lock.parent.chmod(0o755)
+        with self.manager.updater_lock():
+            self.assertEqual(self.lock.stat().st_ino, inode)
+
+    def test_unsafe_lock_entries_refused_without_modifying_target_or_components(self):
+        victim = self.base / 'victim'
+        victim.write_bytes(b'never truncate or chmod')
+        victim.chmod(0o644)
+        original = {p: self.manager.read(self.manager.path(p)) for p in self.manager.targets.values()}
+        for kind in ('symlink', 'dangling', 'hardlink', 'fifo', 'directory', 'user', 'group', 'writable'):
+            with self.subTest(kind=kind):
+                if kind in ('symlink', 'dangling'):
+                    self.lock.symlink_to(victim if kind == 'symlink' else self.base / 'missing')
+                elif kind == 'hardlink':
+                    os.link(victim, self.lock)
+                elif kind == 'fifo':
+                    os.mkfifo(self.lock)
+                elif kind == 'directory':
+                    self.lock.mkdir()
+                else:
+                    self.lock.write_bytes(b'preserve unsafe entry')
+                    self.lock.chmod(0o666 if kind == 'writable' else 0o644)
+                    os.chown(self.lock, self.owner[0] if kind == 'user' else 0, self.owner[1] if kind == 'group' else 0)
+                entry = self.lock.lstat()
+                with self.assertRaises((upgrade.UpgradeError, OSError)):
+                    self.cli('--apply')
+                self.assertEqual(self.lock.lstat(), entry)
+                self.assertEqual(victim.read_bytes(), b'never truncate or chmod')
+                self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
+                self.assertEqual({p: self.manager.read(self.manager.path(p)) for p in original}, original)
+                if kind == 'directory':
+                    self.lock.rmdir()
+                else:
+                    self.lock.unlink()
+
+    def test_unsafe_lock_ancestry_refused_and_generic_trust_checks_stay_strict(self):
+        for mode, uid, gid in ((0o777, 0, 0), (0o1777, self.owner[0], 0), (0o1777, 0, self.owner[1]), (0o1775, 0, 0)):
+            with self.subTest(mode=oct(mode), uid=uid, gid=gid):
+                self.lock.parent.chmod(mode)
+                os.chown(self.lock.parent, uid, gid)
+                with self.assertRaisesRegex(upgrade.UpgradeError, 'lock directory'):
+                    with self.manager.updater_lock():
+                        self.fail('unsafe directory accepted')
+        os.chown(self.lock.parent, 0, 0)
+        self.lock.parent.chmod(0o1777)
+        run = self.lock.parent.parent
+        run.chmod(0o1777)
+        with self.assertRaisesRegex(upgrade.UpgradeError, 'lock directory'):
+            with self.manager.updater_lock():
+                self.fail('sticky exception escaped /run/lock')
+        run.chmod(0o755)
+        real = run / 'real-lock'
+        self.lock.parent.rename(real)
+        self.lock.parent.symlink_to(real, target_is_directory=True)
+        with self.assertRaises(OSError):
+            with self.manager.updater_lock():
+                self.fail('symlink directory accepted')
+        self.lock.parent.unlink()
+        real.rename(self.lock.parent)
+        # Generic trusted paths still reject sticky writable source/config/backup ancestry.
+        for directory in (self.bundle, self.manager.path('/etc/initiativetracker'), self.manager.path('/usr/local/sbin')):
+            old = directory.stat().st_mode
+            directory.chmod(0o1777)
+            with self.assertRaisesRegex(upgrade.UpgradeError, 'Root-controlled path'):
+                self.manager.apply()
+            directory.chmod(stat.S_IMODE(old))
+        self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
+
+    def test_unprivileged_users_cannot_replace_root_lock_in_sticky_directory(self):
+        with self.manager.updater_lock():
+            inode = self.lock.stat().st_ino
+            result = subprocess.run(['sudo', '-u', self.desktop.pw_name, 'python3', '-I', '-c',
+                'import os, sys; os.unlink(sys.argv[1])', str(self.lock)], capture_output=True, text=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Operation not permitted', result.stderr)
+            self.assertEqual(self.lock.stat().st_ino, inode)
+
+    def test_creation_race_rejects_untrusted_winner_without_mutation(self):
+        open_file = upgrade.os.open
+        def attacker_wins(path, flags, mode=0o777, **kwargs):
+            if path == self.lock.name and flags & os.O_EXCL:
+                self.lock.write_bytes(b'untrusted race winner')
+                os.chown(self.lock, *self.owner)
+            return open_file(path, flags, mode, **kwargs)
+        with patch.object(upgrade.os, 'open', side_effect=attacker_wins):
+            with self.assertRaisesRegex(upgrade.UpgradeError, 'lock file'):
+                self.cli('--apply')
+        self.assertEqual(self.lock.read_bytes(), b'untrusted race winner')
+        self.assertEqual(self.lock.stat().st_uid, self.owner[0])
+        self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
+
+    def test_lock_identity_and_link_count_rechecked_after_flock(self):
+        flock = upgrade.fcntl.flock
+        for action in ('replace', 'link'):
+            with self.subTest(action=action):
+                def race(fd, flags):
+                    flock(fd, flags)
+                    if action == 'replace':
+                        self.lock.unlink()  # Simulate a trusted-root race, fixture only.
+                        self.lock.write_bytes(b'replacement')
+                    else:
+                        os.link(self.lock, self.base / 'extra-link')
+                with patch.object(upgrade.fcntl, 'flock', side_effect=race):
+                    with self.assertRaisesRegex(upgrade.UpgradeError, 'link identity'):
+                        with self.manager.updater_lock():
+                            self.fail('inode race accepted')
+                self.lock.unlink()
+                (self.base / 'extra-link').unlink(missing_ok=True)
+
+    def graphical_lock_process(self, variant):
+        # Execute the exact real installer's locking stanza, with only its fixed
+        # pathname redirected to the disposable root. No application updater runs.
+        source = (self.bundle / variant / upgrade.NAMES[0]).read_text()
+        start = source.index('exec 9>"/run/lock/initiativetracker-updater.lock"')
+        end = source.index('work_directory=', start)
+        stanza = source[start:end].replace(upgrade.LOCK, str(self.lock))
+        script = 'fail() { echo "$*" >&2; exit 73; }; umask 022\n' + stanza + 'echo held; read -r release\n'
+        process = subprocess.Popen(['bash', '-c', script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(self.stop_holder, process)
+        return process
+
+    @staticmethod
+    def stop_holder(process):
+        if process.poll() is None:
+            process.communicate('release\n', timeout=5)
+
+    def test_real_graphical_updater_flock_interoperability_both_directions(self):
+        for variant in ('original', 'runtime'):
+            with self.subTest(variant=variant):
+                holder = self.graphical_lock_process(variant)
+                self.assertEqual(holder.stdout.readline().strip(), 'held')
+                inode = self.lock.stat().st_ino
+                for action in ('--apply', '--rollback'):
+                    with self.assertRaisesRegex(upgrade.UpgradeError, 'application update is running'):
+                        self.cli(action, *([self.base / 'unused-backup'] if action == '--rollback' else []))
+                self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
+                self.stop_holder(holder)
+                with self.manager.updater_lock():
+                    contender = self.graphical_lock_process(variant)
+                    out, err = contender.communicate(timeout=5)
+                    self.assertEqual(contender.returncode, 73, out + err)
+                    self.assertIn('already running', err)
+                    self.assertEqual(self.lock.stat().st_ino, inode)
+                holder = self.graphical_lock_process(variant)
+                self.assertEqual(holder.stdout.readline().strip(), 'held')
+                self.stop_holder(holder)
+                self.assertEqual(self.lock.stat().st_ino, inode)
+
+    def test_two_component_processes_contend_and_exception_releases_for_rollback(self):
+        code = """import importlib.util, pathlib, pwd, sys
+spec = importlib.util.spec_from_file_location('upgrade', sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+manager = m.Components(pwd.getpwnam(sys.argv[2]), root=pathlib.Path(sys.argv[3]), bundle=pathlib.Path(sys.argv[4]))
+apply = manager.apply
+def paused_apply():
+    print('held', flush=True)
+    sys.stdin.readline()
+    return apply()
+manager.apply = paused_apply
+m.Components = lambda desktop: manager
+m.confirmation = lambda token: None
+sys.argv = ['upgrade', '--desktop-user', manager.desktop.pw_name, '--apply']
+m.main()
+"""
+        holder = subprocess.Popen(['python3', '-I', '-c', code, str(ROOT / 'hub-updater/upgrade-existing-components.py'),
+                                   self.desktop.pw_name, str(self.root), str(self.bundle)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(self.stop_holder, holder)
+        self.assertIn('Pause kiosk/update activity', holder.stdout.readline())
+        self.assertEqual(holder.stdout.readline().strip(), 'held')
+        with self.assertRaisesRegex(upgrade.UpgradeError, 'application update is running'):
+            self.cli('--apply')
+        self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
+        self.stop_holder(holder)  # Complete the other CLI's real replacement.
+        self.assertEqual(holder.returncode, 0)
+        directory, = self.manager.path(upgrade.BACKUPS).iterdir()
+        self.cli('--rollback', directory)
+        atomic = self.manager.atomic
+        calls = 0
+        lock_probes = []
+        def fail_second(*args):
+            nonlocal calls
+            # Record, then assert outside the transaction's broad recovery catch.
+            contender = subprocess.run(['flock', '-n', str(self.lock), 'true'], timeout=5)
+            lock_probes.append(contender.returncode)
+            calls += 1
+            if calls == 2:
+                raise OSError('fixture failure')
+            return atomic(*args)
+        with patch.object(self.manager, 'atomic', side_effect=fail_second):
+            with self.assertRaisesRegex(upgrade.UpgradeError, 'original scripts restored'):
+                self.cli('--apply')
+        self.assertEqual(lock_probes, [1, 1, 1], 'replacement/failure/restoration lost shared lock')
+        # Acquire after failed apply, then complete real apply and explicit rollback.
+        self.cli('--apply')
+        directories = list(self.manager.path(upgrade.BACKUPS).iterdir())
+        self.cli('--rollback', directories[0])
 
     def test_fresh_hub_uses_actual_alternate_home_and_desktop_ownership(self):
         class OwnerHost(fixtures.FakeHost):
