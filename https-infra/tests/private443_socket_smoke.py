@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import time
+import zlib
 from urllib.parse import urlencode
 
 sys.path.insert(0,str(Path(__file__).parents[1]))
@@ -27,6 +28,8 @@ ROOT = Path('/fixture')
 PUBLIC = Path('/public')
 V4 = '192.168.253.2'
 V6 = 'fd25:443:5445::2'
+EDITOR = '/appearance/application/00000000-0000-0000-0000-000000000000'
+BANNER = '/media/application/00000000-0000-0000-0000-000000000000/banner'
 
 
 def context():return ssl.create_default_context(cafile=str(PUBLIC/'ca.pem'))
@@ -36,18 +39,18 @@ class Session:
     def __init__(self,address='127.0.0.1',port=443):
         self.address,self.port,self.cookies = address,port,{}
         self.authority = HOST if port == 443 else HOST+':'+str(port)
-    def request(self,path,fields=None,*,method=None,authority=None,origin=None):
+    def request(self,path,fields=None,*,method=None,authority=None,origin=None,body=None,content_type=None,binary=False):
         connection = http.client.HTTPSConnection(HOST,self.port,timeout=5,context=context())
         connection.connect = lambda:setattr(connection,'sock',context().wrap_socket(socket.create_connection((self.address,self.port),timeout=5),server_hostname=HOST))
         headers = {'Host':authority or self.authority,'Cookie':'; '.join(k+'='+v for k,v in self.cookies.items())}
-        if fields is not None:headers |= {'Content-Type':'application/x-www-form-urlencoded','Origin':origin or 'https://'+self.authority}
-        connection.request(method or ('POST' if fields is not None else 'GET'),path,body=urlencode(fields) if fields is not None else None,headers=headers)
-        response = connection.getresponse();body = response.read().decode();values = response.getheaders()
+        if fields is not None or body is not None:headers |= {'Content-Type':content_type or 'application/x-www-form-urlencoded','Origin':origin or 'https://'+self.authority}
+        connection.request(method or ('POST' if fields is not None or body is not None else 'GET'),path,body=urlencode(fields) if fields is not None else body,headers=headers)
+        response = connection.getresponse();body = response.read();values = response.getheaders()
         for name,value in values:
             if name.lower() == 'set-cookie':
                 parsed = SimpleCookie();parsed.load(value)
                 for key,item in parsed.items():self.cookies[key] = item.value
-        result = response.status,body,values;connection.close();return result
+        result = response.status,body if binary else body.decode(),values;connection.close();return result
     def post(self,handler,fields=None,*,origin=None):
         status,body,_ = self.request('/secure-access');assert status == 200
         token = unescape(re.search(r'name="__RequestVerificationToken"[^>]*value="([^"]+)"',body)[1])
@@ -124,6 +127,39 @@ def websocket(session,origin=None):
         assert b'{}\x1e' in response
 
 
+def media(session):
+    def token():
+        status,page,_ = session.request(EDITOR);assert status == 200
+        return unescape(re.search(r'name="__RequestVerificationToken"[^>]*value="([^"]+)"',page)[1])
+    assert session.request(EDITOR+'?handler=Settings',{})[0] == 400
+    fields = {'__RequestVerificationToken':token(),'ApplicationName':'Private 443 fixture','ShowApplicationLogo':'true'}
+    assert session.request(EDITOR+'?handler=Settings',fields,origin='https://other.colophon.stream')[0] == 403
+    assert session.request(EDITOR+'?handler=Settings',fields)[0] == 302
+    assert 'Private 443 fixture' in session.request('/branding/info')[1]
+    def chunk(name,payload):return struct.pack('!I',len(payload))+name+payload+struct.pack('!I',zlib.crc32(name+payload))
+    png = b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!IIBBBBB',1,1,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(b'\x00\x20\x60\xa0\xff'))+chunk(b'IEND',b'')
+    def upload(image):
+        boundary = 'disposable-443-fixture'
+        body = b''
+        for key,value in [('__RequestVerificationToken',token()),('kind','banner')]:
+            body += f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+        body += f'--{boundary}\r\nContent-Disposition: form-data; name="Upload"; filename="synthetic.png"\r\nContent-Type: image/png\r\n\r\n'.encode()+image+f'\r\n--{boundary}--\r\n'.encode()
+        return session.request(EDITOR+'?handler=Upload',body=body,content_type='multipart/form-data; boundary='+boundary)[0]
+    assert upload(png) == 302
+    status,saved,headers = session.request(BANNER,binary=True)
+    assert status == 200 and saved.startswith(b'\x89PNG') and ('Content-Type','image/png') in headers
+    assert upload(b'<svg onload="bad()"/>') == 400
+    assert session.request(BANNER,binary=True)[1] == saved
+    assert session.request('/api/coordination/enroll',{})[0] == 403
+    _,page,_ = session.request('/secure-access')
+    grant = re.search(r'name="id" value="([^"]+)"',page)[1]
+    assert session.post('Revoke',{'id':grant})[0] == 302
+    assert session.request(BANNER)[0] == 403
+    session.enroll()
+    assert session.request(BANNER,binary=True)[1] == saved
+    return saved
+
+
 def hub():
     os.chmod(ROOT,0o2750);os.chown(ROOT,0,65000)
     for name in ['tls','empty-ca-dir']:
@@ -155,14 +191,13 @@ def hub():
         f.wait_for_probe(lambda h,p,g,leaf:probe(g,leaf),HOST,5445,first,expected)
         replay = Session();replay.cookies = dict(old.cookies)
         assert 'Authorized as DM' not in replay.request('/secure-access')[1]
-        assert replay.request('/appearance')[0] == 403
+        assert replay.request(EDITOR)[0] == 403
         session = Session();session.enroll()
         for address in ['127.0.0.1','::1']:
             local = Session(address)
             assert local.request('/system/health')[0] == 200
             assert local.request('/secure-access/physical')[0] == 200
-        assert session.request('/appearance')[0] == 200
-        assert session.request('/appearance?handler=Settings',{})[0] == 400  # CSRF still mandatory.
+        saved_banner = media(session)
         backend = Session(port=5445)
         assert backend.request('/system/https-status',authority=HOST)[0] == 200
         assert backend.request('/system/https-status',authority=HOST,method='HEAD')[0] == 200
@@ -184,12 +219,13 @@ def hub():
         stop_app(process);process = start_app()
         f.wait_for_probe(lambda h,p,g,leaf:probe(g,leaf),HOST,5445,second,f.leaf_fingerprint((ROOT/'second.pem').read_bytes()))
         assert 'Authorized as DM' in session.request('/secure-access')[1]
+        assert session.request(BANNER,binary=True)[1] == saved_banner
         # Existing HTTP recovery still responds; spoofing cannot grant secure access.
         connection = http.client.HTTPConnection('127.0.0.1',15491,timeout=3)
         connection.request('GET','/secure-access/physical',headers={'X-Forwarded-Proto':'https','X-Forwarded-For':'127.0.0.1','X-Forwarded-Host':HOST})
         response = connection.getresponse();assert response.status == 426;response.read();connection.close()
         (PUBLIC/'ready').write_text('ready\n')
-        print('PASS: kernel IPv4/IPv6 OUTPUT, physical proof, strict backend probe, old-origin replay, cookies/CSRF, WebSocket, rotation/rollback/restart; app uid 65000',flush=True)
+        print('PASS: kernel IPv4/IPv6 OUTPUT, physical proof, strict backend probe, old-origin replay, cookies/CSRF, private N9 upload/settings/revocation, WebSocket, rotation/rollback/restart; app uid 65000',flush=True)
         signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
         while True:time.sleep(1)
     except Exception:
