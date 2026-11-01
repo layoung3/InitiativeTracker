@@ -115,9 +115,9 @@ test ! -e /var/log/letsencrypt || exit 1
 sudo systemctl mask --runtime certbot.service certbot.timer
 sudo apt-get update
 apt-cache policy certbot python3-certbot python3-certbot-dns-cloudflare python3-acme python3-cloudflare
-sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare
+sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates
 # STOP: approve the displayed signed-repository candidate versions and transaction.
-sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare
+sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates
 sudo systemctl disable certbot.timer
 sudo systemctl mask certbot.service certbot.timer
 systemctl is-active certbot.service certbot.timer || true
@@ -127,6 +127,10 @@ dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
 ```
 
 Retain masks while this foundation's distinct timer owns renewal. Check the
+transaction for shared-runtime updates or restarts of existing services; stop for
+a reviewed maintenance plan if either would affect the working hub. OpenSSL's
+CLI and the maintained public CA bundle are required by certificate validation.
+Check the
 installed `/etc/cron.d/certbot`: Debian's qualified entry skips when
 `/run/systemd/system` exists; do not apply these steps on a non-systemd image or
 silently replace an existing cron. Verify masks after reboot/update. Do not
