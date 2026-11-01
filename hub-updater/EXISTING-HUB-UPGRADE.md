@@ -22,6 +22,13 @@ marked direct-launch block ending in `&`. It does not add the optional fresh
 installer's process supervisor to an existing desktop. A launcher can disappear
 from `pgrep` after startup because it `exec`s Chromium; that alone is not failure.
 
+This three-script procedure does **not** install `colophon.png`, `kiosk.py` or
+satellite `waiting.html`. After a separately approved supported launcher upgrade,
+use the [bounded desktop-artwork procedure](../docs/setup/branding.md) for exact
+paths, hashes, selected-user ownership, backup/rollback and compatibility checks.
+It never adds missing supervisor/support files or bypasses an unknown intermediate
+component hash. An older satellite wrapper needs its own reviewed upgrade plan.
+
 The shared HTTPS checkpoint additionally fences restored secure browser grants before automatic rollback restarts the old app. Installing that reviewed runtime is mandatory before secure grants exist; an application archive does not update these scripts. See the [0.1.6 consolidated plan](../docs/https/0.1.6-integration-release-plan.md). Restoring the old unfenced updater later requires disabling/fencing secure use and blocking updates until the correction is restored.
 
 The graphical versioned workflow remains: Build/Test/Stage → SCP to incoming →

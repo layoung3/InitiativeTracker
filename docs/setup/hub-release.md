@@ -13,12 +13,15 @@ The owner rechecked the existing Debian 13 ARM64 hub on 2026-10-30: service acti
 `current` selecting 0.1.5, healthy database/current migrations/ready storage and
 unchanged identity. This is an existing-device baseline receipt, not a fresh
 installation or new-release test. The installed original updater is **not**
-certified as hardened. Proposed existing-hub hardening belongs to a separate
-backed-up, approval-gated procedure in [draft PR #3](https://github.com/layoung3/InitiativeTracker/pull/3);
-do not use its fresh installers or copy its runtime files onto this hub as part
-of an application release. The available
-[draft fresh-install guide](https://github.com/layoung3/InitiativeTracker/blob/ebee1d181a718ba64d6fbb0dd4512ba423025b44/docs/setup/automated-installation.md)
-is explicitly for new commissioning devices, not that existing-hub procedure.
+certified as hardened. Existing-hub component maintenance uses the separate
+[reviewed backup/upgrade procedure](../../hub-updater/EXISTING-HUB-UPGRADE.md),
+not a fresh installer or an application archive. The [fresh-install guide](automated-installation.md)
+is for separately approved new/disposable installations only. Merged N9 source
+identifies 0.1.6; the examples below refer to an independently approved 0.1.6
+artifact, not an instruction to rebuild/relabel an existing 0.1.5 archive.
+Application startup automatically migrates the database: obtain separate app,
+migration, external-component and restart approvals using the [single 0.1.6
+plan](../https/0.1.6-integration-release-plan.md) before any device staging/update.
 
 ## 1. Select source/version and build only when needed
 
@@ -43,7 +46,7 @@ $version
 dotnet --version
 ```
 
-Expected: clean status; intended source SHA; `0.1.5` for the inspected baseline;
+Expected: clean status; approved source SHA; `0.1.6` for merged N9 source;
 SDK `10.x`. Check the SHA against the release approval. A clean tree and matching
 label alone do not prove an older artifact came from that SHA; keep its build log.
 
@@ -70,11 +73,11 @@ retain the source SHA/build log separately and use a trusted transfer source.
 ## 2. Validate and stage the existing artifact
 
 If resuming after an earlier build, set `$version` to **that artifact's approved
-version**, not whatever today's source reports. The example uses the reported
-0.1.5 baseline. Point `$manifest` to your actual retained output if different.
+version**, not whatever today's source reports. The example uses an approved
+0.1.6 candidate; the working devices remain at their reported 0.1.5 baseline. Point `$manifest` to your actual retained output if different.
 
 ```powershell
-$version = '0.1.5'
+$version = '0.1.6'
 $releaseName = "InitiativeTracker-$version-linux-arm64"
 $manifest = ".\artifacts\releases\$releaseName\$releaseName.manifest.json"
 .\scripts\Test-InitiativeTrackerRelease.ps1 -ManifestPath $manifest
@@ -132,7 +135,7 @@ print('TRANSFER CHECK PASSED:', m['version'], name)
 PY
 ```
 
-Expected: `TRANSFER CHECK PASSED: 0.1.5 ...` for this artifact. Stop on any exception;
+Expected: `TRANSFER CHECK PASSED: 0.1.6 ...` for this artifact. Stop on any exception;
 the earlier workstation archive validation is also required.
 
 ## 4. Stage the incoming package and manifest source
@@ -147,18 +150,18 @@ Use the exact package filename just verified (change version for later releases)
 ```bash
 sudo install -d -o root -g root -m 0755 /var/cache/initiativetracker-updater/incoming
 sudo install -o root -g root -m 0644 \
-  InitiativeTracker-0.1.5-linux-arm64.tar.gz \
+  InitiativeTracker-0.1.6-linux-arm64.tar.gz \
   /var/cache/initiativetracker-updater/incoming/
 sudo install -o root -g root -m 0644 release-manifest.json \
-  /var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.5-linux-arm64.manifest.json
-sudo sha256sum /var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.5-linux-arm64.tar.gz
+  /var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.6-linux-arm64.manifest.json
+sudo sha256sum /var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.6-linux-arm64.tar.gz
 sudoedit /etc/initiativetracker/updater.conf
 ```
 
 Set the existing variable without discarding the file's other settings:
 
 ```ini
-MANIFEST_SOURCE=/var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.5-linux-arm64.manifest.json
+MANIFEST_SOURCE=/var/cache/initiativetracker-updater/incoming/InitiativeTracker-0.1.6-linux-arm64.manifest.json
 ```
 
 **This is a bare local path, never `file://...`.** The installed installer requires
@@ -239,7 +242,7 @@ directory mode 0700 that the app service cannot read. A complete fix needs a
 reviewed, narrowly scoped backup/archive-permission change without changing
 release readability; this documentation does not implement it.
 
-The draft [automated fresh-device installer](automated-installation.md) installs
+The merged [automated fresh-device installer](automated-installation.md) installs
 a derived updater with scoped private backup permissions and failure-handling
 corrections. The preceding warnings describe the original deployed updater.
 No existing device is changed by adding that source/recipe to this repository.
@@ -308,3 +311,15 @@ Always inspect symlink, health and logs after failure. An automatic data restore
 can discard writes made since its checkpoint. Do not retry blindly or delete the
 failed release/data. Follow [application and database recovery](recovery.md#application-rollback)
 to distinguish a binary-only rollback from a schema-dependent restore.
+
+## N9 branding boundary
+
+A 0.1.6 archive supplies bundled `wwwroot/images/colophon.png` inside the selected
+versioned release. It does not replace selected-user loading artwork or install
+`kiosk.py`/`waiting.html`. Use the [single branding guide](branding.md) for pinned
+source/hash verification, fresh installer behavior and separately approved existing
+desktop artwork backup/copy/rollback. Secure DM application-logo replacement uses
+persistent Media/DB settings, not edits to the release. Preserve neutral character
+and banner defaults, Labwc/updater order and profiles. Follow the [single 0.1.6
+plan](../https/0.1.6-integration-release-plan.md) for separate startup/migration,
+HTTPS, updater-component and desktop approvals.
