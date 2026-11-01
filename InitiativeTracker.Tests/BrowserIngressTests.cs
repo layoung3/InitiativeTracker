@@ -114,12 +114,13 @@ public sealed class BrowserIngressTests
         using var store = Store();Accepted(socket =>
         {
             var ingress = Capture(socket,Address("127.0.0.1",5445));var context = Context(ingress);
-            foreach (var path in new[] { "/secure-access/physical","/media","/appearance","/system/https-status/","/system/health" })
+            foreach (var path in new[] { "/secure-access/physical","/media","/appearance","/system/https-status/","/SYSTEM/https-status","/system/health" })
             { context.Request.Path = path;Assert.False(store.MatchesStatusProbeTransport(context)); }
             context.Request.Path = "/system/https-status";
             foreach (var method in new[] { "GET","HEAD" })
             { context.Request.Method = method;Assert.True(store.MatchesStatusProbeTransport(context));Assert.False(store.MatchesCanonicalTransport(context));Assert.False(ingress.Physical); }
             context.Request.Method = "POST";Assert.False(store.MatchesStatusProbeTransport(context));
+            context.Request.Method = "GET";context.Request.PathBase = new("/media");Assert.False(store.MatchesStatusProbeTransport(context));context.Request.PathBase = new();
             context.Request.Method = "GET";context.Request.QueryString = new("?handler=anything");Assert.False(store.MatchesStatusProbeTransport(context));
         });
     }

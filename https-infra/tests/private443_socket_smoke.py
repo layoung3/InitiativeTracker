@@ -66,7 +66,10 @@ class Session:
 
 
 def probe(generation,leaf,authority_port=443):
-    f.probe(HOST,5445,generation,leaf,authority_port=authority_port,_test_context=context())
+    try:f.probe(HOST,5445,generation,leaf,authority_port=authority_port,_test_context=context())
+    except (OSError,ValueError) as error:
+        # Class only, never a TLS/provider message, code, cookie, key or body.
+        print('Fixture probe failed: '+type(error).__name__,flush=True);raise
 
 
 def wait_app(process):
@@ -180,6 +183,13 @@ def hub():
         print('PASS: kernel IPv4/IPv6 OUTPUT, physical proof, strict backend probe, old-origin replay, cookies/CSRF, WebSocket, rotation/rollback/restart; app uid 65000',flush=True)
         signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))
         while True:time.sleep(1)
+    except Exception:
+        for path in [ROOT,ROOT/'tls',*(ROOT/'tls').glob('*/bundle.pfx'),ROOT/'tls'/'active.json',PUBLIC,PUBLIC/'ca.pem']:
+            if path.exists():
+                info=path.stat();print('Fixture permission receipt:',path.name,oct(info.st_mode&0o7777),info.st_uid,info.st_gid,flush=True)
+        for line in (ROOT/'app.log').read_text().splitlines():
+            if 'Browser certificate reload rejected' in line:print(line,flush=True)
+        raise
     finally:stop_app(process)
 
 

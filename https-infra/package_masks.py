@@ -19,8 +19,10 @@ def verify(*, persistent=False, _runner=f.run):
 
 
 def mask(*, _runner=f.run):
-    _runner(['/usr/bin/systemctl','mask','--runtime',*UNITS],capture=False)
-    return verify(_runner=_runner)
+    # Persistent before APT: a failed/partial transaction must remain fenced
+    # across reboot, rather than leaving only an ephemeral runtime mask.
+    _runner(['/usr/bin/systemctl','mask',*UNITS],capture=False)
+    return verify(persistent=True,_runner=_runner)
 
 
 def main():

@@ -113,12 +113,12 @@ test ! -e /etc/letsencrypt || exit 1
 test ! -e /var/lib/letsencrypt || exit 1
 test ! -e /var/log/letsencrypt || exit 1
 sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py mask --apply || exit 1
-sudo apt-get update
+sudo apt-get update || exit 1
 apt-cache policy certbot python3-certbot python3-certbot-dns-cloudflare python3-acme python3-cloudflare
-sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates
+sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates nftables iproute2 || exit 1
 # STOP: approve the displayed signed-repository candidate versions and transaction.
-sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify || exit 1
-sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify --persistent || exit 1
+sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates nftables iproute2 || exit 1
 sudo systemctl disable certbot.timer || exit 1
 sudo systemctl mask certbot.service certbot.timer || exit 1
 sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify --persistent || exit 1
@@ -128,7 +128,10 @@ dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
   certbot python3-certbot python3-certbot-dns-cloudflare python3-acme python3-cloudflare
 ```
 
-Retain masks while this foundation's distinct timer owns renewal. Check the
+Both units are persistently masked and verified **before APT**, and rechecked
+immediately before installation. Any mask/check failure exits before installing;
+partial package failure remains fenced across reboot. Retain masks while this
+foundation's distinct timer owns renewal. Check the
 transaction for shared-runtime updates or restarts of existing services; stop for
 a reviewed maintenance plan if either would affect the working hub. OpenSSL's
 CLI and the maintained public CA bundle are required by certificate validation.

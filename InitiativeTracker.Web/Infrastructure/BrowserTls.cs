@@ -126,7 +126,8 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or CryptographicException or InvalidOperationException or JsonException or KeyNotFoundException)
             {
                 // Do not log exception text, paths, keys, provider output or certificate contents.
-                if (!reportedReloadFailure) logger.LogWarning("Browser certificate reload rejected; retaining any valid previous generation.");
+                if (!reportedReloadFailure) logger.LogWarning("Browser certificate reload rejected ({FailureKind}); retaining any valid previous generation.",
+                    exception is UnauthorizedAccessException ? "permission" : exception is IOException ? "file" : exception is CryptographicException ? "certificate" : "validation");
                 reportedReloadFailure = true;
             }
         }
@@ -156,7 +157,7 @@ public sealed class BrowserCertificateStore(BrowserTlsSettings settings, ILogger
         (!settings.KernelRedirect || context.Features.Get<BrowserIngress>() is { Canonical: true } ingress && ingress.Matches(context));
     public bool TrustedRequest(HttpContext context) => MatchesCanonicalTransport(context) && Ready;
     internal bool MatchesStatusProbeTransport(HttpContext context) => settings.KernelRedirect && TlsAuthority(context) &&
-        context.Request.Path == "/system/https-status" && !context.Request.QueryString.HasValue &&
+        !context.Request.PathBase.HasValue && string.Equals(context.Request.Path.Value, "/system/https-status", StringComparison.Ordinal) && !context.Request.QueryString.HasValue &&
         (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
         context.Features.Get<BrowserIngress>() is { LocalProbe: true } ingress && ingress.Matches(context);
     public bool StatusProbe(HttpContext context) => MatchesStatusProbeTransport(context) && Ready;
