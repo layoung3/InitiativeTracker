@@ -54,6 +54,9 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:5189/system/health >/dev/null
           N9_APP_URL=http://127.0.0.1:5189 node --test scripts/tests/*.test.cjs
+          # Sequential: this suite deliberately resets the disposable encounter.
+          N9_APP_URL=http://127.0.0.1:5189 SATELLITE_SCREENSHOTS="$RUNNER_TEMP/satellite-display-evidence" node --test scripts/tests/satellite-ui.integration.cjs
+          git rev-parse HEAD > "$RUNNER_TEMP/satellite-display-evidence/source-commit.txt"
         env:
           NODE_PATH: /tmp/n9-ui/node_modules
       - name: Build and validate self-contained ARM64 release
@@ -95,6 +98,7 @@ jobs:
           path: |
             ${{ runner.temp }}/n9-integrated-results/*.trx
             ${{ runner.temp }}/n9-trusted-browser-screenshots/*.png
+            ${{ runner.temp }}/satellite-display-evidence/*
   arm64-native:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15

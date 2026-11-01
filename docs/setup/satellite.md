@@ -13,6 +13,9 @@ satellites must use the compatibility gate in the [branding guide](branding.md),
 not a rerun of a fresh installer. The former manual shell wrapper is historical
 and lacks N9 waiting artwork; copying a PNG does not upgrade it.
 
+For the application display's compact layout, automated viewport evidence and
+remaining physical checks, see [0.1.6 satellite readability](../N9-satellite-readability.md).
+
 ## 1. Image and prepare the satellite
 
 Use a Pi 4/5 with reliable storage, appropriate official power supply, a display

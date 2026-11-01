@@ -1,0 +1,93 @@
+[
+  {
+    "width": 480,
+    "height": 800,
+    "visible": 6,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 480,
+      "bottom": 64,
+      "width": 480,
+      "height": 64
+    }
+  },
+  {
+    "width": 600,
+    "height": 1024,
+    "visible": 10,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 600,
+      "bottom": 64,
+      "width": 600,
+      "height": 64
+    }
+  },
+  {
+    "width": 800,
+    "height": 1280,
+    "visible": 15,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 800,
+      "bottom": 64,
+      "width": 800,
+      "height": 64
+    }
+  },
+  {
+    "width": 800,
+    "height": 480,
+    "visible": 4,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 800,
+      "bottom": 64,
+      "width": 800,
+      "height": 64
+    }
+  },
+  {
+    "width": 1024,
+    "height": 600,
+    "visible": 6,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 1024,
+      "bottom": 64,
+      "width": 1024,
+      "height": 64
+    }
+  },
+  {
+    "width": 1280,
+    "height": 800,
+    "visible": 7,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 1280,
+      "bottom": 100,
+      "width": 1280,
+      "height": 100
+    }
+  },
+  {
+    "width": 1920,
+    "height": 1080,
+    "visible": 9,
+    "header": {
+      "x": 0,
+      "y": 0,
+      "right": 1920,
+      "bottom": 100,
+      "width": 1920,
+      "height": 100
+    }
+  }
+]

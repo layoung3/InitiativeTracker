@@ -167,6 +167,12 @@ for (const [width, height, reducedMotion] of [[1280, 800, 'no-preference'], [390
             await assertHeader();
             await list.focus();
             await page.keyboard.press('End');
+            // Finish the manual keyboard scroll before publishing another turn.
+            // Otherwise its pending animation can override the new automatic scroll.
+            await page.waitForFunction(() => {
+                const list = document.querySelector('#initiativeList');
+                return list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+            });
             await assertHeader();
             await renderTurn(0);
             await page.waitForFunction(() => document.querySelector('.initiative-row.is-current').getBoundingClientRect().top >= document.querySelector('#initiativeList').getBoundingClientRect().top - 1);

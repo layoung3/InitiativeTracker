@@ -53,6 +53,12 @@ public sealed class N7WebTests : IDisposable
             db.PlayerDeviceCredentials.Add(credential); db.PlayerConnections.Add(player); db.SaveChanges();
             claims.AddRange([new("player_id", player.Id.ToString()), new("player_profile_id", owner.Value.ToString()), new("player_device_id", credential.Id.ToString())]);
         }
+        if (role == "Display")
+        {
+            var registry = app.Services.GetRequiredService<DeviceRegistryService>();
+            var device = registry.ApprovePairing(registry.CreatePairingRequest().Id);
+            claims.Add(new("device_id", device.Id.ToString()));
+        }
         var scheme = CookieAuthenticationDefaults.AuthenticationScheme;
         var options = app.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(scheme);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, scheme)), new AuthenticationProperties(), scheme);
@@ -70,6 +76,41 @@ public sealed class N7WebTests : IDisposable
 
     private Task<HttpResponseMessage> Post(string page, string token, params (string Key, string Value)[] values) =>
         client.PostAsync(page, new FormUrlEncodedContent(values.Select(v => new KeyValuePair<string, string>(v.Key, v.Value)).Append(new("__RequestVerificationToken", token))));
+
+    [Fact]
+    public async Task InitialDisplayIncludesInitiativeExhaustionConditionsAndPublicProjection()
+    {
+        var id = Character(Guid.NewGuid());
+        State.AddPlayerCharacter(id);
+        var combatant = Assert.Single(State.CurrentEncounter.Combatants);
+        State.AddCombatantCondition(combatant.Id, "Poisoned", false);
+        State.AddCombatants("Secret fixture NPC", -20, 44, 55, 1, true, true);
+        State.AddCombatants("Visible private HP fixture", -10, 33, 66, 1, false, true);
+        State.StartCombat();
+        SignIn("Display");
+        var response = await client.GetAsync("/display");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("/css/satellite-display", html);
+        Assert.Contains("data-satellite-readability=\"true\"", html);
+        Assert.Contains("combatant-initiative", html);
+        Assert.Contains("Current turn. Initiative", html);
+        Assert.Contains("aria-current=\"true\"", html);
+        Assert.Contains("combatant-name-heading", html);
+        Assert.Contains("Exhaustion 3", html);
+        Assert.Contains("condition-poisoned", html);
+        Assert.DoesNotContain("Secret fixture NPC", html);
+        var rows = Regex.Matches(html, "data-combatant-id=\"([^\"]+)\"");
+        Assert.Equal(2, rows.Count);
+        // Only the player-visible HP block is emitted; NPC HP remains projected out.
+        Assert.Single(Regex.Matches(html, "class=\"combatant-hp\""));
+        Assert.Single(Regex.Matches(html, "class=\"combatant-temp-hp\""));
+        SignIn("DM");
+        var hubHtml = await (await client.GetAsync("/display")).Content.ReadAsStringAsync();
+        Assert.DoesNotContain("/css/satellite-display", hubHtml);
+        Assert.Contains("data-satellite-readability=\"false\"", hubHtml);
+        Assert.DoesNotContain("combatant-initiative", hubHtml);
+    }
 
     [Fact]
     public void InitialVisibilityAndUndoPreservePublicFiltering()
