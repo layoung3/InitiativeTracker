@@ -2,6 +2,7 @@ name: Fresh Pi installer tests
 on:
   pull_request:
     paths:
+      - '.gitattributes'
       - 'scripts/install*.sh'
       - 'scripts/installation/**'
       - 'hub-updater/**'
@@ -15,6 +16,32 @@ on:
 permissions:
   contents: read
 jobs:
+  archived-updater-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify real Git archives and checkouts across EOL configurations
+        run: python -m unittest discover -s scripts/installation/tests -p test_updater_archive.py -v
+      - name: Exercise documented PowerShell binary export and verification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $guide = Get-Content hub-updater/EXISTING-HUB-UPGRADE.md -Raw
+          $snippet = [regex]::Match($guide, '(?s)```powershell\r?\n(.*?)```').Groups[1].Value
+          if (!$snippet) { throw 'PowerShell export block missing' }
+          $snippet = $snippet.Replace('APPROVED_40_CHARACTER_COMMIT_SHA', '${{ github.event.pull_request.head.sha || github.sha }}')
+          $tokens = $null; $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseInput($snippet, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          git config core.autocrlf true
+          if ($LASTEXITCODE -ne 0) { throw 'Git configuration failed' }
+          & ([scriptblock]::Create($snippet))
   disposable-tests:
     runs-on: ubuntu-latest
     steps:
@@ -22,6 +49,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify real Git archives and checkouts across EOL configurations
+        run: python3 -m unittest discover -s scripts/installation/tests -p test_updater_archive.py -v
       - run: python3 -m unittest discover -s pi-network/tests
       - run: docker build -f scripts/installation/tests/Dockerfile -t initiativetracker-installer-tests .
       - run: docker run --rm --network none initiativetracker-installer-tests

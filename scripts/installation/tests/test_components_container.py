@@ -7,6 +7,7 @@ import pwd
 import shutil
 import stat
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -188,6 +189,49 @@ class ComponentTests(unittest.TestCase):
         self.assertFalse(self.manager.path(upgrade.BACKUPS).exists())
         self.assertEqual(self.preserved(), before)
         self.assertEqual(components, {path: self.manager.path(path).read_bytes() for path in self.manager.targets.values()})
+
+    def test_exported_bundle_inspects_original_and_current_receipts_and_roundtrips_rollback(self):
+        # Export real Git objects with Windows-style conversion settings, then
+        # exercise the extracted inspector against this test's fake 0.1.5 root.
+        archive_tests = load('archive_fixtures', ROOT / 'scripts/installation/tests/test_updater_archive.py')
+        fixture = archive_tests.ArchiveTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        unpack = self.base / 'archive'
+        with tarfile.open(fixture.export()) as archive:
+            archive.extractall(unpack, filter='data')
+        bundle = unpack / 'hub-updater'
+        # Mirror documented staging modes: Git tar source modes may be 0664/
+        # 0775, which the inspector correctly refuses for privileged apply.
+        for path in (bundle, *bundle.rglob('*')):
+            path.chmod(0o755 if path.is_dir() else 0o644)
+        archived = load('exported_upgrade', bundle / 'upgrade-existing-components.py')
+        manager = archived.Components(self.desktop, root=self.root, bundle=bundle)
+        before = self.preserved()
+        originals = {path: manager.read(manager.path(path)) for path in manager.targets.values()}
+        candidates, components, _, current = manager.inspect()
+        self.assertEqual(set(components), set(archived.NAMES))
+        self.assertTrue(current.endswith('/0.1.5-linux-arm64'))
+        self.assertFalse(manager.path(archived.BACKUPS).exists())
+        self.assertEqual(self.preserved(), before)
+        directory = manager.apply()
+        receipt = json.loads((directory / 'receipt.json').read_text())
+        for name in archived.NAMES:
+            self.assertEqual(receipt['components'][name]['after_sha256'], candidates[name]['sha256'])
+            self.assertEqual(receipt['components'][name]['before']['sha256'], candidates[name]['original_sha256'])
+        manager.inspect()
+        self.assertIsNone(manager.apply())
+        manager.rollback(directory)
+        self.assertEqual({path: manager.read(manager.path(path)) for path in manager.targets.values()}, originals)
+        self.assertEqual(self.preserved(), before)
+        for variant, error in (('original', 'Original source provenance mismatch'),
+                               ('runtime', 'Candidate runtime hash mismatch')):
+            path = bundle / variant / archived.NAMES[0]
+            data = path.read_bytes()
+            path.write_bytes(data.replace(b'\n', b'\r\n'))
+            with self.assertRaisesRegex(archived.UpgradeError, error):
+                manager.inspect()
+            path.write_bytes(data)
 
     def test_fresh_hub_uses_actual_alternate_home_and_desktop_ownership(self):
         class OwnerHost(fixtures.FakeHost):

@@ -1,4 +1,5 @@
 **
+!.gitattributes
 !scripts/
 !scripts/installation/
 !scripts/installation/**

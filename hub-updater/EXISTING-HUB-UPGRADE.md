@@ -89,17 +89,56 @@ stops this procedure rather than silently repairing privileges/configuration.
 
 ## 2. Prepare a sealed reviewed bundle
 
-On the workstation, from a clean reviewed checkout, choose the **explicitly
-approved final commit SHA**. Export tracked sources only; do not bundle private
-Pi files, browser profiles, databases, config backups or untracked files:
+On the workstation, from a clean reviewed checkout at the **explicitly approved
+final commit SHA containing the archive-integrity correction**, export tracked
+sources only. Do not bundle private Pi files, browser profiles, databases, config
+backups or untracked files. This is preparation guidance, not a request to replace
+the already transferred archive or change the working hub now.
+
+**Linux workstation — Bash:**
 
 ```bash
+set -euo pipefail
 approved_sha='APPROVED_40_CHARACTER_COMMIT_SHA'
-git archive --format=tar --output=it-components.tar "$approved_sha" hub-updater
+test "$(git rev-parse HEAD)" = "$approved_sha"
+git diff --exit-code "$approved_sha" -- .gitattributes hub-updater
+git -c core.autocrlf=false -c core.eol=lf archive --format=tar --output=it-components.tar "$approved_sha" hub-updater
+python3 -I hub-updater/verify-archive.py it-components.tar
 sha256sum it-components.tar
 ```
 
-Record the tar hash and the candidate hashes from the reviewed commit's
+Require the verifier's six matching entries and final `PASS` before recording or
+using the archive hash. Stop on **any** failed command.
+
+**Windows workstation — PowerShell (Python 3 installed):**
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$Approved = 'APPROVED_40_CHARACTER_COMMIT_SHA'
+if ($Approved -notmatch '^[0-9a-f]{40}$') { throw 'Use the approved full commit SHA' }
+$Head = git rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $Head -ne $Approved) { throw 'Use a checkout at the approved commit' }
+git diff --exit-code $Approved -- .gitattributes hub-updater
+if ($LASTEXITCODE -ne 0) { throw 'Reviewed updater sources have local edits' }
+$Archive = Join-Path (Get-Location) 'it-components.tar'
+git -c core.autocrlf=false -c core.eol=lf archive --format=tar --output="$Archive" $Approved hub-updater
+if ($LASTEXITCODE -ne 0) { throw 'Archive creation failed' }
+py -3 -I hub-updater/verify-archive.py $Archive
+if ($LASTEXITCODE -ne 0) { throw 'Archive entry verification failed; do not transfer' }
+Get-FileHash -Algorithm SHA256 -LiteralPath $Archive
+```
+
+Always use Git's binary `--output` option. Do not use PowerShell text pipelines,
+`Out-File`, `Set-Content`, or version-dependent native stdout redirection to create
+the tar. The explicit command-local EOL settings also protect exports of older
+commits; the corrected commit additionally pins `hub-updater/** text eol=lf`.
+Do not edit either manifest or normalize an extracted bundle to make it pass:
+discard a failed export and recreate it from the reviewed source. See the
+[six-file reproduction and cause](ARCHIVE-INTEGRITY.md) for the distinction between
+stored Git blobs, checkout/export conversion and transfer integrity.
+
+Record the pinned source SHA, archive SHA-256 and all six verifier results with
+the candidate hashes from the reviewed commit's
 `hub-updater/runtime-manifest.json` through your trusted approval record. Transfer
 the tar to the chosen SSH account on the intended approved hub; verify its hash
 there against that record before unpacking. A checksum is copy integrity, not a
@@ -120,12 +159,13 @@ sha256sum "$transfer"  # compare with the approved workstation receipt first
 tar -tvf "$transfer"  # verify expected regular files/directories; no symlinks
 unpack=$(mktemp -d)
 tar -xf "$transfer" -C "$unpack" --no-same-owner
+python3 -I "$unpack/hub-updater/verify-archive.py" "$transfer"
 stage="/var/lib/initiativetracker-components/source-$approved_sha"
 sudo test ! -e "$stage"
 sudo install -d -o root -g root -m 0700 "$stage"
 sudo install -d -o root -g root -m 0755 \
   "$stage/hub-updater" "$stage/hub-updater/original" "$stage/hub-updater/runtime"
-for file in upgrade-existing-components.py provenance.json runtime-manifest.json; do
+for file in upgrade-existing-components.py verify-archive.py provenance.json runtime-manifest.json; do
   sudo install -o root -g root -m 0644 "$unpack/hub-updater/$file" "$stage/hub-updater/$file"
 done
 for name in initiativetracker-install-update initiativetracker-check-update initiativetracker-hub-launch; do

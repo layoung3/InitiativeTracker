@@ -3,6 +3,10 @@
 ###############################################################################
 * text=auto
 
+# The updater bundle is hash-pinned and runs on Linux. git archive applies
+# checkout conversion too: keep these bytes LF even with core.autocrlf=true.
+hub-updater/** text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

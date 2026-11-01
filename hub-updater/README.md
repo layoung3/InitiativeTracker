@@ -52,3 +52,8 @@ never a fresh installer. `runtime-manifest.json` pins the reviewed replacement
 hashes. Existing Labwc/config/privileges/app/data/network/pairing are preserved;
 the home launcher belongs to the selected desktop user at 0755. No existing hub
 is changed by this PR or by documentation approval.
+
+Before transferring any component bundle, follow the labeled Bash/PowerShell
+[binary archive export and six-entry verification](EXISTING-HUB-UPGRADE.md#2-prepare-a-sealed-reviewed-bundle).
+The [archive-integrity investigation](ARCHIVE-INTEGRITY.md) explains why Git's
+Windows-style EOL conversion could invalidate all six correct manifest pins.
