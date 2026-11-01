@@ -10,7 +10,11 @@ Functional checkpoint `9fc19636b66b6db75100a8e176b18295504e0d30` passed
 [shared HTTPS](https://github.com/layoung3/InitiativeTracker/actions/runs/41279081002),
 [N9/ARM64/media](https://github.com/layoung3/InitiativeTracker/actions/runs/41279081084)
 and [installer](https://github.com/layoung3/InitiativeTracker/actions/runs/41279081082).
-Final documentation-head receipts are recorded on the PR after its CI completes.
+That four-workflow receipt predates the merged branding documentation. The current
+reconciliation includes master `0a7e1a7ac86480b012fcfc46702d1b2d396a3bff` and
+also runs the branding-command workflow: ordinary/root fake-home tests and Windows
+PowerShell transfer mocks. Final reconciled-head receipts for all five workflows
+are recorded on the PR after CI completes; no pinned artwork hash is replaced.
 
 | Evidence | What it exercises |
 |---|---|

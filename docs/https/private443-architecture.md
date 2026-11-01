@@ -1,10 +1,13 @@
 # Private port-443 HTTPS: design review
 
-Base: master `d9470510eba7af584d5c8f8ba05250d275979a62` (source version 0.1.6).
+Original development base: master `d9470510eba7af584d5c8f8ba05250d275979a62` (source version 0.1.6).
+Reconciled with merged branding documentation at master
+`0a7e1a7ac86480b012fcfc46702d1b2d396a3bff`; this task branch still requires review/merge.
 The working Debian 13 ARM64 hub remains 0.1.5. This new task branch does not alter
 the merged PR #6 branch, either Pi, DNS, packages, certificates or live services.
-Canonical SetupReadme/docs/setup branding work belongs to the concurrent task;
-this task initially owns HTTPS code/tests, docs/https and its new deployment guide.
+The merged [branding guide](../setup/branding.md) remains canonical for artwork,
+installer compatibility, backup and restoration. The separate
+[HTTPS deployment guide](private443-deployment.md) owns certificate/network stages.
 
 See [validation and remaining commissioning boundaries](private443-validation.md)
 for exact test scope; cloud fixtures do not certify either Pi.

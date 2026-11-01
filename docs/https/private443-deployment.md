@@ -515,7 +515,7 @@ trust/time and served fingerprint/generation; never promote an expired archive o
 downgrade sensitive routes to HTTP. DNS/clock/certificate failures follow the
 [failure table](certificate-dns-setup.md#offline-and-failure-behavior).
 
-Branding is separately prepared in [PR #7's reviewed guide](https://github.com/layoung3/InitiativeTracker/blob/a193c5eca8b5f626dc62dc81bf72b961f950cf8d/docs/setup/branding.md).
+Branding uses the merged [single application/desktop artwork procedure](../setup/branding.md).
 It covers optional Colophon startup assets outside app releases, preserves the
 graphical updater/Labwc/Chromium order and neutral character/banner defaults. OS
 boot branding remains a distinct optional approval; no branding is installed here.

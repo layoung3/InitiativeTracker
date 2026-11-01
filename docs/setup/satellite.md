@@ -2,12 +2,16 @@
 
 [Setup index](../../SetupReadme.md) · [Acceptance](acceptance.md) · [Recovery](recovery.md)
 
-A 0.1.5 satellite can be **Chromium only**. The hub serves `/display`, pairing and
-SignalR updates. There is no tracked satellite OS installer, satellite management
-agent, .NET service, automatic Wi-Fi follower or satellite self-updater. The local
-launcher below is an explicitly **unverified commissioning template** for a fresh
-Labwc desktop; it is not a claim about an installed satellite. It does not replace
-the hub's proven updater/launcher.
+A satellite remains **Chromium only**; N9 adds local waiting artwork, not an app
+server. The hub serves `/display`, pairing and
+SignalR updates. The merged [fresh satellite installer](automated-installation.md)
+provisions its OS prerequisites and desktop-local supervisor/waiting artwork.
+There is no satellite .NET service, management agent, automatic Wi-Fi follower or
+self-updater in this release. Use the fresh installer only on separately approved
+new/disposable installations; it refuses existing installations. Existing working
+satellites must use the compatibility gate in the [branding guide](branding.md),
+not a rerun of a fresh installer. The former manual shell wrapper is historical
+and lacks N9 waiting artwork; copying a PNG does not upgrade it.
 
 ## 1. Image and prepare the satellite
 
@@ -59,93 +63,39 @@ boot. `libnss-mdns` supplies Linux `.local` name resolution through NSS; verify
 [Debian package documentation](https://packages.debian.org/trixie/libnss-mdns). The private-hotspot hub address is `10.84.0.1`; it is useful while attached
 to that hotspot, not a stable external-LAN address.
 
-There is no application satellite setting that consumes a hub ID or performs
-discovery/selection. The URL determines the origin; the ID above is an operator
-verification record. The template below stores that expected ID and waits for a
-match before starting Chromium. It provides neither network following nor secure
-remote identity attestation. Do not put pairing tokens in the URL/configuration.
+The current installer stores the selected hub origin and exact hub ID in the
+selected account's private `~/.config/initiativetracker-satellite/kiosk.json`.
+It checks both health and that ID before opening Chromium. This is browser-display
+pairing, not N8 agent enrollment or Wi-Fi following. Never put tokens in the URL.
 
-## 3. Create a dedicated persistent browser profile
+## 3. Provision the fresh desktop components
 
-Run as the selected satellite desktop user. Keep a separate profile from ordinary
-desktop browsing, use it on every launch, and never use incognito/guest mode.
+Use the pinned complete source and [automated installation procedure](automated-installation.md)
+for a new satellite. It installs these into the selected actual passwd home:
 
-```bash
-install -d -m 0700 "$HOME/.config/initiativetracker-satellite" \
-  "$HOME/.local/share/initiativetracker-satellite/chromium" \
-  "$HOME/.local/bin" "$HOME/.local/state/initiativetracker-satellite"
-cat > "$HOME/.config/initiativetracker-satellite/kiosk.conf" <<'CONF'
-HUB_BASE_URL='http://HUB_MDNS_NAME.local:5000'
-EXPECTED_HUB_ID='HUB_GUID'
-CONF
-chmod 0600 "$HOME/.config/initiativetracker-satellite/kiosk.conf"
-```
+- `~/.local/lib/initiativetracker-satellite/` — desktop UID/GID, 0700.
+- `kiosk.py` — 0755; `waiting.html` and original `colophon.png` — 0644, in that directory.
+- `~/.config/initiativetracker-satellite/kiosk.json` — 0600.
+- A quoted `/usr/bin/python3 -I` supervisor/config entry in the preserved Labwc autostart.
 
-Edit `kiosk.conf` to the verified URL/GUID above, without a trailing slash in the
-base URL. This local config is shell syntax, owned by the desktop user; never
-source a downloaded or untrusted config file. Keep it out of Git.
+See [exact artwork hashes, deployment paths and copy/rollback commands](branding.md).
+Do not substitute the old `~/.local/bin/initiativetracker-satellite-kiosk` shell
+wrapper or `kiosk.conf`; they do not implement the current loading experience.
+No bounded existing-satellite component upgrader is supplied; an older/mismatched
+supervisor, waiting page or autostart needs separate device-specific review.
 
-## 4. Install the fresh-satellite launcher template
+## 4. Preserve profiles and waiting behavior
 
-This template waits for hub health/ID, launches kiosk Chromium with the dedicated
-profile and restarts it if its process exits. It must be tested with the chosen
-OS/Chromium. It is not a browser-renderer watchdog or automatic update service.
-
-```bash
-cat > "$HOME/.local/bin/initiativetracker-satellite-kiosk" <<'SH'
-#!/usr/bin/env bash
-set -uo pipefail
-umask 077
-source "$HOME/.config/initiativetracker-satellite/kiosk.conf"
-profile="$HOME/.local/share/initiativetracker-satellite/chromium"
-while true; do
-  until curl --fail --silent --connect-timeout 2 --max-time 5 \
-      "$HUB_BASE_URL/system/health" >/dev/null && \
-    curl --fail --silent --connect-timeout 2 --max-time 5 \
-      "$HUB_BASE_URL/system/hub-info" | \
-      python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["hubId"] == sys.argv[1] else 1)' "$EXPECTED_HUB_ID"; do
-    sleep 5
-  done
-  chromium --kiosk --no-first-run --no-default-browser-check \
-    --user-data-dir="$profile" "$HUB_BASE_URL/display"
-  sleep 5
-done
-SH
-chmod 0755 "$HOME/.local/bin/initiativetracker-satellite-kiosk"
-bash -n "$HOME/.local/bin/initiativetracker-satellite-kiosk"
-```
-
-Expected: syntax check exits 0. From a terminal **in the graphical desktop**,
-launch it once and complete any first-run desktop/keyring prompts there. Do not
-launch it from a bare SSH session and expect the graphical session variables.
-
-Preserve the desktop's existing autostart entries. For a new Labwc user config,
-if `~/.config/labwc/autostart` is absent, first copy the system file if present to
-retain desktop defaults:
-
-```bash
-install -d -m 0700 "$HOME/.config/labwc"
-if [ ! -f "$HOME/.config/labwc/autostart" ]; then
-  if [ -f /etc/xdg/labwc/autostart ]; then
-    cp /etc/xdg/labwc/autostart "$HOME/.config/labwc/autostart"
-  else
-    touch "$HOME/.config/labwc/autostart"
-  fi
-fi
-if ! grep -Fq '/.local/bin/initiativetracker-satellite-kiosk' "$HOME/.config/labwc/autostart"; then
-  cat >> "$HOME/.config/labwc/autostart" <<'SH'
-
-"$HOME/.local/bin/initiativetracker-satellite-kiosk" >> "$HOME/.local/state/initiativetracker-satellite/kiosk.log" 2>&1 &
-SH
-fi
-bash -n "$HOME/.config/labwc/autostart"
-```
-
-Expected: one launcher entry; no syntax errors. Close the initial manual instance
-before testing a new desktop session so two launchers do not contend for one
-profile. Logs are local diagnostics; inspect/redact before sharing. This template
-does not implement log rotation, duplicate-instance locking or renderer recovery;
-those are installer/launcher hardening gaps to resolve for unattended distribution.
+The paired Chromium profile stays at
+`~/.local/share/initiativetracker-satellite/chromium`. The temporary waiting browser
+uses `~/.local/state/initiativetracker-satellite/waiting-chromium` and the local HTML;
+the supervisor closes it before launching `/display`. Missing/invalid TLS or hub
+identity never permits certificate-warning bypass, cached success or HTTP fallback.
+The supervisor has duplicate-instance locking and restarts an exited browser; it
+is not a renderer watchdog. Preserve `kiosk.json`, origin/ID, Labwc entry and both
+profiles during artwork-only maintenance. Neither app archives nor the three-script
+hub upgrader install these satellite files. Local loading art is distinct from
+optional Linux/Plymouth/firmware boot splash, which is not installed.
 
 ## 5. Pair and retain trust
 
@@ -155,6 +105,13 @@ the hub's authenticated **DM → Connected Devices** (`/dm/devices`), approve it
 and optionally give it a recognizable display name. Pairing requests expire
 after ten minutes; restart the request if needed. Expected: browser automatically
 opens the encounter display and DM lists it under Paired Displays.
+
+For N9 private portraits/campaign banners, use the separately commissioned trusted
+HTTPS origin and fresh **Secure authorization** for that display browser, approved
+by a securely authorized DM. Display pairing alone does not grant private media
+access. Keep the current origin/profile until a separately approved cutover;
+never change `hub_url` or certificate trust as part of copying artwork. See the
+[single 0.1.6 plan](../https/0.1.6-integration-release-plan.md).
 
 The durable paired flow issues a persistent display cookie with a five-year
 lifetime, linked to a registered device and the current game session. The server
@@ -169,9 +126,9 @@ session-token shortcut; it does not create a registered device ID. Use the
 `/display/pair` approval flow for managed satellites. Do not save the Setup token
 in autostart, bookmarks, screenshots or this documentation.
 
-Reboot the satellite after initial approval. Expected: desktop autologin,
+Only after separately approved fresh-device startup/reboot acceptance, test the next desktop session/boot. Expected: desktop autologin,
 fullscreen display and the same trusted device, without typing a pairing code.
-Verify locally with `pgrep -af initiativetracker-satellite-kiosk` and
+Verify locally with `pgrep -af initiativetracker-satellite/kiosk.py` and
 `pgrep -af chromium`; one launcher and the dedicated `--user-data-dir` should be
 present. Processes alone do not prove a working page: check the screen.
 

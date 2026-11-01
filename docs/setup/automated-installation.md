@@ -1,4 +1,4 @@
-# Automated fresh-device installation (draft)
+# Automated fresh-device installation (source-verified; hardware acceptance pending)
 
 [Setup index](../../SetupReadme.md) · [Manual hub](fresh-hub.md) · [Manual satellite](satellite.md)
 
@@ -7,10 +7,16 @@ For an **existing** hub, use only the separately reviewed
 after explicit device-specific approval. These fresh installers always refuse
 an existing installation. They are not an existing-hub upgrade mechanism.
 
-Use only on a **new, disposable commissioning device** after reviewing this PR.
-Do not run the installers on the owner's existing hub or satellite. This change
-depends on documentation PR #2 at `53e48642a95e528578274893e384df9526b13790`;
-neither PR is merged or approved for deployment by this work.
+Use only on a separately approved **new/disposable commissioning installation**.
+The deliberately pinned installer/artwork snapshot is merged N9 source
+`d9470510eba7af584d5c8f8ba05250d275979a62` (0.1.6). Master later merged the
+branding documentation at `0a7e1a7ac86480b012fcfc46702d1b2d396a3bff`; that
+does not change the source/artifact prechecks below. HTTPS tools and configuration
+use the independently reviewed source and [stages](../https/private443-deployment.md).
+Do not run these commands on the owner's working hub or satellite. Source merging
+is not installation, reboot, certificate or production-migration approval. A fresh
+hub installation starts the application and runs its automatic migrations; obtain
+those approvals before applying, using the [single 0.1.6 plan](../https/0.1.6-integration-release-plan.md).
 
 ## Prepare and inspect
 
@@ -31,8 +37,28 @@ silently renames or switches an active profile. See the
 [manual profile-ID guidance](networking.md#3-configure-saved-external-wi-fi).
 
 Transfer a reviewed source checkout including `scripts`, `hub-updater`,
-`hub-bootstrap`, and `pi-network` to the new device. The executable bits are
-tracked in Git; if your transfer lost them, run `chmod +x scripts/install*.sh`.
+`hub-bootstrap`, `pi-network`, and
+`InitiativeTracker.Web/wwwroot/images/colophon.png` to the new device.
+Verify the pin and artwork before inspection. Executable bits are tracked in Git; if your transfer lost them, run `chmod +x scripts/install*.sh`.
+From that source checkout, the artwork precheck is **Pi Bash, read-only**:
+
+```bash
+test "$(git rev-parse HEAD)" = d9470510eba7af584d5c8f8ba05250d275979a62 || {
+  printf '%s\n' 'STOP: source revision mismatch or Git failure; do not commission.' >&2
+  exit 1
+}
+printf '%s  %s\n' 17822fd1b2b7f54f3b084ce19b24d51f50f30e0495529ba8679586145def40b1 \
+  InitiativeTracker.Web/wwwroot/images/colophon.png | sha256sum --check - || {
+  printf '%s\n' 'STOP: missing or incorrect artwork; do not commission.' >&2
+  exit 1
+}
+```
+
+An exported checkout without `.git` must instead have its pinned source/archive
+receipt verified on the workstation; do not invent a matching HEAD. The installer
+copies the PNG conditionally if present, so stop on a stripped/missing asset.
+See [branding paths/modes and existing-device artwork maintenance](branding.md).
+
 Run without sudo to preview; inspection does not write files, ask for passwords,
 install packages, change services, or probe a live hub:
 
@@ -60,11 +86,11 @@ and checks the actual publish metadata for the established **self-contained
 ```bash
 ./scripts/install-hub.sh --dry-run \
   --manifest "$HOME/it-release-transfer/release-manifest.json" \
-  --package "$HOME/it-release-transfer/InitiativeTracker-0.1.5-linux-arm64.tar.gz"
+  --package "$HOME/it-release-transfer/InitiativeTracker-0.1.6-linux-arm64.tar.gz"
 
 sudo ./scripts/install-hub.sh --desktop-user YOUR_DESKTOP_USER \
   --manifest "$HOME/it-release-transfer/release-manifest.json" \
-  --package "$HOME/it-release-transfer/InitiativeTracker-0.1.5-linux-arm64.tar.gz"
+  --package "$HOME/it-release-transfer/InitiativeTracker-0.1.6-linux-arm64.tar.gz"
 
 sudo ./scripts/install-satellite.sh --desktop-user YOUR_DESKTOP_USER
 # Or sudo ./scripts/install.sh to select the role interactively.
@@ -109,6 +135,17 @@ other entries. It also backs up hostname/hosts before hostname operations.
 New service/config files are exclusive creations. Root-owned system ancestry
 and an installer lock protect managed paths. A receipt records installed paths
 and backup location without passwords or pairing material.
+
+## Local loading artwork
+
+The selected account receives the original Colophon PNG beside its local kiosk
+components, owner desktop UID/primary GID, file mode 0644. The hub directory remains
+0755 because updater provisioning creates it first; satellite directory is 0700.
+`kiosk.py` is 0755; satellite `waiting.html` is 0644. The hub uses the PNG in its
+Zenity health-wait dialog; satellite HTML references the adjacent PNG and uses a
+separate waiting Chromium profile. These are graphical-session loading assets,
+not firmware/Linux boot splash. Exact paths, supported hashes and limitations are
+in the [single branding guide](branding.md). Do not recursively change home modes.
 
 ## Hub behavior and update compatibility
 
