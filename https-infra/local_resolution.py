@@ -15,7 +15,7 @@ import foundation as f
 def hotspot_dns(host, addresses, assigned):
     # NetworkManager owns the shared instance, interfaces, upstreams and DHCP.
     # Importing the hub's /etc/hosts would expose its physical-screen loopback name.
-    return 'no-hosts\n' + f.render_dns(host, addresses, assigned)
+    return f.render_dns(host, addresses, assigned)
 
 
 def client_hosts(host, addresses):

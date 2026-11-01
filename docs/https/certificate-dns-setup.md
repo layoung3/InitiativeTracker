@@ -66,6 +66,11 @@ Addresses must be explicit and currently assigned to the hub. Output contains an
 
 The tool's preflight runs on the hub; it does not prove a phone uses that same resolver. Test resolution, reachability and browser trust from each target network/client, including Pi Chromium, with internet unavailable. Private DNS/DoH, VPNs, cached DNS and DNS-rebinding protection can bypass/refuse local answers. Do not globally disable client protections or disable router rebinding protection. Use a narrow administrator-reviewed resolver exception if appropriate, or mark the client/network unsupported and use the managed hotspot path. A local resolver cannot override a client's chosen remote DoH provider. Never work around failures by accepting an IP certificate mismatch.
 
+Both DNS-template entry points now include `no-hosts` to exclude the hub's local
+physical-screen loopback override. Review the effective configuration for explicit
+extra-host imports and the impact on other shared connections before installation;
+see [the scoped resolver guide](private-name-resolution.md#hotspot-exact-dns-and-the-loopback-leakage-boundary).
+
 ## Offline and failure behavior
 
 | Condition | Behavior and owner action |

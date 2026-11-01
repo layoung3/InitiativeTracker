@@ -220,8 +220,9 @@ def physical_resolution_preflight(host, resolver=socket.getaddrinfo):
 
 def render_dns(host, addresses, assigned):
     addresses = resolution(host, addresses, assigned)
-    # host-record is exact; local prevents upstream leakage of this private runtime name.
-    return '\n'.join([f'local=/{host}/', f'host-record={host},' + ','.join(sorted(addresses)), ''])
+    # Never import the hub-only physical loopback mapping from /etc/hosts.
+    # Review effective extra-host imports separately. local prevents upstream leakage.
+    return '\n'.join(['no-hosts', f'local=/{host}/', f'host-record={host},' + ','.join(sorted(addresses)), ''])
 
 def assigned_addresses():
     values = json.loads(run(['/usr/sbin/ip', '-j', 'address', 'show']).decode())
