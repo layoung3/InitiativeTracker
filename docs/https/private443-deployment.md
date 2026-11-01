@@ -50,6 +50,8 @@ test -d /run/systemd/system
 systemctl is-active initiativetracker.service
 systemctl is-enabled certbot.timer certbot.service || true
 systemctl is-active certbot.timer certbot.service || true
+systemctl is-enabled nftables.service || true
+systemctl is-active nftables.service || true
 dpkg-query -W -f='${Package}\t${Version}\t${db:Status-Status}\n' \
   certbot python3-certbot python3-certbot-dns-cloudflare python3-acme python3-cloudflare || true
 ip -j address show
@@ -153,11 +155,27 @@ all ambient config. Package rollback is an explicit reviewed APT removal/version
 transaction with state retained; never purge CA state automatically. Restore only
 the previously recorded mask/enablement states, not a blanket `unmask --now`.
 
+Debian nftables `1.1.3-1` uses `--no-enable --no-start` for a fresh installation,
+but permits restart after upgrade ([packaging source](https://sources.debian.org/src/nftables/1.1.3-1/debian/rules/)).
+Inspect an existing nftables service and the proposed transaction first: a restart
+of an already active generic firewall service may reload/flush unrelated rules.
+Hold for a separate maintenance plan if APT would upgrade/restart it. Do not
+enable, stop, mask or replace the existing generic nftables service/config as part
+of this foundation; its own unit owns only the dedicated browser table.
+
 ## Stage 3: private issuer directories, token entry and approval flags
 
 After separate private-file approval (still no application or certificate change):
 
 ```bash
+if test -e /var/lib/initiativetracker-issuer || test -L /var/lib/initiativetracker-issuer; then
+  echo 'Existing issuer state requires review; do not overwrite or recreate it.'
+  exit 1
+fi
+if test -e /var/lib/initiativetracker-issuer-staging || test -L /var/lib/initiativetracker-issuer-staging; then
+  echo 'Existing staging state requires review; retain it for an approved retry.'
+  exit 1
+fi
 sudo install -d -o root -g root -m 0700 /var/lib/initiativetracker-issuer
 sudo install -d -o root -g root -m 0700 /var/lib/initiativetracker-issuer-staging
 # Real terminal, hidden input; do not substitute echo, argv, environment or a pipe.

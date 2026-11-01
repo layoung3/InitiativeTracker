@@ -106,6 +106,7 @@ The disabled-by-default [shared HTTPS foundation](docs/https/architecture-securi
 The owner-confirmed Cloudflare/`colophon.stream` setup is being prepared in
 [private port-443 deployment](docs/https/private443-deployment.md), with a separate
 [XB8/client, hotspot and physical-screen resolution guide](docs/https/private-name-resolution.md).
+Review [443 software evidence and physical acceptance limits](docs/https/private443-validation.md).
 The normal target is `https://hub-84eaee7c.colophon.stream`. The XB8 remains
 unchanged: external-network support requires a verified client-specific resolver
 path; hotspot DNS and hub-only loopback mapping have different scopes. Independent transport

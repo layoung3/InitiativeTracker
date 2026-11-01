@@ -6,6 +6,9 @@ the merged PR #6 branch, either Pi, DNS, packages, certificates or live services
 Canonical SetupReadme/docs/setup branding work belongs to the concurrent task;
 this task initially owns HTTPS code/tests, docs/https and its new deployment guide.
 
+See [validation and remaining commissioning boundaries](private443-validation.md)
+for exact test scope; cloud fixtures do not certify either Pi.
+
 ## Confirmed owner inputs
 
 - Domain `colophon.stream`, Cloudflare DNS. The owner already holds the API token;
