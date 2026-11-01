@@ -75,12 +75,12 @@ for(const [width,height]of sizes)test(`satellite layout ${width}x${height}: empt
     try{
         await page.route('http://satellite.test/**',async route=>{
             const url=new URL(route.request().url());
-            if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div class="app-shell"><main class="app-main"><div class="initiative-display"><header class="initiative-header"><div id="roundDisplay" class="initiative-header-status"></div><div class="initiative-title">Initiative</div><div class="initiative-header-actions"><div id="turnDisplay" class="initiative-header-status initiative-header-status--end"></div><button class="display-theme-button" aria-label="Fullscreen">⛶</button><button class="display-theme-button" aria-label="Appearance">◐</button></div></header><main id="initiativeList" class="initiative-list" tabindex="0"></main><div id="displayConnectionStatus" class="display-connection-status"><span id="displayConnectionText">Connecting</span></div></div></main></div>`});
+            if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div class="app-shell"><main class="app-main"><div class="initiative-display" id="initiativeDisplay" data-satellite-readability="true"><header class="initiative-header"><div id="roundDisplay" class="initiative-header-status"></div><div class="initiative-title">Initiative</div><div class="initiative-header-actions"><div id="turnDisplay" class="initiative-header-status initiative-header-status--end"></div><button class="display-theme-button" aria-label="Fullscreen">⛶</button><button class="display-theme-button" aria-label="Appearance">◐</button></div></header><main id="initiativeList" class="initiative-list" tabindex="0"></main><div id="displayConnectionStatus" class="display-connection-status"><span id="displayConnectionText">Connecting</span></div></div></main></div>`});
             if(url.pathname==='/images/default-character.svg')return route.fulfill({contentType:'image/svg+xml',body:fs.readFileSync(path.join(assets,url.pathname))});
             return route.abort();
         });
         await page.goto('http://satellite.test/');
-        for(const file of ['lib/bootstrap/dist/css/bootstrap.min.css','css/site.css','css/branding.css','css/condition-badges.css','css/initiative-display.css'])await page.addStyleTag({content:fs.readFileSync(path.join(assets,file),'utf8').replace(/^\uFEFF/,'')});
+        for(const file of ['lib/bootstrap/dist/css/bootstrap.min.css','css/site.css','css/branding.css','css/condition-badges.css','css/initiative-display.css','css/satellite-display.css'])await page.addStyleTag({content:fs.readFileSync(path.join(assets,file),'utf8').replace(/^\uFEFF/,'')});
         await page.evaluate(()=>{window.events={};window.signalR={HubConnectionState:{Disconnected:'Disconnected'},HubConnectionBuilder:class{withUrl(){return this;}withAutomaticReconnect(){return this;}build(){return{state:'Disconnected',start:async()=>{},on:(n,c)=>window.events[n]=c,onclose(){},onreconnecting(){},onreconnected(){},invoke:async n=>n==='GetDisplayTheme'?'dark':{combatants:[],isStarted:false}};}}};});
         await page.addScriptTag({content:fs.readFileSync(path.join(assets,'js/initiative-display.js'),'utf8')});
         await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
@@ -155,6 +155,41 @@ test('actual paired satellite: initial Razor, privacy, SignalR turns, touch appe
         await display.waitForFunction(()=>document.querySelectorAll('.initiative-row').length===24);
         assert.equal(await display.locator('.initiative-row').filter({hasText:'Alexandria'}).locator('.combatant-hp').count(),0,'hidden HP and temporary HP stay absent');
         await post('StartCombat');await display.locator('[aria-current=true]').waitFor();
+        // The hub/DM role must keep its existing portrait display and management UI.
+        const hubContext=await browser.newContext({storageState:await dm.context().storageState(),reducedMotion:'reduce'});
+        try{
+            for(const [width,height]of [[480,800],[600,1024]]){
+                const hub=await hubContext.newPage();await hub.setViewportSize({width,height});
+                await hub.goto(base+'/display');await hub.locator('.display-connection-status.is-connected').waitFor({state:'attached'});
+                await hub.waitForFunction(()=>document.querySelectorAll('.combatant-name-heading').length===24);
+                assert.equal(await hub.locator('link[href*="satellite-display"]').count(),0,'hub/DM does not load satellite styling');
+                assert.equal(await hub.locator('#initiativeDisplay').getAttribute('data-satellite-readability'),'false');
+                assert.equal(await hub.locator('.combatant-initiative').count(),0,'hub retains original turn-indicator design');
+                assert.equal(await hub.locator('.combatant-name-text').first().evaluate(el=>getComputedStyle(el).whiteSpace),'nowrap');
+                await hub.locator('img.tracker-display-portrait').evaluateAll(images=>Promise.all(images.map(image=>image.decode())));
+                await screenshot(hub,`hub-${width}x${height}-display`);
+                if(process.env.SATELLITE_BASELINE_DIRECTORY){
+                    const baseline=await hubContext.newPage();await baseline.setViewportSize({width,height});
+                    await baseline.route(/\/(css|js)\/initiative-display[^/]*\.(css|js)(\?|$)/,route=>{
+                        const css=new URL(route.request().url()).pathname.endsWith('.css');
+                        return route.fulfill({contentType:css?'text/css':'application/javascript',body:fs.readFileSync(path.join(process.env.SATELLITE_BASELINE_DIRECTORY,css?'initiative-display.css':'initiative-display.js'))});
+                    });
+                    await baseline.goto(base+'/display');await baseline.locator('.display-connection-status.is-connected').waitFor({state:'attached'});
+                    await baseline.waitForFunction(()=>document.querySelectorAll('.combatant-name-heading').length===24);
+                    await baseline.locator('img.tracker-display-portrait').evaluateAll(images=>Promise.all(images.map(image=>image.decode())));
+                    // PNG bytes compare identical pixels and bounds on the same browser.
+                    assert.deepEqual(await hub.screenshot(),await baseline.screenshot(),'portrait hub display pixels match starting master');
+                    await baseline.close();
+                }
+                for(const route of ['/dm','/setup']){
+                    await hub.goto(base+route);assert(await hub.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+                    assert.equal(await hub.locator('link[href*="satellite-display"]').count(),0);
+                    await screenshot(hub,`hub-${width}x${height}-${route.slice(1)}`);
+                }
+                await hub.close();
+            }
+        }finally{await hubContext.close();}
+
         // One initial and one live rendering of the same state; scripts disabled on initial page.
         const initial=await browser.newContext({storageState:await context.storageState(),javaScriptEnabled:false,viewport:{width:800,height:480}});
         try{
@@ -180,6 +215,7 @@ test('actual paired satellite: initial Razor, privacy, SignalR turns, touch appe
                         const css=new URL(route.request().url()).pathname.endsWith('.css');
                         return route.fulfill({contentType:css?'text/css':'application/javascript',body:fs.readFileSync(path.join(process.env.SATELLITE_BASELINE_DIRECTORY,css?'initiative-display.css':'initiative-display.js'))});
                     });
+                    await before.route(/\/css\/satellite-display[^/]*\.css(\?|$)/,route=>route.fulfill({contentType:'text/css',body:''}));
                     await before.goto(base+'/display');await before.locator('.display-connection-status.is-connected').waitFor({state:'attached'});
                     await before.waitForFunction(()=>document.querySelectorAll('.initiative-row').length===24);
                     await before.locator('img.tracker-display-portrait').evaluateAll(images=>Promise.all(images.map(image=>image.decode())));

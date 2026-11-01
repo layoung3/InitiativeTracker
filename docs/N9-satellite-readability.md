@@ -1,7 +1,12 @@
 # Satellite display readability for 0.1.6
 
-The `/display` page now uses a compact application layout at widths below 768 CSS
-pixels, and on short landscape viewports up to 1100 wide and 650 high. The second
+The primary target is the roughly 7-inch satellite in **portrait** (480×800 and
+600×1024 representative CSS viewports). The hub is also portrait and its current
+DM/management view is preserved.
+
+Authenticated **Display-role** sessions on `/display` now use a compact layout
+at widths below 768 CSS pixels, with landscape regression coverage on short
+viewports up to 1100 wide and 650 high. The second
 rule includes assumed 7-inch panels at 800×480 and 1024×600. These are test
 viewports, not a claim about the installed panel's resolution, scaling or usable
 browser area. No kiosk command, zoom, resolution, startup file or Pi was changed.
@@ -27,7 +32,16 @@ browser area. No kiosk command, zoom, resolution, startup file or Pi was changed
   information as live rows. SignalR, pairing, public visibility projections,
   portrait reuse, theme authority and gameplay state are unchanged.
 
-Desktop pages retain their header, spacing, typography, HP placement, themes and
+DM-role `/display`, `/dm`, `/setup` and other hub management pages never load the
+new satellite stylesheet. The original `initiative-display.css` is byte-for-byte
+unchanged from starting master. The existing role is the boundary: there is no
+physical-device identity for a hub screen versus a satellite screen. A hub browser
+paired as **Display** receives the same responsive public
+view as a satellite of the same viewport. This cannot be claimed as physical
+device isolation; verify the actual hub session role during separately approved
+physical acceptance. No new flags, cookies or kiosk settings were introduced.
+
+Larger Display-role pages retain their header, spacing, typography, HP placement, themes and
 one-line name ellipsis. Initiative values and the chevron are the intentional
 additions to that existing design.
 
@@ -63,7 +77,8 @@ for another cumulative run; the existing media tests expect a fresh encounter.
 Without `N9_APP_URL`, the six synthetic layout cases run and the real application
 case explicitly skips. CI supplies the URL, so that case must pass there.
 
-The matrix is 800×480, 1024×600, 480×800, 600×1024, 1280×800 and 1920×1080.
+The primary portrait matrix is 480×800 and 600×1024. Landscape regression sizes
+are 800×480 and 1024×600; desktop sizes are 1280×800 and 1920×1080.
 Assertions cover document/list overflow; each wrapped text line's bounds; text
 size and primary contrast; name/portrait/initiative/HP/condition separation;
 empty, 3-, 8- and 24-entry orders; long spaced names and 72-character unbroken
@@ -78,7 +93,10 @@ For before/after screenshots, export `initiative-display.css` and
 `SATELLITE_BASELINE_DIRECTORY` to it. The suite replays those two assets against
 exactly the same disposable encounter. This is a rendering comparison, not an
 execution or deployment of an old application. Desktop comparisons also assert
-unchanged header bounds and name font sizes. The normal CI suite tests the
+unchanged header bounds and name font sizes. Portrait hub/DM captures at 480×800
+and 600×1024 also compare pixel-for-pixel with starting-master assets, and both
+`/dm` and `/setup` are checked for overflow and absence of satellite styles.
+The normal CI suite tests the
 candidate alone, without relying on historical assets.
 
 ## Visual evidence
@@ -104,7 +122,8 @@ On a separately approved physical 7-inch satellite, verify the real CSS viewport
 and device pixel ratio, the chosen portrait/landscape orientation, text at the
 normal table viewing distance, panel brightness/glare and theme contrast,
 portrait clarity, touch scrolling and the two 44 px controls, fullscreen and
-appearance-panel behavior, and active-turn recognition during rapid real updates.
+appearance-panel behavior, and active-turn recognition during rapid real updates. Confirm the hub browser
+uses its expected DM/management session rather than a Display-role session.
 No browser zoom or resolution change is required by this work.
 
 Exceptionally long names and many condition badges produce taller rows; an

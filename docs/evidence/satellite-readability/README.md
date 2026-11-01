@@ -7,12 +7,19 @@ accessed. The loopback Hub Setup button is existing fixture-only local recovery 
 
 | Viewport | Before | Candidate |
 | --- | --- | --- |
+| 480×800 portrait (primary) | — | [After](actual-480x800-order.png) |
+| 600×1024 portrait (primary) | — | [After](actual-600x1024-order.png) |
 | 800×480 landscape | [Before](before-800x480-order.png) | [After](actual-800x480-order.png) |
 | 1024×600 landscape | — | [After](actual-1024x600-order.png) |
-| 480×800 portrait | — | [After](actual-480x800-order.png) |
-| 600×1024 portrait | — | [After](actual-600x1024-order.png) |
 | 1280×800 desktop | [Before](before-1280x800-order.png) | [After](actual-1280x800-order.png) |
 | 1920×1080 desktop | — | [After](actual-1920x1080-order.png) |
+
+Portrait hub/DM non-regression: [480×800 display](hub-480x800-display.png),
+[600×1024 display](hub-600x1024-display.png), [480×800 DM](hub-480x800-dm.png),
+[600×1024 DM](hub-600x1024-dm.png), [480×800 setup](hub-480x800-setup.png),
+[600×1024 setup](hub-600x1024-setup.png). The Display-role view is the satellite
+style boundary; a hub paired as Display would share it. DM display PNG bytes
+match the replayed master assets in the same browser at both portrait sizes.
 
 Additional captures: [empty encounter](actual-800x480-empty.png),
 [active turn 20](actual-800x480-active-20.png),

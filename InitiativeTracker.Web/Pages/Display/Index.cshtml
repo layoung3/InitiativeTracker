@@ -3,6 +3,7 @@
 
 @{
     ViewData["Title"] = "Initiative";
+    var satelliteReadability = User.IsInRole("Display");
 }
 
 @section Styles {
@@ -13,10 +14,15 @@
     <link rel="stylesheet"
           href="~/css/initiative-display.css"
           asp-append-version="true" />
+    @if (satelliteReadability)
+    {
+        <link rel="stylesheet" href="~/css/satellite-display.css" asp-append-version="true" />
+    }
 }
 
 <div class="initiative-display"
-     id="initiativeDisplay">
+     id="initiativeDisplay"
+     data-satellite-readability="@satelliteReadability.ToString().ToLowerInvariant()">
 
     <template id="displayBrandTemplate"><partial name="_Brand" /></template>
 
@@ -152,35 +158,49 @@
                             @(combatant.IsCurrent ? "is-current" : "")
                             @(!combatant.IsActive ? "is-inactive" : "")"
                      data-combatant-id="@combatant.Id"
-                     aria-current="@(combatant.IsCurrent ? "true" : null)">
+                     aria-current="@(satelliteReadability && combatant.IsCurrent ? "true" : null)">
 
-                    <div class="turn-indicator"
-                         aria-label="@(combatant.IsCurrent ? "Current turn. " : "")Initiative @combatant.Initiative">
-                        <span class="current-turn-marker" aria-hidden="true">@(combatant.IsCurrent ? "›" : "")</span>
-                        <strong class="combatant-initiative">@combatant.Initiative</strong>
-                        <span class="combatant-initiative-label">Init</span>
-                    </div>
-
-                    <div class="combatant-name">
-                        <img src="@combatant.PortraitUrl" class="tracker-portrait tracker-portrait--combat tracker-display-portrait" data-tracker-media data-portrait-resource="@combatant.PortraitUrl" width="48" height="48" alt="Portrait of @combatant.Name" />
-                        <div class="combatant-name-heading">
-                            <div class="combatant-name-text">@combatant.Name</div>
-                            @if (combatant.ExhaustionLevel > 0)
-                            {
-                                <span class="condition-badge">Exhaustion @combatant.ExhaustionLevel</span>
-                            }
+                    @if (satelliteReadability)
+                    {
+                        <div class="turn-indicator"
+                             aria-label="@(combatant.IsCurrent ? "Current turn. " : "")Initiative @combatant.Initiative">
+                            <span class="current-turn-marker" aria-hidden="true">@(combatant.IsCurrent ? "›" : "")</span>
+                            <strong class="combatant-initiative">@combatant.Initiative</strong>
+                            <span class="combatant-initiative-label">Init</span>
                         </div>
-                        @if (combatant.Conditions.Count > 0)
-                        {
-                            <div class="condition-badges">
-                                @foreach (var condition in combatant.Conditions)
+
+                        <div class="combatant-name">
+                            <img src="@combatant.PortraitUrl" class="tracker-portrait tracker-portrait--combat tracker-display-portrait" data-tracker-media data-portrait-resource="@combatant.PortraitUrl" width="48" height="48" alt="Portrait of @combatant.Name" />
+                            <div class="combatant-name-heading">
+                                <div class="combatant-name-text">@combatant.Name</div>
+                                @if (combatant.ExhaustionLevel > 0)
                                 {
-                                    <span class="condition-badge condition-@condition.StyleKey">@condition.Name</span>
+                                    <span class="condition-badge">Exhaustion @combatant.ExhaustionLevel</span>
                                 }
                             </div>
-                        }
-                    </div>
+                            @if (combatant.Conditions.Count > 0)
+                            {
+                                <div class="condition-badges">
+                                    @foreach (var condition in combatant.Conditions)
+                                    {
+                                        <span class="condition-badge condition-@condition.StyleKey">@condition.Name</span>
+                                    }
+                                </div>
+                            }
+                        </div>
 
+
+                    }
+                    else
+                    {
+                        <div class="turn-indicator" aria-hidden="true">
+                            @if (combatant.IsCurrent) { <span>▶</span> }
+                        </div>
+                        <div class="combatant-name">
+                            <img src="@combatant.PortraitUrl" class="tracker-portrait tracker-portrait--combat tracker-display-portrait" data-tracker-media data-portrait-resource="@combatant.PortraitUrl" width="48" height="48" alt="Portrait of @combatant.Name" />
+                            <div class="combatant-name-text">@combatant.Name</div>
+                        </div>
+                    }
 
                     @if (combatant.CurrentHp.HasValue ||
                          combatant.MaxHp.HasValue)
