@@ -72,6 +72,34 @@ public sealed class N7WebTests : IDisposable
         client.PostAsync(page, new FormUrlEncodedContent(values.Select(v => new KeyValuePair<string, string>(v.Key, v.Value)).Append(new("__RequestVerificationToken", token))));
 
     [Fact]
+    public async Task InitialDisplayIncludesInitiativeExhaustionConditionsAndPublicProjection()
+    {
+        var id = Character(Guid.NewGuid());
+        State.AddPlayerCharacter(id);
+        var combatant = Assert.Single(State.CurrentEncounter.Combatants);
+        State.AddCombatantCondition(combatant.Id, "Poisoned", false);
+        State.AddCombatants("Secret fixture NPC", -20, 44, 55, 1, true, true);
+        State.AddCombatants("Visible private HP fixture", -10, 33, 66, 1, false, true);
+        State.StartCombat();
+        SignIn("DM");
+        var response = await client.GetAsync("/display");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("combatant-initiative", html);
+        Assert.Contains("Current turn. Initiative", html);
+        Assert.Contains("aria-current=\"true\"", html);
+        Assert.Contains("combatant-name-heading", html);
+        Assert.Contains("Exhaustion 3", html);
+        Assert.Contains("condition-poisoned", html);
+        Assert.DoesNotContain("Secret fixture NPC", html);
+        var rows = Regex.Matches(html, "data-combatant-id=\"([^\"]+)\"");
+        Assert.Equal(2, rows.Count);
+        // Only the player-visible HP block is emitted; NPC HP remains projected out.
+        Assert.Single(Regex.Matches(html, "class=\"combatant-hp\""));
+        Assert.Single(Regex.Matches(html, "class=\"combatant-temp-hp\""));
+    }
+
+    [Fact]
     public void InitialVisibilityAndUndoPreservePublicFiltering()
     {
         State.AddCombatants("Secret", 15, 9, 12, 2, true, true);

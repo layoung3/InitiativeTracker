@@ -619,10 +619,19 @@ document.addEventListener("DOMContentLoaded", () => {
             "aria-hidden",
             "true");
 
-        indicator.textContent =
-            combatant.isCurrent
-                ? "▶"
-                : "";
+        const marker = document.createElement("span");
+        marker.className = "current-turn-marker";
+        marker.textContent = combatant.isCurrent ? "›" : "";
+        const initiative = document.createElement("strong");
+        initiative.className = "combatant-initiative";
+        initiative.textContent = combatant.initiative;
+        const initiativeLabel = document.createElement("span");
+        initiativeLabel.className = "combatant-initiative-label";
+        initiativeLabel.textContent = "Init";
+        indicator.append(marker, initiative, initiativeLabel);
+        indicator.removeAttribute("aria-hidden");
+        indicator.setAttribute("aria-label", `${combatant.isCurrent ? "Current turn. " : ""}Initiative ${combatant.initiative}`);
+        if (combatant.isCurrent) row.setAttribute("aria-current", "true");
 
 
         const name =

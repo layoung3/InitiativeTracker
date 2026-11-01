@@ -151,27 +151,34 @@
                 <div class="initiative-row
                             @(combatant.IsCurrent ? "is-current" : "")
                             @(!combatant.IsActive ? "is-inactive" : "")"
-                     data-combatant-id="@combatant.Id">
+                     data-combatant-id="@combatant.Id"
+                     aria-current="@(combatant.IsCurrent ? "true" : null)">
 
                     <div class="turn-indicator"
-                         aria-hidden="true">
-
-                        @if (combatant.IsCurrent)
-                        {
-                            <span>▶</span>
-                        }
-
+                         aria-label="@(combatant.IsCurrent ? "Current turn. " : "")Initiative @combatant.Initiative">
+                        <span class="current-turn-marker" aria-hidden="true">@(combatant.IsCurrent ? "›" : "")</span>
+                        <strong class="combatant-initiative">@combatant.Initiative</strong>
+                        <span class="combatant-initiative-label">Init</span>
                     </div>
 
-
                     <div class="combatant-name">
-
                         <img src="@combatant.PortraitUrl" class="tracker-portrait tracker-portrait--combat tracker-display-portrait" data-tracker-media data-portrait-resource="@combatant.PortraitUrl" width="48" height="48" alt="Portrait of @combatant.Name" />
-
-                        <div class="combatant-name-text">
-                            @combatant.Name
+                        <div class="combatant-name-heading">
+                            <div class="combatant-name-text">@combatant.Name</div>
+                            @if (combatant.ExhaustionLevel > 0)
+                            {
+                                <span class="condition-badge">Exhaustion @combatant.ExhaustionLevel</span>
+                            }
                         </div>
-
+                        @if (combatant.Conditions.Count > 0)
+                        {
+                            <div class="condition-badges">
+                                @foreach (var condition in combatant.Conditions)
+                                {
+                                    <span class="condition-badge condition-@condition.StyleKey">@condition.Name</span>
+                                }
+                            </div>
+                        }
                     </div>
 
 
