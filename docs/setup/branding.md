@@ -375,7 +375,8 @@ This is **application/desktop loading artwork after Linux and the graphical sess
 
 The exact embedded command is exercised by
 `scripts/tests/test_n9_branding_docs.py` in disposable fake homes/backups only:
-21 tests cover both roles, direct/supervised hubs, other usernames and spaces,
+21 cases run as an ordinary UID and again as root against fake homes only, covering
+both roles, direct/supervised hubs, other usernames and spaces,
 existing/absent art, metadata restoration, later edits, interrupted replacement,
 symlink/hardlink/ACL/xattr refusals, pinned archive extraction and local links.
 The documentation CI additionally parses/executes the exact PowerShell preparation

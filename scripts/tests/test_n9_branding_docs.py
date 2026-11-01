@@ -31,7 +31,9 @@ class BrandingDocumentationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='n9-brand-docs-')
         self.base = Path(self.temp.name)
         self.api = procedure()
-        self.desktop = SimpleNamespace(pw_name='table_keeper', pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.base/'a different desktop home'))
+        fixture_uid = 1000 if os.geteuid() == 0 else os.getuid()
+        fixture_gid = 1000 if os.geteuid() == 0 else os.getgid()
+        self.desktop = SimpleNamespace(pw_name='table_keeper', pw_uid=fixture_uid, pw_gid=fixture_gid, pw_dir=str(self.base/'a different desktop home'))
         self.home = Path(self.desktop.pw_dir)
         self.home.mkdir(mode=0o700)
         self.backups = self.base/'private backups'
@@ -56,6 +58,9 @@ class BrandingDocumentationTests(unittest.TestCase):
             self.target.write_bytes(b'previous customer artwork');self.target.chmod(0o600);os.utime(self.target,ns=(1650000000123456789,1650000000987654321))
         profile=self.home/('.config/initiativetracker-hub/chromium' if role=='hub' else '.local/share/initiativetracker-satellite/chromium')
         profile.mkdir(parents=True,exist_ok=True);(profile/'Cookies').write_bytes(b'pairing-fixture-do-not-touch')
+        if os.geteuid() == 0:
+            for path in [self.home,*self.home.rglob('*')]:
+                if path != self.target: os.chown(path,self.desktop.pw_uid,self.desktop.pw_gid)
         self.protected={p.relative_to(self.home):p.read_bytes() for p in self.home.rglob('*') if p.is_file() and p != self.target}
         self.directory_mode=stat.S_IMODE(local.stat().st_mode)
     def run_action(self,action,backup='-'):
@@ -86,7 +91,7 @@ class BrandingDocumentationTests(unittest.TestCase):
         return result,output
     def test_exact_pinned_git_archive_extracts_original_bytes(self):
         archive=self.base/'git source archive.tar'
-        subprocess.run(['git','archive','--format=tar','--output='+str(archive),self.api['PIN'],'InitiativeTracker.Web/wwwroot/images/colophon.png'],cwd=ROOT,check=True,capture_output=True)
+        subprocess.run(['git','-c','safe.directory='+str(ROOT),'archive','--format=tar','--output='+str(archive),self.api['PIN'],'InitiativeTracker.Web/wwwroot/images/colophon.png'],cwd=ROOT,check=True,capture_output=True)
         result,output=self.extract(archive);self.assertEqual(0,result.returncode,result.stderr)
         self.assertEqual(self.source.read_bytes(),output.read_bytes());self.assertEqual(0o644,stat.S_IMODE(output.stat().st_mode))
     def test_unexpected_duplicate_link_and_wrong_image_archives_never_extract(self):

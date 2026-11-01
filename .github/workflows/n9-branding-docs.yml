@@ -20,6 +20,8 @@ jobs:
           persist-credentials: false
       - name: Execute exact documented Python/Bash logic in fake homes only
         run: python3 -m unittest discover -s scripts/tests -p test_n9_branding_docs.py -v
+      - name: Repeat ownership and restoration checks as root in fake homes only
+        run: sudo python3 -m unittest discover -s scripts/tests -p test_n9_branding_docs.py -v
   windows-powershell-transfer:
     runs-on: windows-latest
     steps:
@@ -48,8 +50,11 @@ jobs:
             $global:LASTEXITCODE = $LASTEXITCODE
           }
           function scp {
-            if ($args.Count -ne 3 -or $args[0] -ne '--' -or !(Test-Path -LiteralPath $args[1] -PathType Leaf)) { throw 'Unexpected SCP arguments' }
-            if ($args[2] -ne 'YOUR_SSH_ACCOUNT@APPROVED_PI_ADDRESS:n9-branding-source.tar') { throw 'Unexpected transfer target' }
+            # PowerShell consumes -- for a function mock; native scp receives it.
+            $transferArgs = @($args)
+            if ($transferArgs.Count -eq 3 -and $transferArgs[0] -eq '--') { $transferArgs = @($transferArgs[1..2]) }
+            if ($transferArgs.Count -ne 2 -or !(Test-Path -LiteralPath $transferArgs[0] -PathType Leaf)) { throw 'Unexpected SCP arguments' }
+            if ($transferArgs[1] -ne 'YOUR_SSH_ACCOUNT@APPROVED_PI_ADDRESS:n9-branding-source.tar') { throw 'Unexpected transfer target' }
             $script:transferCount += 1
             $global:LASTEXITCODE = 0
           }
