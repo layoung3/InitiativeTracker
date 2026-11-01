@@ -43,23 +43,33 @@ class LocalResolutionTests(unittest.TestCase):
         identity = MagicMock()
         result = r.client_preflight(self.host,self.identity,['192.168.1.7'],_resolver=resolver,_identity=identity)
         self.assertTrue(result['ready']);self.assertTrue(result['browser_verification_required'])
-        identity.assert_called_once_with(self.host,self.identity)
+        identity.assert_called_once_with(self.host,self.identity,{'192.168.1.7'})
         identity.side_effect = r.f.Rejected('wrong full identity')
         self.assertFalse(r.client_preflight(self.host,self.identity,['192.168.1.7'],_resolver=resolver,_identity=identity)['ready'])
 
     def test_canonical_public_tls_full_identity_no_redirect_or_certificate_bypass(self):
         connection = MagicMock();factory = MagicMock(return_value=connection)
+        connection.sock.getpeername.return_value = ('192.168.1.7',443)
         response = connection.getresponse.return_value
         response.status = 200;response.getheader.return_value = 'application/json; charset=utf-8'
         response.read.return_value = json.dumps({'hubId':self.identity,'protocolVersion':1}).encode()
-        r.https_identity(self.host,self.identity,_connection=factory)
+        r.https_identity(self.host,self.identity,['192.168.1.7'],_connection=factory)
         args,kwargs = factory.call_args
         self.assertEqual((self.host,443),args)
         self.assertEqual(ssl.CERT_REQUIRED,kwargs['context'].verify_mode)
         self.assertTrue(kwargs['context'].check_hostname)
-        for payload in [b'{}', b'x' * 8193, json.dumps({'hubId':'84eaee7c-0000-4000-8000-000000000002','protocolVersion':1}).encode()]:
+        for payload in [b'{}',b'[]',b'null',b'1',b'{"hubId":123,"protocolVersion":1}',b'{"hubId":[],"protocolVersion":1}', b'x' * 8193, json.dumps({'hubId':'84eaee7c-0000-4000-8000-000000000002','protocolVersion':1}).encode()]:
             response.read.return_value = payload
-            with self.assertRaises(r.f.Rejected):r.https_identity(self.host,self.identity,_connection=factory)
+            with self.assertRaises(r.f.Rejected):r.https_identity(self.host,self.identity,['192.168.1.7'],_connection=factory)
         response.status = 302
-        with self.assertRaises(r.f.Rejected):r.https_identity(self.host,self.identity,_connection=factory)
+        with self.assertRaises(r.f.Rejected):r.https_identity(self.host,self.identity,['192.168.1.7'],_connection=factory)
         self.assertTrue(connection.close.called)
+
+    def test_dns_change_before_connect_rejects_peer_before_http(self):
+        resolver = lambda *a,**kw: [(None,None,None,None,('192.168.1.7',0))]
+        connection = MagicMock();connection.sock.getpeername.return_value = ('192.168.1.8',443)
+        def identity(host,expected,addresses):
+            r.https_identity(host,expected,addresses,_connection=lambda *a,**kw:connection)
+        self.assertFalse(r.client_preflight(self.host,self.identity,['192.168.1.7'],_resolver=resolver,_identity=identity)['ready'])
+        connection.request.assert_not_called()
+        connection.close.assert_called_once()

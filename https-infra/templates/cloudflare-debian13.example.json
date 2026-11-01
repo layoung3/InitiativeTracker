@@ -1,6 +1,7 @@
 {
   "hostname": "hub-84eaee7c.colophon.stream",
   "port": 5445,
+  "public_port": 443,
   "store": "/var/lib/initiativetracker-browser-tls",
   "resolution": "hotspot",
   "renewal_timeout_seconds": 900,

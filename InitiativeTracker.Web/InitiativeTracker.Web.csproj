@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="InitiativeTracker.Tests" />
     <ProjectReference Include="..\InitiativeTracker.Core\InitiativeTracker.Core.csproj" />
   </ItemGroup>
 

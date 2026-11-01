@@ -112,14 +112,16 @@ test -d /run/systemd/system || exit 1
 test ! -e /etc/letsencrypt || exit 1
 test ! -e /var/lib/letsencrypt || exit 1
 test ! -e /var/log/letsencrypt || exit 1
-sudo systemctl mask --runtime certbot.service certbot.timer
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py mask --apply || exit 1
 sudo apt-get update
 apt-cache policy certbot python3-certbot python3-certbot-dns-cloudflare python3-acme python3-cloudflare
 sudo apt-get --simulate install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates
 # STOP: approve the displayed signed-repository candidate versions and transaction.
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify || exit 1
 sudo apt-get install --no-install-recommends certbot python3-certbot-dns-cloudflare openssl ca-certificates
-sudo systemctl disable certbot.timer
-sudo systemctl mask certbot.service certbot.timer
+sudo systemctl disable certbot.timer || exit 1
+sudo systemctl mask certbot.service certbot.timer || exit 1
+sudo /usr/bin/python3 -E -s /usr/local/lib/initiativetracker-https/package_masks.py verify --persistent || exit 1
 systemctl is-active certbot.service certbot.timer || true
 systemctl is-enabled certbot.service certbot.timer || true
 dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \

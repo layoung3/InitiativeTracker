@@ -31,14 +31,22 @@ def physical_hosts(host):
     return '127.0.0.1\t' + host + '\n::1\t' + host + '\n'
 
 
-def https_identity(host, expected_id, *, _connection=http.client.HTTPSConnection):
+def https_identity(host, expected_id, addresses, *, _connection=http.client.HTTPSConnection):
     f.hostname(host)
+    if not isinstance(expected_id, str):
+        raise f.Rejected('An approved stored identity is required')
     expected = uuid.UUID(expected_id)
-    if expected.int == 0:
+    approved = {f.local_address(address) for address in addresses}
+    if expected.int == 0 or not approved:
         raise f.Rejected('An approved stored identity is required')
     # Default public trust, SNI and hostname validation. No CLI CA/verify bypass.
     connection = _connection(host, 443, timeout=8, context=ssl.create_default_context())
     try:
+        connection.connect()
+        # HTTPSConnection may resolve again. Reject changed DNS/routing before
+        # sending any HTTP bytes, preserving ordinary public trust/SNI/Host.
+        if f.local_address(connection.sock.getpeername()[0]) not in approved:
+            raise f.Rejected('Connected TLS peer differs from approved private addresses')
         connection.request('GET', '/system/hub-info', headers={'Accept':'application/json', 'Connection':'close'})
         response = connection.getresponse()
         if response.status != 200 or response.getheader('Content-Type', '').split(';')[0].strip().lower() != 'application/json':
@@ -47,7 +55,9 @@ def https_identity(host, expected_id, *, _connection=http.client.HTTPSConnection
         if len(body) > 8192:
             raise f.Rejected('Hub identity response exceeds limit')
         value = json.loads(body)
-        if uuid.UUID(value['hubId']) != expected or value.get('protocolVersion') != 1:
+        if not isinstance(value, dict) or not isinstance(value.get('hubId'), str) or type(value.get('protocolVersion')) is not int or value['protocolVersion'] != 1:
+            raise f.Rejected('Invalid hub identity response schema')
+        if uuid.UUID(value['hubId']) != expected:
             raise f.Rejected('The full hub identity differs from the approved inventory')
     except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException):
         raise f.Rejected('Canonical TLS/identity verification failed') from None
@@ -64,7 +74,7 @@ def client_preflight(host, expected_id, addresses, *, _resolver=socket.getaddrin
     if not resolution['ready']:
         return {'ready':False, 'reason':resolution['reason'], 'browser_verification_required':True}
     try:
-        _identity(host, expected_id)
+        _identity(host, expected_id, expected)
     except f.Rejected:
         return {'ready':False, 'reason':'tls-or-identity-failed', 'browser_verification_required':True}
     return {'ready':True, 'reason':'os-resolver-and-public-tls-identity-verified', 'browser_verification_required':True}
