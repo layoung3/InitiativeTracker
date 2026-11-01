@@ -32,6 +32,13 @@ jobs:
         run: dotnet publish InitiativeTracker.Web -c Release -r linux-x64 --self-contained true -o "$RUNNER_TEMP/private443-app"
       - name: Build disposable kernel test image
         run: docker build -f https-infra/tests/Dockerfile.certbot4 -t it-private443-kernel .
+      - name: Reuse pinned trusted-browser tooling in a disposable profile
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libnss3-tools
+          npm install --prefix "$RUNNER_TEMP/private443-browser-tooling" playwright@1.58.2
+          npm audit --prefix "$RUNNER_TEMP/private443-browser-tooling" --audit-level=low
+          docker pull mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d
       - name: Actual IPv4/IPv6 NAT in an internal Docker network (no host network/ports)
         shell: bash
         run: |
@@ -75,3 +82,14 @@ jobs:
               -e IT_DISPOSABLE_KERNEL_TEST=1 -v "$fixture-public:/public:ro" it-private443-kernel \
               /usr/bin/python3 -I https-infra/tests/private443_socket_smoke.py "$role"
           done
+          mkdir -m 0700 "$RUNNER_TEMP/private443-browser"
+          docker cp "$fixture-hub:/public/ca.pem" "$RUNNER_TEMP/private443-browser/ca.pem"
+          python3 -I https-infra/tests/prepare_443_browser.py --source scripts/tests/n9-live-ui.test.cjs --sandbox "$RUNNER_TEMP/private443-browser"
+          # Shared disposable hub namespace models its physical browser. No host
+          # networking, published ports, elevated browser capabilities or TLS bypass.
+          docker run --rm --init --network "container:$fixture-hub" --cap-drop ALL --user "$(id -u):$(id -g)" --shm-size=512m \
+            -e NODE_PATH=/tooling/node_modules -e N9_APP_URL=https://hub-fixture.colophon.stream \
+            -e N9_TLS_SANDBOX=/tmp/private443-browser-fixture \
+            -v "$RUNNER_TEMP/private443-browser-tooling:/tooling:ro" -v "$RUNNER_TEMP/private443-browser:/tmp/private443-browser-fixture" \
+            mcr.microsoft.com/playwright:v1.58.2-noble@sha256:6446946a1d9fd62d9ae501312a2d76a43ee688542b21622056a372959b65d63d \
+            node /tmp/private443-browser-fixture/run.cjs
