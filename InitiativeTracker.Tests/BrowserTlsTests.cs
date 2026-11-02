@@ -107,6 +107,7 @@ public sealed class BrowserTlsTests
     }
 
     [LinuxFact("Requires Linux Unix file modes and certificate-store path validation.")]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     public void RuntimeCertificatePathsRejectBroadPermissionsAndLinks()
     {
         var root = Path.Combine(Path.GetTempPath(), "https-paths-" + Guid.NewGuid());
