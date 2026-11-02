@@ -17,7 +17,7 @@ public sealed class N9MigrationIntegrationTests
     private static InitiativeTrackerDbContext Database(string directory) => new(
         new DbContextOptionsBuilder<InitiativeTrackerDbContext>().UseSqlite($"Data Source={Path.Combine(directory,"initiative-tracker.db")};Pooling=False").Options);
     private static WebApplicationFactory<EncounterStateService> Application(string directory) =>
-        new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+        new TestApplicationFactory(directory, builder => builder
             .UseEnvironment("Production").UseSetting("Tracker:DataDirectory",directory));
     private static void CopyStoppedCheckpoint(string source,string destination)
     {

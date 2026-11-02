@@ -92,7 +92,7 @@ public sealed class SecureAccessWebTests
         {
             DirectoryPath = directory ?? Path.Combine(Path.GetTempPath(), "secure-web-" + Guid.NewGuid());
             Clock = clock ?? new Clock();
-            App = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+            App = new TestApplicationFactory(DirectoryPath, builder => builder
                 .UseEnvironment("Production").UseSetting("Logging:LogLevel:Default", "Warning").UseSetting("Tracker:DataDirectory", DirectoryPath)
                 .UseSetting("BrowserTls:Enabled", "true").UseSetting("BrowserTls:Host", "hub.owner-domain.org")
                 .UseSetting("BrowserTls:Store", Path.Combine(DirectoryPath, "certificates"))
@@ -109,8 +109,22 @@ public sealed class SecureAccessWebTests
         public SecureAccessService Access => App.Services.GetRequiredService<SecureAccessService>();
         public IDbContextFactory<InitiativeTrackerDbContext> Factory => App.Services.GetRequiredService<IDbContextFactory<InitiativeTrackerDbContext>>();
         public Session Client(bool physical = false, bool http = false) => new(this, physical, http);
-        public void Dispose() => App.Dispose();
-        public void Delete() { if (Directory.Exists(DirectoryPath)) Directory.Delete(DirectoryPath, true); }
+        private bool disposed;
+        private bool deleteOnDispose;
+        public void Dispose()
+        {
+            if (disposed) return;
+            App.Dispose();
+            disposed = true;
+            if (deleteOnDispose) Directory.Delete(DirectoryPath, true);
+        }
+        public void DeleteOnDispose()
+        {
+            // The test may still have caller-owned contexts in scope. Their
+            // disposal must precede host shutdown and filesystem cleanup.
+            if (disposed) Directory.Delete(DirectoryPath, true);
+            else deleteOnDispose = true;
+        }
     }
     public sealed class Session : IDisposable
     {
@@ -196,7 +210,7 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Redirect, (await member.Post("Finish")).StatusCode);
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task LegacyReplayFailsAndFreshPhysicalDmProofProtectsRealEndpoints()
     {
         using var host = new Host();
@@ -213,10 +227,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/dm/network?handler=Provision", new FormUrlEncodedContent([]))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/api/coordination/enroll", new FormUrlEncodedContent([]))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await http.Send("/system/health")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ProofBindsExactBrowserPurposeOriginSessionAndIsSingleUseWithSecureCookies()
     {
         using var host = new Host(); using var a = host.Client(); using var b = host.Client();
@@ -233,10 +247,10 @@ public sealed class SecureAccessWebTests
         using var thief = host.Client(); thief.Legacy("DM");
         thief.Cookies[SecureAccess.Cookie] = a.Cookies[SecureAccess.Cookie];
         Assert.Equal(HttpStatusCode.Forbidden, (await thief.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task CsrfAndOriginFailuresDoNotConsumeCodeAndExpiryAttemptsAreBounded()
     {
         using var host = new Host(); using var dm = host.Client();
@@ -252,10 +266,10 @@ public sealed class SecureAccessWebTests
         await dm.Post("BeginDm"); var bounded = await dm.PhysicalCode();
         for (var i = 0; i < 5; i++) Assert.Equal(HttpStatusCode.Forbidden, (await dm.Post("Redeem", ("Code", "0000000000000000"))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Post("Redeem", ("Code", bounded))).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PlayerAndDisplayRequireExplicitApprovalAndCannotMixOrEscalateRoles()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -274,10 +288,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.OK, (await screen.Send("/media/fixture")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await screen.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
         screen.Legacy("Player", owner.Profile, owner.Player, owner.Credential); Assert.Equal(HttpStatusCode.Forbidden, (await screen.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ConcurrentRedemptionApprovalCancellationAndRateBoundsFailClosed()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Post("BeginDm", ("recovery", "true"));
@@ -293,10 +307,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("Finish")).StatusCode);
         for (var i = 0; i < 12; i++) await player.Post("BeginMember");
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("BeginMember")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task SessionsSurviveRestartAndRevocationDoesNotReviveAfterRestart()
     {
         var directory = Path.Combine(Path.GetTempPath(), "secure-restart-" + Guid.NewGuid());
@@ -323,7 +337,7 @@ public sealed class SecureAccessWebTests
         Directory.Delete(directory, true);
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task CorruptMissingInterruptedStateAndPhysicalRecoveryNeverUseHttpAuthority()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -342,10 +356,10 @@ public sealed class SecureAccessWebTests
         File.Delete(path); Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
         await dm.Bootstrap(recovery: true);
         Assert.Equal(HttpStatusCode.OK, (await dm.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task LegacyIdentityReassociationRecoveryAndRevocationNeverFollowOldGrants()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -359,9 +373,9 @@ public sealed class SecureAccessWebTests
         var token = await legacyDm.Token("/dm/players");
         var reset = await legacyDm.Send("/dm/players?handler=ResetRecoveryKey", new FormUrlEncodedContent(new Dictionary<string, string> { ["profileId"] = owner.Profile.ToString(), ["__RequestVerificationToken"] = token }));
         Assert.Equal(HttpStatusCode.Forbidden, reset.StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualHttpLoginAndSetupPinNeverBecomeSecureAuthority()
     {
         using var host = new Host(); using var http = host.Client(http: true);
@@ -374,10 +388,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Redirect, (await replay.Post("BeginDm", ("recovery", "true"))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await replay.Post("Redeem", ("Code", pin))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ApprovalCannotMoveToAnotherBrowserOrReassociatedIdentity()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -389,10 +403,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await otherBrowser.Post("Finish", ("id", pending.Id.ToString()))).StatusCode);
         using (var db = host.Factory.CreateDbContext()) { db.PlayerProfiles.Single(p => p.Id == owner.Profile).RecoveryKeyHash = "replaced-recovery"; db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("Finish")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task RevokedApproverCannotFinishPendingApprovalAndCancellationWinsRedemptionRace()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -406,10 +420,10 @@ public sealed class SecureAccessWebTests
         var token = await player.Token(); using var tab = host.Client(); foreach (var cookie in player.Cookies) tab.Cookies[cookie.Key] = cookie.Value;
         await Task.WhenAll(player.PostToken("Finish", token), tab.PostToken("Cancel", token));
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task FailedPersistenceLeavesDurableFenceAndCannotAcknowledgeRevocationOrIssueAuthority()
     {
         var directory = Path.Combine(Path.GetTempPath(), "secure-write-failure-" + Guid.NewGuid());
@@ -432,7 +446,7 @@ public sealed class SecureAccessWebTests
         Directory.Delete(directory, true);
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ChallengeQueueIsBoundedAndRestartInvalidatesPendingProof()
     {
         var directory = Path.Combine(Path.GetTempPath(), "secure-pending-restart-" + Guid.NewGuid());
@@ -461,7 +475,7 @@ public sealed class SecureAccessWebTests
         Directory.Delete(directory, true);
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task LegacyRecoveryDeviceDeletionPinAndSessionChangesCannotRestoreSecureGrants()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -474,10 +488,10 @@ public sealed class SecureAccessWebTests
         await dm.Bootstrap();
         using (var db = host.Factory.CreateDbContext()) { db.GameSessions.Single().SessionId = Guid.NewGuid(); db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task LegacyPlayerMutationCannotRevokeAnotherIdentityAndLogoutCannotBeUndoneIntoAuthority()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -493,10 +507,10 @@ public sealed class SecureAccessWebTests
         await oldHttp.Send("/player/?handler=SignOut", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
         using (var db = host.Factory.CreateDbContext()) { db.PlayerConnections.Single(p => p.Id == b.Player).IsActive = true; db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await second.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("/dm/players", "ResetRecoveryKey")]
     [InlineData("/dm/players", "RevokeAllDevices")]
     [InlineData("/dm/players", "DeleteProfile")]
@@ -511,10 +525,10 @@ public sealed class SecureAccessWebTests
         var token = await legacy.Token(page);
         Assert.Equal(HttpStatusCode.Forbidden, (await legacy.Send(page + "/?handler=" + handler,
             new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["profileId"] = Guid.NewGuid().ToString(), ["id"] = Guid.NewGuid().ToString() }))).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task DisplayReplacementAndDeletionInvalidateApprovedIdentityDurably()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -528,10 +542,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await display.Send("/media/fixture")).StatusCode);
         using (var db = host.Factory.CreateDbContext()) { db.RegisteredDevices.Remove(db.RegisteredDevices.Single(d => d.Id == deviceId)); db.SaveChanges(); db.Add(new RegisteredDevice { Id = deviceId, Name = "Replacement", PairedAtUtc = paired }); db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await display.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task SecureExpiryAndFailedIssuanceCannotRenewThroughLegacyAuthority()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -550,10 +564,10 @@ public sealed class SecureAccessWebTests
         await fresh.Bootstrap();
         Assert.Equal(HttpStatusCode.OK, (await fresh.Send("/media/fixture")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task SensitiveIdentityChangesRequireBothCsrfAndExactOriginBeforeInvalidation()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -566,10 +580,10 @@ public sealed class SecureAccessWebTests
         { ["profileId"] = owner.Profile.ToString() }))).StatusCode);
         using (var db = host.Factory.CreateDbContext()) Assert.Equal(original, db.PlayerProfiles.Single(p => p.Id == owner.Profile).RecoveryKeyHash);
         Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualCharacterEditorGetRequiresFreshAuthorityAtItsRoutedUrl()
     {
         using var host = new Host(); var owner = AddPlayer(host); Guid id;
@@ -585,10 +599,10 @@ public sealed class SecureAccessWebTests
         Assert.Equal((HttpStatusCode)426, (await http.Send(page)).StatusCode);
         using var dm = host.Client(); await dm.Bootstrap(); await Enroll(player, dm);
         Assert.Equal(HttpStatusCode.OK, (await player.Send(page)).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData(SecurePersistenceSync.FenceCreated)]
     [InlineData(SecurePersistenceSync.StateReplaced)]
     [InlineData(SecurePersistenceSync.FenceRemoved)]
@@ -615,7 +629,7 @@ public sealed class SecureAccessWebTests
         Directory.Delete(directory, true);
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualUpdaterRollbackFenceRejectsRestoredRevokedTicketAndPreservesGameplayData()
     {
         var directory = Path.Combine(Path.GetTempPath(), "secure-updater-rollback-" + Guid.NewGuid());

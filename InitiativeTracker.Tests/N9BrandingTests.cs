@@ -12,7 +12,7 @@ public sealed class N9BrandingTests
         var directory = Path.Combine(Path.GetTempPath(), "n9-logo-" + Guid.NewGuid());
         try
         {
-            using var app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+            using var app = new TestApplicationFactory(directory, builder => builder
                 .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory));
             using var client = app.CreateClient();
             var bytes = await client.GetByteArrayAsync("/images/colophon.png");
@@ -39,7 +39,7 @@ public sealed class N9BrandingTests
         var directory = Path.Combine(Path.GetTempPath(), "n9-branding-" + Guid.NewGuid());
         try
         {
-            using var app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+            using var app = new TestApplicationFactory(directory, builder => builder
                 .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory)
                 .UseSetting("Branding:ApplicationName", "<script>alert('name')</script>"));
             using var client = app.CreateClient();
@@ -57,7 +57,7 @@ public sealed class N9BrandingTests
         var directory = Path.Combine(Path.GetTempPath(), "n9-branding-" + Guid.NewGuid());
         try
         {
-            using var app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+            using var app = new TestApplicationFactory(directory, builder => builder
                 .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory)
                 .UseSetting("Branding:ShowApplicationLogo", "false"));
             using var client = app.CreateClient();

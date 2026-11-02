@@ -26,7 +26,7 @@ public sealed class N7WebTests : IDisposable
 
     public N7WebTests()
     {
-        app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder =>
+        app = new TestApplicationFactory(directory, builder =>
             builder.UseSetting("Tracker:DataDirectory", directory).UseEnvironment("Development"));
         client = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
     }

@@ -82,6 +82,11 @@ public sealed class BrowserIngressTests
         context.Request.Headers["X-Forwarded-Proto"] = "https";context.Request.Headers["X-Forwarded-For"] = "127.0.0.1";
         context.Request.Headers["X-Forwarded-Host"] = Host;
         Assert.False(store.MatchesCanonicalTransport(context));Assert.False(store.Physical(context));
+    }
+    [LinuxFact("Captures Linux SO_ORIGINAL_DST socket provenance.")]
+    public void InvalidOriginalSocketMetadataCannotConferTrust()
+    {
+        using var store = Store(); var context = Context();
         Accepted(socket =>
         {
             foreach (var bytes in new[] { Array.Empty<byte>(), Address("127.0.0.1",5445), Address("192.168.1.1",443) })
@@ -91,7 +96,7 @@ public sealed class BrowserIngressTests
             }
         });
     }
-    [Fact]
+    [LinuxFact("Requires production Linux socket provenance or Linux-only HTTPS profiles.")]
     public void ProvenanceIsCapturedOnceAndMustMatchActualConnectionAndAuthority()
     {
         using var store = Store();Assert.Equal("https://"+Host,store.Origin);
@@ -108,7 +113,7 @@ public sealed class BrowserIngressTests
             Assert.False(store.MatchesCanonicalTransport(context));
         });
     }
-    [Fact]
+    [LinuxFact("Requires production Linux socket provenance or Linux-only HTTPS profiles.")]
     public void BackendProbeExceptionIsOnlyExactReadOnlyStatusAndNeverGeneralAuthority()
     {
         using var store = Store();Accepted(socket =>
@@ -124,7 +129,7 @@ public sealed class BrowserIngressTests
             context.Request.Method = "GET";context.Request.QueryString = new("?handler=anything");Assert.False(store.MatchesStatusProbeTransport(context));
         });
     }
-    [Fact]
+    [LinuxFact("Requires production Linux socket provenance or Linux-only HTTPS profiles.")]
     public void ProfilesRejectAmbiguousPublicPortsAndKeepLegacyDirectMode()
     {
         IConfiguration Values(string ingress,string port) => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>

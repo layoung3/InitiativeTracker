@@ -106,10 +106,9 @@ public sealed class BrowserTlsTests
         Assert.Throws<InvalidOperationException>(() => BrowserTlsSettings.Read(Values(("BrowserTls:Store", "/app/private")), "/app"));
     }
 
-    [Fact]
+    [LinuxFact("Requires Linux Unix file modes and certificate-store path validation.")]
     public void RuntimeCertificatePathsRejectBroadPermissionsAndLinks()
     {
-        if (!OperatingSystem.IsLinux()) return;
         var root = Path.Combine(Path.GetTempPath(), "https-paths-" + Guid.NewGuid());
         Directory.CreateDirectory(root);
         File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -131,13 +130,13 @@ public sealed class BrowserTlsTests
         finally { Directory.Delete(root, true); }
     }
 
-    [Fact]
+    [LinuxFact("Starts the production Linux-only browser HTTPS configuration.")]
     public async Task HttpAndSpoofedForwardedHeadersCannotUnlockSensitiveOperations()
     {
         var directory = Path.Combine(Path.GetTempPath(), "https-web-" + Guid.NewGuid());
         try
         {
-            using var app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+            using var app = new TestApplicationFactory(Path.Combine(directory, "data"), builder => builder
                 .UseEnvironment("Production").UseSetting("Tracker:DataDirectory", Path.Combine(directory, "data"))
                 .UseSetting("BrowserTls:Enabled", "true").UseSetting("BrowserTls:Host", Host)
                 .UseSetting("BrowserTls:Store", Path.Combine(directory, "certificates")));

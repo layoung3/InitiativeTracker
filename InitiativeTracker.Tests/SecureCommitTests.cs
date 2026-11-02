@@ -25,7 +25,7 @@ public sealed class SecureCommitTests
         return db.PlayerProfiles.Any(p => p.Name == name);
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RevocationOrCancellationFirstPreventsDatabaseCommit(bool cancel)
@@ -36,10 +36,10 @@ public sealed class SecureCommitTests
             ? (await dm.Post("Cancel")).StatusCode : (await dm.Post("Revoke", ("id", grant.Id.ToString()))).StatusCode);
         Assert.Throws<SecureAccessDenied>(() => Commit(host, grant, "must not commit"));
         Assert.False(HasMarker(host, "must not commit"));
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData(false)]
     [InlineData(true)]
     public async Task CommitFirstExcludesSuccessfulRevokeOrCancelUntilAfterDatabaseCommit(bool cancel)
@@ -75,10 +75,10 @@ public sealed class SecureCommitTests
         Assert.Equal(new[] { "commit", "revoke" }, order.ToArray());
         Assert.True(HasMarker(host, "committed before revoke"));
         Assert.Throws<SecureAccessDenied>(() => Commit(host, grant, "after revoke"));
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ExpiryIsCheckedAtCommitEntryAndDoesNotExtendTheGrant()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -92,10 +92,10 @@ public sealed class SecureCommitTests
             }));
         Assert.True(HasMarker(host, "admitted before expiry"));
         Assert.Throws<SecureAccessDenied>(() => Commit(host, grant, "expired"));
-        Assert.False(HasMarker(host, "expired")); host.Delete();
+        Assert.False(HasMarker(host, "expired")); host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ContendedGateTimesOutWithoutInvokingOrAbandoningTheSecondCommit()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -121,10 +121,10 @@ public sealed class SecureCommitTests
         finally { release.Set(); }
         await writer.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(HasMarker(host, "timed out writer"));
-        Assert.Equal(1, Commit(host, grant, "later writer")); host.Delete();
+        Assert.Equal(1, Commit(host, grant, "later writer")); host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task CommitExceptionPropagatesAndAlwaysReleasesTheGate()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -133,10 +133,10 @@ public sealed class SecureCommitTests
             SecureAccessService.Principal(grant.Identity, CookieAuthenticationDefaults.AuthenticationScheme), () => throw failure)));
         Assert.Equal(1, Commit(host, grant, "after exception"));
         host.Access.Revoke(grant, grant.Id);
-        Assert.Throws<SecureAccessDenied>(() => Commit(host, grant, "revoked after exception")); host.Delete();
+        Assert.Throws<SecureAccessDenied>(() => Commit(host, grant, "revoked after exception")); host.DeleteOnDispose();
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("browser")]
     [InlineData("origin")]
     [InlineData("principal")]
@@ -149,10 +149,10 @@ public sealed class SecureCommitTests
         Assert.Throws<SecureAccessDenied>(() => host.Access.CommitAuthorized(expected,
             mismatch == "browser" ? "different-browser" : grant.Browser,
             mismatch == "origin" ? "https://other.owner-domain.org:5445" : grant.Origin, legacy, () => SaveMarker(host, "bad binding")));
-        Assert.False(HasMarker(host, "bad binding")); host.Delete();
+        Assert.False(HasMarker(host, "bad binding")); host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task DisplayGrantAndCorruptStateCannotAuthorizeWrites()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap(); Guid id;
@@ -163,10 +163,10 @@ public sealed class SecureCommitTests
         var grant = host.Access.Grants().Single(g => g.Identity.Role == "DM");
         File.WriteAllBytes(Path.Combine(host.DirectoryPath, "secure-access", "state.bin"), [0, 1, 2]);
         Assert.Throws<SecureAccessDenied>(() => Commit(host, grant, "corrupt state"));
-        Assert.False(HasMarker(host, "display write")); Assert.False(HasMarker(host, "corrupt state")); host.Delete();
+        Assert.False(HasMarker(host, "display write")); Assert.False(HasMarker(host, "corrupt state")); host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task CommitReadsPersistentGrantAndRevocationAcrossRestart()
     {
         var directory = Path.Combine(Path.GetTempPath(), "secure-commit-restart-" + Guid.NewGuid()); SecureGrant grant;

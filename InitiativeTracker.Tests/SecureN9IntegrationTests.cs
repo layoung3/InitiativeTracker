@@ -29,7 +29,7 @@ public sealed class SecureN9IntegrationTests
         return await player.Send(Editor(id) + "?handler=Upload", content);
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualN9BrandingAndPlayerImagesRequireFreshAuthorizationAndKeepOwnership()
     {
         using var host = new Host(); using var dm = host.Client(); dm.Legacy("DM");
@@ -54,10 +54,10 @@ public sealed class SecureN9IntegrationTests
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.Send(Editor(id))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await player.Send(Editor(Guid.Empty, "application"))).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("null")]
     [InlineData("https://other.owner-domain.org:5445")]
     public async Task NullAndForeignOriginsRemainDeniedWithBrowserCompatibleReferrerPolicy(string origin)
@@ -72,10 +72,10 @@ public sealed class SecureN9IntegrationTests
             {["__RequestVerificationToken"]=token,["ApplicationName"]="Rejected foreign form"}),origin:false);
         Assert.Equal(HttpStatusCode.Forbidden,settings.StatusCode);
         Assert.NotEqual("Rejected foreign form",host.App.Services.GetRequiredService<BrandingService>().ApplicationName);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualN9DisplayKeepsPublicProjectionAndLegacyVisibilityCannotPublishArtwork()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -96,10 +96,10 @@ public sealed class SecureN9IntegrationTests
         Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/dm?handler=SetVisibility", new FormUrlEncodedContent(form))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await display.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await display.Send(Editor(id))).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualN9AssetOwnerCannotFollowLegacyCharacterReassociation()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -109,10 +109,10 @@ public sealed class SecureN9IntegrationTests
         using (var db = host.Factory.CreateDbContext()) { db.PlayerCharacters.Single(c => c.Id == id).PlayerProfileId = next.Profile; db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.NotFound, (await other.Send(MediaPaths.CharacterPortrait(id))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await dm.Send(Editor(id))).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualRecoveryCreatesNoSecureAuthorityAndRequiresNewBrowserApproval()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -126,6 +126,6 @@ public sealed class SecureN9IntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
         await Enroll(player, dm);
         Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 }

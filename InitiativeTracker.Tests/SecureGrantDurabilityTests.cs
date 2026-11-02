@@ -36,7 +36,7 @@ public sealed class SecureGrantDurabilityTests
         public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
     }
 
-    [Fact]
+    [LinuxFact("Exercises real Linux directory fsync, durable fences and protected state across restart.")]
     public void SuccessfulCommitSynchronizesDirectoriesInOrderIncludingCreatedParents()
     {
         using var fixture = new Fixture(); var store = fixture.New(); var first = new SecureGrantState();
@@ -58,7 +58,7 @@ public sealed class SecureGrantDurabilityTests
         Assert.Equal(second.Epoch, store.Read()!.Epoch);
     }
 
-    [Theory]
+    [LinuxTheory("Exercises real Linux directory fsync, durable fences and protected state across restart.")]
     [InlineData(SecurePersistenceSync.StoreDirectory)]
     [InlineData(SecurePersistenceSync.ParentDirectory)]
     [InlineData(SecurePersistenceSync.FenceCreated)]
@@ -77,7 +77,7 @@ public sealed class SecureGrantDurabilityTests
         Assert.Equal(recovered.Epoch, restarted.Read()!.Epoch);
     }
 
-    [Fact]
+    [LinuxFact("Exercises real Linux directory fsync, durable fences and protected state across restart.")]
     public void UnsupportedDirectoryDurabilityDoesNotReadOrAcknowledgeSecureState()
     {
         using var fixture = new Fixture(); var good = fixture.New(); good.Write(new SecureGrantState(), recovery: true);

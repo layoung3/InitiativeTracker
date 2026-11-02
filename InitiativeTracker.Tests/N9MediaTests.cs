@@ -28,7 +28,7 @@ public sealed class N9MediaTests : IDisposable
     private EncounterStateService State => app.Services.GetRequiredService<EncounterStateService>();
     public N9MediaTests()
     {
-        app = new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder => builder
+        app = new TestApplicationFactory(directory, builder => builder
             .UseEnvironment("Development").UseSetting("Tracker:DataDirectory", directory)
             .ConfigureServices(services =>
             {
@@ -359,7 +359,7 @@ public sealed class N9MediaTests : IDisposable
     {
         var owner=Guid.NewGuid();var id=Character(owner);SignIn("Player",owner);
         await Upload(id,Raster(),await Token(id));
-        using var production=new WebApplicationFactory<EncounterStateService>().WithWebHostBuilder(builder=>builder
+        using var production=new TestApplicationFactory(directory, builder=>builder
             .UseEnvironment("Production").UseSetting("Tracker:DataDirectory",directory));
         using var http=production.CreateClient(new WebApplicationFactoryClientOptions{AllowAutoRedirect=false});
         http.DefaultRequestHeaders.Add("Cookie",client.DefaultRequestHeaders.GetValues("Cookie"));
@@ -373,7 +373,6 @@ public sealed class N9MediaTests : IDisposable
     [Fact]
     public async Task SymbolicLinkNeverServesAnArbitraryServerFile()
     {
-        if(OperatingSystem.IsWindows()) return;
         var owner=Guid.NewGuid();var id=Character(owner);SignIn("Player",owner);
         await Upload(id,Raster(),await Token(id));
         var file=Directory.GetFiles(Store.DirectoryPath).Single();File.Delete(file);
