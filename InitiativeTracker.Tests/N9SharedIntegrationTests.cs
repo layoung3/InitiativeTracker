@@ -19,7 +19,7 @@ namespace InitiativeTracker.Tests;
 
 public sealed class N9SharedIntegrationTests
 {
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RevocationDuringActualUploadCannotCommitAfterAwait(bool expire)
@@ -62,7 +62,7 @@ public sealed class N9SharedIntegrationTests
         Assert.Empty(check.PresentationAssets);
         Assert.Empty(Directory.GetFiles(host.App.Services.GetRequiredService<MediaStore>().DirectoryPath));
         if (accessor is not null) accessor.HttpContext = null;
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
     private sealed class DisabledOrigin : ITrustedBrowserOrigin
@@ -94,7 +94,7 @@ public sealed class N9SharedIntegrationTests
         Assert.Equal(HttpStatusCode.Redirect, (await member.Send(Editor(id, scope) + "?handler=Upload", body)).StatusCode);
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData(false)]
     [InlineData(true)]
     public async Task DisabledFoundationRejectsAlternateHttpsEvenWithLegacyOrSecureCookies(bool fresh)
@@ -118,10 +118,10 @@ public sealed class N9SharedIntegrationTests
         using var body = Body(token);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync(Editor(id) + "?handler=Upload", body)).StatusCode);
         using var check = host.Factory.CreateDbContext(); Assert.Single(check.PresentationAssets);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task BannersProfilesBrandingAndCsrfKeepTheirSeparatePermissions()
     {
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
@@ -148,10 +148,10 @@ public sealed class N9SharedIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send(Editor(Guid.Empty, "application") + "?handler=Settings",
             new FormUrlEncodedContent(new Dictionary<string,string> { ["__RequestVerificationToken"] = token, ["ApplicationName"] = "Rejected branding" }))).StatusCode);
         Assert.Equal(before, host.App.Services.GetRequiredService<BrandingService>().ApplicationName);
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RestartPreservesMediaAndDurableSecureRevocation(bool revoke)
@@ -171,10 +171,10 @@ public sealed class N9SharedIntegrationTests
         Assert.Equal(revoke ? HttpStatusCode.Forbidden : HttpStatusCode.OK, response.StatusCode);
         if (!revoke) Assert.Equal(original, await response.Content.ReadAsByteArrayAsync());
         Assert.Single(Directory.GetFiles(restarted.App.Services.GetRequiredService<MediaStore>().DirectoryPath));
-        restarted.Delete();
+        restarted.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task CaptureActualIntegratedPagesForResponsiveChecks()
     {
         var directory = Environment.GetEnvironmentVariable("N9_INTEGRATION_HTML_DIRECTORY");
@@ -190,10 +190,10 @@ public sealed class N9SharedIntegrationTests
             Assert.Contains(name == "secure-access" ? "Authorized as Player" : "Secure authorization", html);
             if (directory is not null) { Directory.CreateDirectory(directory); await File.WriteAllTextAsync(Path.Combine(directory, name + ".html"), html); }
         }
-        host.Delete();
+        host.DeleteOnDispose();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task ActualRollbackFencePreservesN9ImagesButRequiresFreshApprovalAfterRestart()
     {
         var host = new Host(); var directory = host.DirectoryPath; var clock = host.Clock;
@@ -227,7 +227,7 @@ public sealed class N9SharedIntegrationTests
         using var check = restarted.Factory.CreateDbContext();
         Assert.Equal(18, check.PlayerCharacters.Single(x => x.Id == id).CurrentHp);
         Assert.Single(check.PresentationAssets);
-        restarted.Delete();
+        restarted.DeleteOnDispose();
     }
 
     private sealed class GatedStream(byte[] bytes) : MemoryStream(bytes)

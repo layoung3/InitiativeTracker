@@ -167,11 +167,11 @@ public sealed class N9CommitBoundaryTests
         }
         public void Dispose()
         {
-            Barrier.Resume.Set(); Player.Dispose(); Dm.Dispose(); Host.Dispose(); Host.Delete(); Barrier.Resume.Dispose();
+            Barrier.Resume.Set(); Player.Dispose(); Dm.Dispose(); Host.Dispose(); Host.DeleteOnDispose(); Barrier.Resume.Dispose();
         }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace", "revoke")]
     [InlineData("replace", "cancel")]
     [InlineData("replace", "expire")]
@@ -197,7 +197,7 @@ public sealed class N9CommitBoundaryTests
         finally { fixture.Barrier.Resume.Set(); await mutation; }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace", false)]
     [InlineData("replace", true)]
     [InlineData("remove", false)]
@@ -230,7 +230,7 @@ public sealed class N9CommitBoundaryTests
         finally { fixture.Barrier.Resume.Set(); await mutation; if (revocation is not null) await revocation; }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace")]
     [InlineData("remove")]
     [InlineData("branding")]
@@ -250,7 +250,7 @@ public sealed class N9CommitBoundaryTests
         finally { fixture.Barrier.Resume.Set(); await mutation; }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace")]
     [InlineData("remove")]
     public async Task OwnershipChangedAfterPreparationIsRejectedInsideFinalTransaction(string operation)
@@ -274,7 +274,7 @@ public sealed class N9CommitBoundaryTests
         finally { fixture.Barrier.Resume.Set(); await mutation; }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace")]
     [InlineData("remove")]
     public async Task ChangedReferenceAfterPreparationCannotBeOverwrittenOrDeleted(string operation)
@@ -301,7 +301,7 @@ public sealed class N9CommitBoundaryTests
         finally { fixture.Barrier.Resume.Set(); await mutation; }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace")]
     [InlineData("remove")]
     [InlineData("branding")]
@@ -322,7 +322,7 @@ public sealed class N9CommitBoundaryTests
         finally { fixture.Barrier.Resume.Set(); await mutation; }
     }
 
-    [Theory]
+    [LinuxTheory("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     [InlineData("replace")]
     [InlineData("remove")]
     [InlineData("branding")]
@@ -333,7 +333,7 @@ public sealed class N9CommitBoundaryTests
         fixture.AssertPreserved();
     }
 
-    [Fact]
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task AmbiguousPostCommitFailureNeverDeletesAReferencedCandidateOrPriorFile()
     {
         using var fixture = await Fixture.Create(); fixture.Barrier.PauseAtCommit = true; fixture.Barrier.Resume.Set();

@@ -1,0 +1,39 @@
+name: Windows portable .NET tests
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Release solution build
+        run: dotnet build InitiativeTracker.slnx -c Release
+      - name: N7 portable web regression tests
+        id: n7
+        run: dotnet test InitiativeTracker.Tests/InitiativeTracker.Tests.csproj -c Release --filter "FullyQualifiedName~N7WebTests" --logger "trx;LogFileName=n7.trx" --results-directory TestResults/N7
+      - name: Full Release solution tests
+        if: always()
+        run: dotnet test InitiativeTracker.slnx -c Release --logger "trx;LogFileName=windows.trx" --results-directory TestResults/Full
+      - name: Record source, runtime and test counters
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force TestResults | Out-Null
+          git rev-parse HEAD | Out-File TestResults/source-commit.txt
+          dotnet --info | Out-File TestResults/dotnet-info.txt
+          ./scripts/Write-DotNetTestSummary.ps1 -ResultsDirectory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-dotnet-evidence
+          path: TestResults/**
