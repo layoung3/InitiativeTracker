@@ -28,6 +28,24 @@ public sealed class FixtureLifetimeTests
         Assert.True(exclusive.Length > 0);
     }
 
+    [LinuxFact("Uses the production Linux HTTPS and secure-grant integration host.")]
+    public async Task SecureHostDefersDeletionUntilCallerScopesAndHostHaveStopped()
+    {
+        string directory;
+        using (var host = new SecureAccessWebTests.Host())
+        {
+            directory = host.DirectoryPath;
+            using var session = host.Client();
+            Assert.True((await session.Send("/system/health")).IsSuccessStatusCode);
+            using var db = host.Factory.CreateDbContext();
+            db.Database.OpenConnection();
+            host.DeleteOnDispose();
+            Assert.True(Directory.Exists(directory));
+            Assert.NotEmpty(db.Database.GetAppliedMigrations());
+        }
+        Assert.False(Directory.Exists(directory));
+    }
+
     [Fact]
     public async Task IndependentHostsReleaseFilesAndPreserveWalStateAcrossRepeatedRestarts()
     {

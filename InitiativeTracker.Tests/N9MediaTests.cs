@@ -370,7 +370,7 @@ public sealed class N9MediaTests : IDisposable
         // TestServer exercises transport policy; this is not actual certificate/TLS validation.
     }
 
-    [Fact]
+    [SymbolicLinkFact]
     public async Task SymbolicLinkNeverServesAnArbitraryServerFile()
     {
         var owner=Guid.NewGuid();var id=Character(owner);SignIn("Player",owner);
