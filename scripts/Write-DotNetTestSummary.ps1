@@ -8,9 +8,11 @@ $summary = @(Get-ChildItem $ResultsDirectory -Recurse -Filter '*.trx' | ForEach-
         total = [int]$counters.total
         passed = [int]$counters.passed
         failed = [int]$counters.failed
-        skipped = [int]$counters.notExecuted
+        skipped = @($trx.TestRun.Results.UnitTestResult | Where-Object outcome -eq 'NotExecuted').Count
         skippedTests = @($trx.TestRun.Results.UnitTestResult | Where-Object outcome -eq 'NotExecuted' | ForEach-Object {
-            [ordered]@{ name = $_.testName; reason = [string]$_.Output.ErrorInfo.Message }
+            $reason = [string]$_.Output.ErrorInfo.Message
+            if (!$reason) { $reason = [string]$_.Output.StdOut }
+            [ordered]@{ name = $_.testName; reason = $reason.Trim() }
         })
     }
 })
