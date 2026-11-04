@@ -81,6 +81,19 @@ test('physical setup display pairing uses loopback-safe relative URL', {skip:!ba
     } finally {await page.close();}
 });
 
+test('physical HTTPS authorization screen retains direct Setup escape', {skip:!base || !tlsSandbox}, async () => {
+    const page=await browser.newPage();
+    try {
+        const response=await page.goto(base+'/secure-access/physical');
+        assert.equal(response.status(),200);
+        const setup=page.getByRole('navigation',{name:'Hub navigation'}).getByRole('link',{name:'Hub Setup'});
+        assert.equal(await setup.getAttribute('href'),'/setup');
+        const next=await Promise.all([page.waitForNavigation(),setup.click()]);
+        assert.equal(next[0].status(),200);
+        assert.equal(new URL(page.url()).pathname,'/setup');
+    } finally {await page.close();}
+});
+
 test('actual upload, encounter pairing and realtime portrait/banner replacement preserve the table', {skip:!base}, async () => {
     const dm = await browser.newPage({viewport:{width:1280,height:800}});
     const player = await browser.newPage({viewport:{width:390,height:844}});
