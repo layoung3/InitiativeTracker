@@ -79,9 +79,12 @@ docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
 
 The `Private HTTPS 443 deployment` workflow additionally exports the Debian
 image into a disposable rootfs and executes the fixture under systemd using
-**every Service property from the reviewed renewal unit**. Only ExecStart
-changes to the fixture harness, and RootDirectory confines it to the disposable
-Debian filesystem. It asserts NoNewPrivileges, an empty effective capability
+the reviewed renewal unit's Service properties. ExecStart changes to the
+fixture harness, and RootDirectory confines it to the disposable Debian
+filesystem. The identical ReadWritePaths allowlist uses systemd's `+` prefix
+to resolve inside that rootfs rather than the runner's root, as specified by
+[systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#ReadWritePaths=).
+It asserts NoNewPrivileges, an empty effective capability
 set and read-only system/source paths. This requires systemd PID1 on the CI
 runner; a normal Docker container is not equivalent evidence. Existing kernel
 IPv4/IPv6 ingress, browser, HTTP/HTTPS, application authorization, dependency

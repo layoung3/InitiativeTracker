@@ -19,9 +19,13 @@ unit = configparser.ConfigParser(interpolation=None)
 unit.optionxform = str
 unit.read(Path(__file__).parents[1] / 'templates/initiativetracker-certificate-renew.service.example')
 service = dict(unit['Service'])
-# Keep the same user/group and *all* Service properties. Only ExecStart changes
-# to the fixture harness; it calls the real orchestrator and real Debian CLI.
+# Keep the same user/group and all hardening. ExecStart selects the harness;
+# filesystem paths must refer to the disposable root instead of the runner.
 service.pop('ExecStart')
+# systemd.exec: an unprefixed ReadWritePaths is relative to the manager's root,
+# even with RootDirectory. '+' rebases the *same* allowlist into that rootfs.
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#ReadWritePaths=
+service['ReadWritePaths'] = ' '.join('+' + path for path in service['ReadWritePaths'].split())
 for name in ['initiativetracker-browser-tls', 'initiativetracker-issuer']:
     directory = root / 'var/lib' / name
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
