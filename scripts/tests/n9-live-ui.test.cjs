@@ -67,6 +67,20 @@ for (const width of [390,844,1280]) {
     }
 }
 
+test('physical setup display pairing uses loopback-safe relative URL', {skip:!base}, async () => {
+    const page=await browser.newPage();
+    try {
+        const response=await page.goto(base+'/setup');
+        assert.equal(response.status(),200);
+        const href=await page.getByRole('link',{name:'Display Pairing',exact:true}).getAttribute('href');
+        assert.match(href,/^\\/display\\/connect\\?token=[^&]+$/);
+        // The browser stays at the local origin even when the QR advertises a
+        // different LAN/hotspot address for external displays.
+        assert.equal(new URL(href,page.url()).origin,new URL(base).origin);
+        assert(await page.locator('img[alt="Connect a display device"]').getAttribute('src'));
+    } finally {await page.close();}
+});
+
 test('actual upload, encounter pairing and realtime portrait/banner replacement preserve the table', {skip:!base}, async () => {
     const dm = await browser.newPage({viewport:{width:1280,height:800}});
     const player = await browser.newPage({viewport:{width:390,height:844}});
