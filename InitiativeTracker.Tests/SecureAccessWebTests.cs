@@ -211,6 +211,37 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
+    {
+        using var host = new Host();
+        using var requester = host.Client();
+        using var stranger = host.Client();
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm", ("recovery", "true"))).StatusCode);
+        var id = requester.Pending.Id;
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
+        host.Access.ApprovePhysicalDm(id);
+        Assert.Throws<SecureAccessDenied>(() => host.Access.ApprovePhysicalDm(id));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(stranger.Browser, Origin));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, "https://wrong.example"));
+        var grant = host.Access.FinishPhysicalDm(requester.Browser, Origin);
+        Assert.Equal("DM", grant.Identity.Role);
+        Assert.NotNull(host.Access.Validate(grant.Id, grant.Generation, grant.Epoch, requester.Browser, Origin));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
+
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm")).StatusCode);
+        var denied = requester.Pending.Id;
+        host.Access.DenyPhysicalDm(denied);
+        Assert.Throws<SecureAccessDenied>(() => host.Access.ApprovePhysicalDm(denied));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
+
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm")).StatusCode);
+        var expired = requester.Pending.Id;
+        host.Clock.Advance(TimeSpan.FromMinutes(6));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.ApprovePhysicalDm(expired));
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task LegacyReplayFailsAndFreshPhysicalDmProofProtectsRealEndpoints()
     {
         using var host = new Host();
