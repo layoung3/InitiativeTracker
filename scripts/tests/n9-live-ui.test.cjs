@@ -73,7 +73,7 @@ test('physical setup display pairing uses loopback-safe relative URL', {skip:!ba
         const response=await page.goto(base+'/setup');
         assert.equal(response.status(),200);
         const href=await page.getByRole('link',{name:'Display Pairing',exact:true}).getAttribute('href');
-        assert.match(href,/^\\/display\\/connect\\?token=[^&]+$/);
+        assert.match(href,/^\/display\/connect\?token=[^&]+$/);
         // The browser stays at the local origin even when the QR advertises a
         // different LAN/hotspot address for external displays.
         assert.equal(new URL(href,page.url()).origin,new URL(base).origin);
