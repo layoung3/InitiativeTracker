@@ -32,6 +32,13 @@ def backend_profile(acme):
     if profile == DEBIAN_PROFILE and acme['expected_version'] == '4.0.0' and acme['dns_plugin'] == 'cloudflare' and acme['executable'] == '/usr/bin/certbot': return profile
     raise f.Rejected('Select an explicitly qualified backend/version/plugin profile')
 
+def debian_revision(version, upstream):
+    """Only the reviewed Debian 13 revision forms, not general Debian versions."""
+    match = re.fullmatch(re.escape(upstream) + r'-([1-9][0-9]{0,8})(?:\+deb13u([1-9][0-9]{0,8}))?', version)
+    if not match:
+        raise f.Rejected('Debian backend family differs from the qualified profile')
+    return int(match[1]), int(match[2] or 0)
+
 def qualify_debian_packages(value, *, _runner=f.run):
     _, acme, _, _, _ = settings(value)
     if backend_profile(acme) != DEBIAN_PROFILE: return
@@ -43,9 +50,13 @@ def qualify_debian_packages(value, *, _runner=f.run):
     if set(observed) != set(DEBIAN_PACKAGES): raise f.Rejected('Unexpected Debian backend packages')
     for package, minimum in DEBIAN_PACKAGES.items():
         version, architecture = observed[package]
-        if architecture != 'all' or version.rsplit('-',1)[0] != minimum.rsplit('-',1)[0]:
+        upstream = minimum.split('-', 1)[0]
+        if architecture != 'all' or debian_revision(version, upstream) < debian_revision(minimum, upstream):
             raise f.Rejected('Debian backend family differs from the qualified profile')
-        _runner(['/usr/bin/dpkg', '--compare-versions', version, 'ge', minimum], capture=False)
+        # dpkg (unlike dpkg-query) resets its primary group to root even for a
+        # comparison. That fails under Group=initiativetracker-tls and the empty
+        # capability set. Compare the constrained numeric revisions directly;
+        # epochs, prereleases and unreviewed suffixes fail closed above.
 
 def control_path(path, *, directory=False, private=False, executable=False):
     path = Path(path)

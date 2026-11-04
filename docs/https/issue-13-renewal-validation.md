@@ -21,13 +21,32 @@ fake ACME client replacing only the external certificate acquisition boundary.
 All private material is generated in the fixture; synthetic trust and probe
 injections are test-only and have no production setting.
 
-**The production incident's exact cause is not reproduced or established.**
-A passing isolated no-op does not prove production issuer files, public trust,
-clock, permissions, network or application acknowledgement were correct during
-the incident. It also does not test a real Cloudflare DNS-01 transaction.
+The initial ordinary Docker no-op passed, but adding the reviewed unit's root
+UID, non-root TLS GID and empty capability set reproduced a concrete failure:
+Debian's `dpkg --compare-versions` attempts to reset its primary GID to root and
+fails without CAP_SETGID. Package qualification invoked this command before
+Certbot even for a not-due lineage. A direct disposable control also reproduced
+the same error with a read-only rootfs and `--user 0:65000 --cap-drop ALL`.
+
+The systemd fixture first activates a valid synthetic certificate, then injects
+the old comparison call into renewal qualification. It requires the not-due
+renewal to fail at `backend-qualification`, checks both active receipts remain
+unchanged, and then requires the corrected renewal to succeed under the same
+group/capability boundary. No capability or production unit setting is relaxed.
+
+**This is a reproduced defect consistent with the incident, not proof of the
+production invocation's sole cause.** No production renewal was retried or
+protected production logs accessed. Production issuer files, trust, clock,
+permissions, network and application acknowledgement remain untested here.
+There is no real Cloudflare DNS-01 transaction in these fixtures.
 
 The following defects are independently reproducible:
 
+* Native package qualification uses read-only `dpkg-query` and a bounded numeric
+  comparison for the reviewed `upstream-revision[+deb13uN]` forms. It no longer
+  invokes the group-resetting `dpkg` program. Architecture, upstream family,
+  minimum revision and security-update floors remain enforced; epochs,
+  prereleases, other release suffixes and unknown syntax fail closed.
 * The adapter reports `changed: true` and rewrites its receipt for an unchanged
   validated export. It now reports `export-unchanged`, avoids the write, and the
   orchestrator still validates the certificate and acknowledges the exact

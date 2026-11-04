@@ -8,6 +8,7 @@ only in this fixture, never in runtime configuration.
 """
 import argparse
 import errno
+import os
 from pathlib import Path
 import socket
 import sys
@@ -37,7 +38,7 @@ def backend(argv):
     return result or 0
 
 
-def qualify(issuer=None, store=None):
+def qualify(issuer=None, store=None, *, check_sandbox=False):
     with tempfile.TemporaryDirectory(prefix='it-debian-renewal-') as directory:
         scratch = Path(directory)
         root = Path(issuer) if issuer else scratch / 'issuer'
@@ -90,6 +91,24 @@ def qualify(issuer=None, store=None):
             assert first['changed']
             before = (browser / 'active.json').read_bytes()
             issuer_before = (root / 'active.json').read_bytes()
+            if check_sandbox:
+                qualified = a.qualify_debian_packages
+                def legacy_qualification(v, **kw):
+                    qualified(v, **kw)
+                    version = a.DEBIAN_PACKAGES['certbot']
+                    a.f.run(['/usr/bin/dpkg', '--compare-versions', version, 'ge', version], capture=False)
+                # Recreate the old prerequisite against an existing not-due
+                # lineage and active certificate, then prove both are retained.
+                with patch.object(a, 'qualify_debian_packages', side_effect=legacy_qualification):
+                    try:
+                        a.f.renew(value, apply=True)
+                    except a.f.PhaseRejected as error:
+                        assert (error.phase, error.code) == ('backend-qualification', 'failed')
+                    else:
+                        raise AssertionError('Old privileged group reset unexpectedly succeeded')
+                assert before == (browser / 'active.json').read_bytes()
+                assert issuer_before == (root / 'active.json').read_bytes()
+                print('PASS: original not-due renewal prerequisite failure reproduced; previous certificate retained', flush=True)
             result = a.f.renew(value, apply=True)
             assert not result['changed'] and result['phase'] == 'noop-verified'
             assert before == (browser / 'active.json').read_bytes()
@@ -118,6 +137,7 @@ if __name__ == '__main__':
         status = Path('/proc/self/status').read_text()
         assert 'NoNewPrivs:\t1' in status
         assert 'CapEff:\t0000000000000000' in status
+        assert os.geteuid() == 0 and os.getegid() != 0
         for forbidden in ['/etc/it-renewal-must-not-write', '/repo/it-renewal-must-not-write']:
             try:
                 Path(forbidden).write_text('forbidden')
@@ -125,4 +145,4 @@ if __name__ == '__main__':
                 assert error.errno in {errno.EROFS, errno.EACCES}
             else:
                 raise AssertionError('ProtectSystem did not confine writes')
-    qualify(args.issuer, args.store)
+    qualify(args.issuer, args.store, check_sandbox=args.check_sandbox)
