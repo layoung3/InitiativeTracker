@@ -3,6 +3,7 @@
 @{ Layout = null; }
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Physical DM proof</title>
 <style>body{font:1.2rem system-ui;background:#111827;color:#eee;padding:2rem;max-width:55rem;margin:auto}section{overflow-wrap:anywhere;padding:1rem;border:1px solid #456;margin:1rem 0}.code{font:2rem monospace;overflow-wrap:anywhere}</style></head><body>
+<nav aria-label="Hub navigation" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"><a href="/setup" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Hub Setup</a><a href="/secure-access/physical" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Refresh requests</a></nav>
 <h1>Physical DM authorization</h1><p>Approve only a browser you control. Match its reference before entering its code over trusted HTTPS. Recovery revokes every previous secure approval.</p>
 @foreach (var request in Model.Requests) {
 <section data-request="@request.Id"><p>Browser reference <strong>@request.Reference</strong> · @request.Purpose</p><p class="code" data-physical-code="@request.Code">@request.Code</p><p>Expires @request.Expires.ToString("u"). One use only.</p></section>
