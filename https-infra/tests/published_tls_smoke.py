@@ -148,7 +148,7 @@ def main():
             try:
                 f.activate(settings, root / 'third.pem', root / 'third.key', dry_run=False, _probe=reject_candidate, _test_ca=root / 'ca.pem')
             except f.Rejected as error:
-                assert 'previous manifest restored' in str(error)
+                assert isinstance(error, f.PhaseRejected) and error.code == 'rollback-confirmed'
             else:
                 raise AssertionError('Failed acknowledgement reported success')
             probe(host, 5445, second)
