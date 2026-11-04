@@ -31,10 +31,11 @@
          System.Net.IPAddress.IsLoopback(remote) &&
          !Context.Request.Path.StartsWithSegments("/setup"))
     {
-        <div class="position-fixed bottom-0 end-0 m-2" style="z-index: 1050;">
-            <a href="/setup" class="btn btn-sm btn-dark border border-light opacity-75"
+        <nav class="position-fixed bottom-0 end-0 m-3" style="z-index: 1050;" aria-label="Physical hub navigation">
+            <a href="/setup" class="btn btn-lg btn-dark border border-light shadow"
+               style="min-height: 48px; min-width: 120px;"
                title="Return to hub setup">Hub Setup</a>
-        </div>
+        </nav>
     }
     <div class="app-shell">
 
