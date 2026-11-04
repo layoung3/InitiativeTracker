@@ -42,6 +42,10 @@ public class IndexModel : PageModel
     public string DisplayPairingUrl { get; private set; } =
         string.Empty;
 
+    // The physical hub opens its own loopback route; QR codes continue to use the
+    // advertised network URL so external displays can connect.
+    public string LocalDisplayPairingUrl { get; private set; } = string.Empty;
+
     public string DisplayQrDataUri { get; private set; } = string.Empty;
 
     public string DmLoginUrl { get; private set; } =
@@ -84,10 +88,10 @@ public class IndexModel : PageModel
             $"{baseUrl}/dm/login";
 
 
-        DisplayPairingUrl =
-            $"{baseUrl}/display/connect?token=" +
-            Uri.EscapeDataString(
-                Session.DisplayToken);
+        LocalDisplayPairingUrl = "/display/connect?token=" +
+            Uri.EscapeDataString(Session.DisplayToken);
+
+        DisplayPairingUrl = baseUrl + LocalDisplayPairingUrl;
 
 
         using var displayData = QRCodeGenerator.GenerateQrCode(DisplayPairingUrl, QRCodeGenerator.ECCLevel.Q);
