@@ -236,16 +236,18 @@ class FoundationTests(unittest.TestCase):
             def reject_new(host, port, generation, fingerprint):
                 if generation != old:
                     raise f.Rejected('fixture reload failure')
-            with self.assertRaisesRegex(f.Rejected, 'previous manifest restored'):
+            with self.assertRaises(f.PhaseRejected) as error:
                 self.activate(folder, name="next", dry_run=False, _probe=reject_new)
+            self.assertEqual('rollback-confirmed', error.exception.code)
             self.assertEqual(old, f.read_active(folder)['generation'])
 
     def test_uncertain_rollback_is_reported(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(f.time, 'sleep'):
             folder = Path(tmp)
             self.activate(folder, dry_run=False, _probe=lambda *a: None)
-            with self.assertRaisesRegex(f.Rejected, 'recovery is unconfirmed'):
+            with self.assertRaises(f.PhaseRejected) as error:
                 self.activate(folder, name="next", dry_run=False, _probe=lambda *a: (_ for _ in ()).throw(OSError('offline')))
+            self.assertEqual('rollback-probe', error.exception.phase)
 
     def test_first_activation_failure_requests_disable(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(f.time, 'sleep'):
@@ -284,8 +286,9 @@ class FoundationTests(unittest.TestCase):
             lock = os.open(folder / '.renewal-lock', os.O_RDWR | os.O_CREAT, 0o600)
             try:
                 f.fcntl.flock(lock, f.fcntl.LOCK_EX | f.fcntl.LOCK_NB)
-                with self.assertRaises(BlockingIOError):
+                with self.assertRaises(f.PhaseRejected) as error:
                     f.renew(settings, apply=True)
+                self.assertEqual('renewal-lock', error.exception.phase)
             finally:
                 os.close(lock)
 

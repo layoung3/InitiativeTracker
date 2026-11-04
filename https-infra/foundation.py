@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline preflight and certificate lifecycle. Never changes DNS, services or app DBs."""
 import argparse
+from contextlib import contextmanager
 import base64
 import hashlib
 import fcntl
@@ -26,6 +27,40 @@ if __name__ == "__main__":
 
 class Rejected(ValueError):
     pass
+
+class CommandRejected(Rejected):
+    """Only a bounded classification crosses the subprocess boundary."""
+    def __init__(self, code):
+        self.code = code
+        super().__init__({'timeout': 'External validation or renewal timed out',
+                          'failed': 'External validation or renewal command failed',
+                          'output-limit': 'External command output exceeds limit',
+                          'invocation': 'External validation or renewal rejected'}[code])
+
+class PhaseRejected(Rejected):
+    PHASES = frozenset(('configuration', 'renewal-lock', 'adapter-preflight', 'backend-qualification',
+        'lineage-check', 'backend-invocation', 'export-read', 'export-validation', 'export-write',
+        'issuer-receipt', 'activation', 'certificate-validation', 'active-store', 'noop-probe',
+        'bundle-export', 'activation-write', 'activation-probe', 'rollback-write', 'rollback-probe'))
+    CODES = frozenset(('rejected', 'timeout', 'failed', 'output-limit', 'invocation', 'rollback-confirmed'))
+
+    def __init__(self, phase, code='rejected'):
+        # Never accept exception text, argv, paths or provider output as diagnostics.
+        self.phase = phase if phase in self.PHASES else 'configuration'
+        self.code = code if code in self.CODES else 'rejected'
+        super().__init__('certificate-operation-rejected')
+
+    def status(self):
+        return {'ready': False, 'reason': str(self), 'phase': self.phase, 'code': self.code}
+
+@contextmanager
+def operation_phase(name):
+    try:
+        yield
+    except PhaseRejected:
+        raise
+    except (Rejected, OSError, ValueError, KeyError, TypeError) as error:
+        raise PhaseRejected(name, error.code if isinstance(error, CommandRejected) else 'rejected') from None
 
 def hostname(value):
     # ASCII A-label FQDNs only; owner must explicitly convert/review international names.
@@ -113,7 +148,7 @@ def run(args, *, data=None, timeout=60, capture=True, max_output=262144):
                         if not chunk:
                             selector.unregister(key.fd)
                         elif len(output) + len(chunk) > max_output:
-                            raise Rejected('External command output exceeds limit')
+                            raise CommandRejected('output-limit')
                         else:
                             output.extend(chunk)
         # Observe exit without reaping so descendants cannot outlive a completed run.
@@ -128,14 +163,17 @@ def run(args, *, data=None, timeout=60, capture=True, max_output=262144):
         process.wait()
         group_cleaned = True
         if process.returncode:
-            raise Rejected('External validation or renewal command failed')
+            raise CommandRejected('failed')
         return bytes(output)
     except subprocess.TimeoutExpired:
         stop()
-        raise Rejected('External validation or renewal timed out') from None
-    except (Rejected, OSError):
+        raise CommandRejected('timeout') from None
+    except Rejected:
         stop()
-        raise Rejected('External validation or renewal rejected') from None
+        raise
+    except OSError:
+        stop()
+        raise CommandRejected('invocation') from None
     finally:
         if process is not None:
             if process.stdout is not None:
@@ -244,12 +282,12 @@ def read_active(root):
         raise Rejected('Invalid generation')
     return value
 
-def write_active(root, value):
+def write_active(root, value, *, mode=0o640):
     # The writer owns the store; group/app can read but cannot replace any object.
     temp = root / ('.active-' + uuid.uuid4().hex)
     try:
-        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640)
-        os.fchmod(fd, 0o640)
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        os.fchmod(fd, mode)
         with os.fdopen(fd, 'w') as stream:
             json.dump(value, stream)
             stream.flush()
@@ -313,33 +351,39 @@ def wait_for_probe(callback, host, port, generation, expected_leaf):
 def activate(settings, fullchain, key, *, dry_run=True, _probe=None, _test_ca=None):
     host = hostname(settings['hostname'])
     _probe = _probe or functools.partial(probe,authority_port=settings.get('public_port',5445))
-    validate_certificate(host, fullchain, key, _test_ca=_test_ca)
+    with operation_phase('certificate-validation'):
+        validate_certificate(host, fullchain, key, _test_ca=_test_ca)
     expected_leaf = leaf_fingerprint(fullchain.read_bytes())
-    root = private_path(settings['store'], directory=True)
+    with operation_phase('active-store'):
+        root = private_path(settings['store'], directory=True)
     if dry_run:
         return {'validated': True, 'changed': False}
     lock = root / '.lock'
     lock_fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(lock_fd, 'w') as stream:
         fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        old = read_active(root)
+        with operation_phase('active-store'):
+            old = read_active(root)
+            if old:
+                previous = private_path(root / old['generation'] / 'bundle.pfx')
+                if previous.stat().st_size > 262144:
+                    raise Rejected('Archived bundle exceeds limit')
+                certificates = run(['/usr/bin/openssl', 'pkcs12', '-in', str(previous), '-nokeys', '-passin', 'stdin'], data=b'\n')
         if old:
-            previous = private_path(root / old['generation'] / 'bundle.pfx')
-            if previous.stat().st_size > 262144:
-                raise Rejected('Archived bundle exceeds limit')
-            certificates = run(['/usr/bin/openssl', 'pkcs12', '-in', str(previous), '-nokeys', '-passin', 'stdin'], data=b'\n')
             if chain_identity(certificates) == chain_identity(fullchain.read_bytes()):
                 # Certbot renew can succeed without issuance. Check service, avoid reload/key copies.
-                wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'], leaf_fingerprint(certificates))
-                return {'validated': True, 'changed': False, 'generation': old['generation']}
+                with operation_phase('noop-probe'):
+                    wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'], leaf_fingerprint(certificates))
+                return {'validated': True, 'changed': False, 'generation': old['generation'], 'phase': 'noop-verified'}
         generation = uuid.uuid4().hex
         target = root / generation
         target.mkdir(mode=0o750)
         target.chmod(0o2750 if root.stat().st_mode & stat.S_ISGID else 0o750)
         try:
             # Empty PFX password is protected by OS permissions, never by a release secret.
-            bundle = run(['/usr/bin/openssl', 'pkcs12', '-export', '-in', str(fullchain), '-inkey', str(key),
-                          '-passout', 'stdin'], data=b'\n')
+            with operation_phase('bundle-export'):
+                bundle = run(['/usr/bin/openssl', 'pkcs12', '-export', '-in', str(fullchain), '-inkey', str(key),
+                              '-passout', 'stdin'], data=b'\n')
             fd = os.open(target / 'bundle.pfx', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640)
             os.fchmod(fd, 0o640)
             with os.fdopen(fd, 'wb') as output:
@@ -351,21 +395,24 @@ def activate(settings, fullchain, key, *, dry_run=True, _probe=None, _test_ca=No
                 os.fsync(generation_fd)
             finally:
                 os.close(generation_fd)
-            write_active(root, {'generation': generation})
             try:
-                wait_for_probe(_probe, host, settings.get('port', 5445), generation, expected_leaf)
+                # A directory fsync can fail *after* rename. Roll back that case too.
+                with operation_phase('activation-write'):
+                    write_active(root, {'generation': generation})
+                with operation_phase('activation-probe'):
+                    wait_for_probe(_probe, host, settings.get('port', 5445), generation, expected_leaf)
             except Exception:
                 if old:
-                    write_active(root, old)
-                    try:
+                    with operation_phase('rollback-write'):
+                        write_active(root, old)
+                    with operation_phase('rollback-probe'):
                         wait_for_probe(_probe, host, settings.get('port', 5445), old['generation'], leaf_fingerprint(certificates))
-                    except Exception:
-                        raise Rejected('Rollback recorded; application recovery is unconfirmed') from None
                 else:
-                    write_active(root, {'disabled': True})
+                    with operation_phase('rollback-write'):
+                        write_active(root, {'disabled': True})
                     raise Rejected('Initial activation failed; disable requested, recovery is unconfirmed') from None
-                raise Rejected('Activation failed; previous manifest restored') from None
-            return {'validated': True, 'changed': True, 'generation': generation}
+                raise PhaseRejected('activation', 'rollback-confirmed') from None
+            return {'validated': True, 'changed': True, 'generation': generation, 'phase': 'activation-verified'}
         except Exception:
             # Retain immutable material on uncertain reload; never remove an in-use key.
             raise
@@ -386,6 +433,10 @@ def rollback(settings, generation, *, apply=False):
 
 
 def renew(settings, *, apply=False, _runner=run):
+    with operation_phase('configuration'):
+        return _renew(settings, apply=apply, _runner=_runner)
+
+def _renew(settings, *, apply=False, _runner=run):
     """Call one reviewed, credential-free argv executable. Backend owns ACME/DNS details."""
     if 'acme' in settings:
         import certbot_adapter
@@ -398,19 +449,24 @@ def renew(settings, *, apply=False, _runner=run):
     if not apply:
         return {'changed': False, 'reason': 'dry-run-no-network'}
     root = private_path(settings['store'], directory=True)
-    descriptor = os.open(root / '.renewal-lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with operation_phase('renewal-lock'):
+        descriptor = os.open(root / '.renewal-lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as locked:
-        fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with operation_phase('renewal-lock'):
+            fcntl.flock(locked, fcntl.LOCK_EX | fcntl.LOCK_NB)
         timeout = settings.get('renewal_timeout_seconds', 900)
         if not isinstance(timeout, int) or not 60 <= timeout <= 3600:
             raise Rejected('Renewal timeout must be between 60 and 3600 seconds')
         if backend is None:
             certbot_adapter.execute(settings, 'renew', apply=True)
-            chain, key = certbot_adapter.exported_paths(settings)
+            with operation_phase('issuer-receipt'):
+                chain, key = certbot_adapter.exported_paths(settings)
         else:
-            _runner([str(backend)], timeout=timeout, capture=False)
+            with operation_phase('backend-invocation'):
+                _runner([str(backend)], timeout=timeout, capture=False)
             chain, key = Path(settings['fullchain']), Path(settings['private_key'])
-        return activate(settings, chain, key, dry_run=False)
+        with operation_phase('activation'):
+            return activate(settings, chain, key, dry_run=False)
 
 
 
@@ -423,7 +479,8 @@ def main():
     parser.add_argument('--apply', action='store_true', help='Explicit certificate-store write/renewal approval; never configures network services')
     args = parser.parse_args()
     try:
-        settings = config(args.config)
+        with operation_phase('configuration'):
+            settings = config(args.config)
         if args.action == 'physical-preflight':
             result = physical_resolution_preflight(settings['hostname'])
             print(json.dumps(result))
@@ -451,6 +508,9 @@ def main():
         else:
             print(json.dumps(renew(settings, apply=args.apply)))
         return 0
+    except PhaseRejected as error:
+        print(json.dumps(error.status()))
+        return 1
     except Rejected as error:
         # Rejected messages are static, controlled strings; never subprocess or parser output.
         print(json.dumps({'ready': False, 'reason': str(error)}))

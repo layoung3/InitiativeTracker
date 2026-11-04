@@ -5,6 +5,8 @@ on:
       - 'SetupReadme.md'
       - 'docs/setup/**'
       - 'scripts/tests/test_n9_branding_docs.py'
+      # HTTPS lifecycle changes must retain the documented release boundaries.
+      - 'https-infra/**'
       - '.github/workflows/n9-branding-docs.yml'
   workflow_dispatch:
 permissions:

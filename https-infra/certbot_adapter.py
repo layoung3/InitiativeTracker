@@ -112,7 +112,9 @@ def arguments(value, action):
             raise f.Rejected('Initial issuance requires explicit CA terms approval')
         return common + ['certonly', '--agree-tos', '--email', acme['email'], '--key-type', 'ecdsa', '--elliptic-curve', 'secp256r1', '-d', host] + (['--dry-run'] if action == 'stage' else [])
     if action == 'renew':
-        return common + ['renew']
+        # Our systemd timer already randomizes scheduling. Certbot's additional
+        # 0..480 second sleep otherwise consumes the bounded subprocess timeout.
+        return common + ['renew', '--no-random-sleep-on-renew']
     raise f.Rejected('Unsupported ACME action')
 
 def read_archive(root, host, name):
@@ -137,10 +139,11 @@ def read_archive(root, host, name):
 
 def export(value, *, _validator=f.validate_certificate):
     host, _, root, _, _ = settings(value)
-    chain, chain_version = read_archive(root, host, 'fullchain')
-    key, key_version = read_archive(root, host, 'privkey')
-    if chain_version != key_version:
-        raise f.Rejected('Certificate archive generation changed during export')
+    with f.operation_phase('export-read'):
+        chain, chain_version = read_archive(root, host, 'fullchain')
+        key, key_version = read_archive(root, host, 'privkey')
+        if chain_version != key_version:
+            raise f.Rejected('Certificate archive generation changed during export')
     output = root / 'exports'
     output.mkdir(mode=0o700, exist_ok=True)
     control_path(output, directory=True, private=True)
@@ -148,7 +151,8 @@ def export(value, *, _validator=f.validate_certificate):
     if (root / 'active.json').exists():
         old_chain, old_key = exported_paths(value)
         if f.chain_identity(old_chain.read_bytes()) == f.chain_identity(chain) and old_key.read_bytes() == key:
-            _validator(host, old_chain, old_key)
+            with f.operation_phase('export-validation'):
+                _validator(host, old_chain, old_key)
             return old_chain.parent
     generation = output / uuid.uuid4().hex
     generation.mkdir(mode=0o700)
@@ -159,7 +163,8 @@ def export(value, *, _validator=f.validate_certificate):
                 stream.write(material)
                 stream.flush()
                 os.fsync(stream.fileno())
-        _validator(host, generation / 'fullchain.pem', generation / 'privkey.pem')
+        with f.operation_phase('export-validation'):
+            _validator(host, generation / 'fullchain.pem', generation / 'privkey.pem')
         for directory in [generation, output]:
             descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
             try:
@@ -200,6 +205,10 @@ def reject_ambient_config(value=None):
 
 
 def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_certificate):
+    with f.operation_phase('adapter-preflight'):
+        return _execute(value, action, apply=apply, _runner=_runner, _validator=_validator)
+
+def _execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_certificate):
     argv = arguments(value, action)
     host, acme, root, _, timeout = settings(value)
     if not apply:
@@ -216,10 +225,11 @@ def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_
         fd = os.open(root / 'adapter.ini', os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
         os.close(fd)
         reject_ambient_config(value)
-        qualify_debian_packages(value, _runner=_runner)
-        version = _runner([str(acme['executable']), '--version'], max_output=4096).decode().strip()
-        if version != 'certbot ' + acme['expected_version']:
-            raise f.Rejected('Certbot version differs from the reviewed version')
+        with f.operation_phase('backend-qualification'):
+            qualify_debian_packages(value, _runner=_runner)
+            version = _runner([str(acme['executable']), '--version'], max_output=4096).decode().strip()
+            if version != 'certbot ' + acme['expected_version']:
+                raise f.Rejected('Certbot version differs from the reviewed version')
         renewal = root / 'config' / 'renewal' / (host + '.conf')
         stage_marker = root / '.staging-only'
         if action != 'stage' and os.path.lexists(stage_marker):
@@ -246,16 +256,23 @@ def execute(value, action, *, apply=False, _runner=f.run, _validator=f.validate_
             if re.search(r'(?im)^\s*(?:pre_hook|post_hook|deploy_hook)\s*=\s*[^\s#]', renewal.read_text()):
                 raise f.Rejected('Renewal hooks require a separate adapter review')
         reject_ambient_config(value)
-        _runner(argv, timeout=timeout, capture=False)
+        with f.operation_phase('backend-invocation'):
+            _runner(argv, timeout=timeout, capture=False)
         if action == 'stage':
             if renewal.exists() or (root / 'active.json').exists() or (root / 'exports').exists():
                 raise f.Rejected('Staging backend unexpectedly persisted certificate material')
             return {'staging_validated': True, 'certificate_activated': False, 'private_staging_state_written': True}
-        snapshot = export(value, _validator=_validator)
-        receipt = {'snapshot': snapshot.name, 'hostname': host}
-        f.write_active(root, receipt)  # Fixed private receipt; contains no key or provider secret.
-        os.chmod(root / 'active.json', 0o600)
-        return {'changed': True, 'action': action, 'snapshot': snapshot.name}
+        with f.operation_phase('issuer-receipt'):
+            previous = exported_paths(value)[0].parent if (root / 'active.json').exists() else None
+        with f.operation_phase('export-write'):
+            snapshot = export(value, _validator=_validator)
+        changed = snapshot != previous
+        if changed:
+            receipt = {'snapshot': snapshot.name, 'hostname': host}
+            with f.operation_phase('issuer-receipt'):
+                f.write_active(root, receipt, mode=0o600)
+        return {'changed': changed, 'action': action, 'snapshot': snapshot.name,
+                'phase': 'export-validated' if changed else 'export-unchanged'}
 
 def exported_paths(value):
     host, _, root, _, _ = settings(value)
@@ -282,6 +299,9 @@ def main():
         value = json.loads(args.config.read_text())
         print(json.dumps(execute(value, args.action, apply=args.apply)))
         return 0
+    except f.PhaseRejected as error:
+        print(json.dumps(error.status() | {'changed': False}))
+        return 1
     except (f.Rejected, OSError, ValueError, KeyError):
         print(json.dumps({'changed': False, 'reason': 'certbot-operation-rejected'}))
         return 1
