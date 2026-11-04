@@ -216,6 +216,7 @@ public sealed class SecureAccessWebTests
         using var host = new Host();
         using var requester = host.Client();
         using var stranger = host.Client();
+        await stranger.Token(); // Populate an independent secure browser binding.
         Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm", ("recovery", "true"))).StatusCode);
         var id = requester.Pending.Id;
         Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
