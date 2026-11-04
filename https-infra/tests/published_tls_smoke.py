@@ -35,8 +35,9 @@ def main():
         def openssl(*argv):
             subprocess.run(['/usr/bin/openssl', *argv], cwd=root, check=True, capture_output=True)
         openssl('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem',
-                '-subj', '/CN=Disposable Process Only Root', '-days', '3', '-addext', 'basicConstraints=critical,CA:TRUE')
-        (root / 'leaf.ext').write_text(f'subjectAltName=DNS:{host}\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\n')
+                '-subj', '/CN=Disposable Process Only Root', '-days', '3', '-addext', 'basicConstraints=critical,CA:TRUE',
+                '-addext', 'keyUsage=critical,keyCertSign,cRLSign')
+        (root / 'leaf.ext').write_text(f'subjectAltName=DNS:{host}\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n')
         for name in ['first', 'second', 'third']:
             openssl('req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', name + '.key', '-out', name + '.csr', '-subj', '/CN=' + host)
             openssl('x509', '-req', '-in', name + '.csr', '-CA', 'ca.pem', '-CAkey', 'ca.key', '-CAcreateserial', '-out', name + '.pem', '-days', '2', '-extfile', 'leaf.ext')
@@ -148,7 +149,7 @@ def main():
             try:
                 f.activate(settings, root / 'third.pem', root / 'third.key', dry_run=False, _probe=reject_candidate, _test_ca=root / 'ca.pem')
             except f.Rejected as error:
-                assert 'previous manifest restored' in str(error)
+                assert isinstance(error, f.PhaseRejected) and error.code == 'rollback-confirmed'
             else:
                 raise AssertionError('Failed acknowledgement reported success')
             probe(host, 5445, second)

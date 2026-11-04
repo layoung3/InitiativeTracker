@@ -220,7 +220,7 @@ def hub():
             f.activate(settings,ROOT/'first.pem',ROOT/'first.key',dry_run=False,
                 _probe=lambda h,p,g,leaf:probe(g,leaf) if g == second else (_ for _ in ()).throw(f.Rejected('Fixture acknowledgement failure')),
                 _test_ca=ROOT/'ca.pem')
-        except f.Rejected as error:assert 'previous manifest restored' in str(error)
+        except f.Rejected as error:assert isinstance(error, f.PhaseRejected) and error.code == 'rollback-confirmed'
         else:raise AssertionError('Unacknowledged candidate activated')
         stop_app(process);process = start_app()
         f.wait_for_probe(lambda h,p,g,leaf:probe(g,leaf),HOST,5445,second,f.leaf_fingerprint((ROOT/'second.pem').read_bytes()))

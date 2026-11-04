@@ -16,6 +16,22 @@ jobs:
         run: docker build -f https-infra/tests/Dockerfile.certbot4 -t it-private-https443-tests .
       - name: Qualify actual Certbot/Cloudflare packages without network access
         run: docker run --rm --network none it-private-https443-tests
+      - name: Actual Debian not-due and fake-ACME replacement renewal
+        run: docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges it-private-https443-tests /usr/bin/python3 -I https-infra/tests/renewal_qualification.py
+      - name: Renew inside the exact reviewed systemd Service sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          rootfs="$RUNNER_TEMP/issue13-debian-rootfs"
+          mkdir -p "$rootfs"
+          fixture="it-renewal-rootfs-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm -f "$fixture" >/dev/null 2>&1 || true' EXIT
+          docker create --name "$fixture" it-private-https443-tests
+          docker export "$fixture" | sudo tar -xpf - -C "$rootfs"
+          # This group exists only on the disposable runner/rootfs, never a Pi.
+          sudo groupadd --system initiativetracker-tls
+          getent group initiativetracker-tls | sudo tee -a "$rootfs/etc/group" >/dev/null
+          sudo python3 https-infra/tests/systemd_renewal_qualification.py --rootfs "$rootfs"
       - name: Verify hotspot DNS answers with hub-local loopback hosts present
         run: docker run --rm --network none it-private-https443-tests /usr/bin/python3 -I https-infra/tests/dnsmasq_qualification.py
   kernel-ingress:

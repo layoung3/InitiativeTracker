@@ -43,6 +43,32 @@ class DebianBackendTests(unittest.TestCase):
         with self.assertRaises(a.f.Rejected):a.qualify_debian_packages(self.native(),_runner=runner)
         versions['python3-cloudflare']='2.20.0-1';versions['certbot']='4.0.0-1'
         with self.assertRaises(a.f.Rejected):a.qualify_debian_packages(self.native(),_runner=runner)
+    def test_qualification_never_invokes_the_group_resetting_dpkg_command(self):
+        calls=[]
+        def runner(args,**kwargs):
+            calls.append(args)
+            self.assertEqual('/usr/bin/dpkg-query',args[0])
+            return ''.join(f'{name}\t{version}\tall\n' for name,version in a.DEBIAN_PACKAGES.items()).encode()
+        a.qualify_debian_packages(self.native(),_runner=runner)
+        self.assertEqual(1,len(calls))
+    def test_reviewed_revision_order_matches_dpkg_without_relaxing_families(self):
+        minimum='4.0.0-2+deb13u1'
+        for version in ['4.0.0-1','4.0.0-2','4.0.0-2+deb13u1','4.0.0-2+deb13u2',
+                        '4.0.0-2+deb13u10','4.0.0-3','4.0.0-10+deb13u1']:
+            with self.subTest(version=version):
+                expected=a.debian_revision(version,'4.0.0') >= a.debian_revision(minimum,'4.0.0')
+                try:a.f.run(['/usr/bin/dpkg','--compare-versions',version,'ge',minimum]);actual=True
+                except a.f.Rejected:actual=False
+                self.assertEqual(expected,actual)
+    def test_unreviewed_revision_syntax_and_architecture_are_rejected(self):
+        for version in ['4.0.0-2~deb13u1','4.0.0-2+b1','4.0.0-2+deb12u99','4.0.0-2+deb14u1',
+                        '1:4.0.0-2+deb13u1','4.0.0-02+deb13u1','4.0.0-2+deb13u01','4.0.0-2+deb13u0',
+                        '4.0.0-2+deb13u1-junk','4.0.0-9999999999','5.0.0-3']:
+            with self.subTest(version=version),self.assertRaises(a.f.Rejected):
+                a.debian_revision(version,'4.0.0')
+        def runner(args,**kwargs):
+            return ''.join(f'{name}\t{version}\tarm64\n' for name,version in a.DEBIAN_PACKAGES.items()).encode()
+        with self.assertRaises(a.f.Rejected):a.qualify_debian_packages(self.native(),_runner=runner)
     def test_unknown_ambient_configuration_is_rejected_in_native_profile(self):
         path=self.root/'ambient.ini';path.write_text('pre-hook = never-execute\n')
         with self.assertRaises(a.f.Rejected):a.reject_ambient_config(self.native())
