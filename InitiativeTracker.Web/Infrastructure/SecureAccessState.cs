@@ -22,7 +22,8 @@ public sealed class SecureGrantState
     public List<SecureGrant> Grants { get; set; } = [];
 }
 public sealed record SecureEnrollment(Guid Id, string Reference, string Purpose, SecureIdentity Identity, string Browser,
-    string Origin, DateTimeOffset Expires, string Code, int Attempts = 0, Guid? Approver = null, int ApproverGeneration = 0);
+    string Origin, DateTimeOffset Expires, string Code, int Attempts = 0, Guid? Approver = null, int ApproverGeneration = 0,
+    bool PhysicalApproved = false);
 public sealed record SecureAccessStorage(string Root, bool Persistent);
 public enum SecurePersistenceSync { StoreDirectory, ParentDirectory, FenceCreated, StateReplaced, FenceRemoved, FailureFence }
 
@@ -259,6 +260,46 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     private SecureEnrollment? FindBrowser(string browser) { Cleanup(); return pending.Values.SingleOrDefault(p => p.Browser == browser); }
     public SecureEnrollment? ForBrowser(string browser) { lock (gate) return FindBrowser(browser) is { } request ? Public(request) : null; }
     public IReadOnlyList<SecureEnrollment> PhysicalRequests() { lock (gate) { Cleanup(); return pending.Values.Where(p => p.Purpose.StartsWith("dm-")).ToArray(); } }
+    // A physical tap approves only the exact, short-lived request. The browser
+    // must independently redeem its own browser-bound challenge; a physical
+    // response never issues a cookie or transfers proof to another browser.
+    public void ApprovePhysicalDm(Guid id)
+    {
+        lock (gate)
+        {
+            Cleanup();
+            if (!pending.TryGetValue(id, out var request) || !request.Purpose.StartsWith("dm-") ||
+                !StillMatches(request.Identity) || request.PhysicalApproved)
+                throw new SecureAccessDenied();
+            pending[id] = request with { PhysicalApproved = true };
+        }
+    }
+    public void DenyPhysicalDm(Guid id)
+    {
+        lock (gate)
+        {
+            Cleanup();
+            if (!pending.TryGetValue(id, out var request) || !request.Purpose.StartsWith("dm-"))
+                throw new SecureAccessDenied();
+            pending.Remove(id);
+        }
+    }
+    public SecureGrant FinishPhysicalDm(string browser, string origin)
+    {
+        lock (gate)
+        {
+            var request = FindBrowser(browser);
+            if (request is null || !request.Purpose.StartsWith("dm-") || !request.PhysicalApproved ||
+                request.Origin != origin || !StillMatches(request.Identity)) throw new SecureAccessDenied();
+            pending.Remove(request.Id); // The approval is one use, even on write failure.
+            var recovery = request.Purpose == "dm-recover";
+            var state = recovery ? new SecureGrantState() : Read() ?? throw new SecureAccessDenied();
+            if (recovery) pending.Clear();
+            var grant = Issue(state, request);
+            Save(state, recovery);
+            return grant;
+        }
+    }
     public IReadOnlyList<SecureEnrollment> MemberRequests() { lock (gate) { Cleanup(); return pending.Values.Where(p => p.Purpose.StartsWith("enroll-")).Select(Public).ToArray(); } }
     public void ClearPending() { lock (gate) { pending.Clear(); rates.Clear(); } }
     public IReadOnlyList<SecureGrant> Grants() { lock (gate) return Read()?.Grants.Where(g => !g.Revoked && g.Expires > Now).ToArray() ?? []; }
