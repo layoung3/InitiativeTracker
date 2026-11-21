@@ -6,7 +6,28 @@
 <nav aria-label="Hub navigation" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"><a href="/setup" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Hub Setup</a><a href="/secure-access/physical" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Refresh requests</a></nav>
 <h1>Physical DM authorization</h1><p>Approve only a browser you control. Match its reference before entering its code over trusted HTTPS. Recovery revokes every previous secure approval.</p>
 @foreach (var request in Model.Requests) {
-<section data-request="@request.Id"><p>Browser reference <strong>@request.Reference</strong> · @request.Purpose</p><p class="code" data-physical-code="@request.Code">@request.Code</p><p>Expires @request.Expires.ToString("u"). One use only.</p></section>
+<section data-request="@request.Id">
+    <p>Browser reference <strong>@request.Reference</strong> · @(request.Purpose == "dm-recover" ? "DM recovery — revokes all previous secure approvals" : "DM authorization")</p>
+    <p>Expires @request.Expires.ToString("u"). One use only.</p>
+    @if (request.PhysicalApproved)
+    {
+        <p role="status"><strong>Approved.</strong> Waiting for this exact browser to complete its request.</p>
+    }
+    else
+    {
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+            <form method="post" asp-page-handler="Approve">
+                <input type="hidden" name="id" value="@request.Id" />
+                <button type="submit" style="min-height:56px;padding:.8rem 1.4rem;background:#166534;color:white;font:inherit;border:2px solid #bbf7d0;border-radius:.5rem">Approve browser</button>
+            </form>
+            <form method="post" asp-page-handler="Deny">
+                <input type="hidden" name="id" value="@request.Id" />
+                <button type="submit" style="min-height:56px;padding:.8rem 1.4rem;background:#991b1b;color:white;font:inherit;border:2px solid #fecaca;border-radius:.5rem">Deny request</button>
+            </form>
+        </div>
+    }
+    <details><summary>Manual authorization code (fallback)</summary><p class="code" data-physical-code="@request.Code">@request.Code</p></details>
+</section>
 }
 @if (Model.Requests.Count == 0) { <p>No pending DM requests. Start a request at the hub's HTTPS /secure-access page on the browser you want to authorize.</p> }
 <form method="post" asp-page-handler="ClearRequests"><button>Clear pending requests and expired attempts</button></form>
