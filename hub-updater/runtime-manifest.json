@@ -3,7 +3,7 @@
   "componentSet": "secure-rollback-fence-v1",
   "sha256": {
     "initiativetracker-check-update": "1e1727161780b6caf381facd63de9de5d3d2ed5370a6a1ba1b53cb3509cfb15c",
-    "initiativetracker-hub-launch": "eaa45101302625ac63da42f3da1e35e19798bae7f6aff9cd2fefdfce1335f67a",
+    "initiativetracker-hub-launch": "2f9e67527368d568adee1bccab9bc3b5ac101a8998e604989f2e318eb14983b9",
     "initiativetracker-install-update": "c9f1dd83f896726aaf7107b78056393bad47e8bb2c8d38e565e7a60ff685d302"
   }
 }
