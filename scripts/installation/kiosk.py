@@ -103,7 +103,7 @@ def hub_resume_command(home, settings=None):
             hub_target(settings or {})]
 
 
-def watch_hub_child(child, settings):
+def watch_hub_child(child, settings, active_url=None):
     """Return True only after a sustained hub outage and healthy recovery.
 
     Short failures cannot disrupt a live game. This runs outside the browser,
@@ -115,13 +115,22 @@ def watch_hub_child(child, settings):
         time.sleep(5)
         if child.poll() is not None:
             return False
-        if local_hub_reachable():
+        local_ready = local_hub_reachable()
+        # An HTTPS error page can strand Chromium even while legacy HTTP is
+        # healthy. Verify the exact trusted, loopback-resolved HTTPS target.
+        secure_ready = (verified_hub_https(settings) == active_url
+                        if active_url and active_url.startswith('https://') else True)
+        if local_ready and secure_ready:
             if needs_recovery:
                 return True
             offline = 0
         else:
             offline += 1
             if offline >= 3:
+                if local_ready and not secure_ready:
+                    # Restore the local Setup experience, without a TLS bypass
+                    # or automatically conferring physical approval authority.
+                    return True
                 needs_recovery = True
     return False
 
@@ -197,11 +206,12 @@ def supervise(settings, home):
         # The root updater's diagnostic journal remains available locally.
         # The first launch retains updater-before-Chromium ordering. A recovery
         # launch skips the updater and uses the identical persistent hub profile.
+        active_url = hub_target(settings) if settings['role'] == 'hub' else None
         args = hub_resume_command(home, settings) if settings['role'] == 'hub' and recovering else command(settings, home)
         child = subprocess.Popen(args, start_new_session=True,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if settings['role'] == 'hub':
-            restored = watch_hub_child(child, settings)
+            restored = watch_hub_child(child, settings, active_url)
             if restored:
                 stop_child(child)
                 recovering = True
