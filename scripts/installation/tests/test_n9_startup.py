@@ -99,6 +99,28 @@ class N9StartupTests(unittest.TestCase):
         self.assertEqual(5, probe.call_count)
         self.assertEqual(5, sleep.call_count)
 
+    def test_hub_https_failure_restores_local_setup_without_trust_bypass(self):
+        child = Mock()
+        child.poll.return_value = None
+        settings = {'role': 'hub', 'hub_https_origin': 'https://hub.owner-domain.org'}
+        secure = 'https://hub.owner-domain.org/setup'
+        with patch.object(kiosk, 'local_hub_reachable', return_value=True) as http, \
+             patch.object(kiosk, 'verified_hub_https', side_effect=[None, None, None]) as tls, \
+             patch.object(kiosk.time, 'sleep') as sleep:
+            self.assertTrue(kiosk.watch_hub_child(child, settings, secure))
+        self.assertEqual(http.call_count, 3)
+        self.assertEqual(tls.call_count, 3)
+        self.assertEqual(sleep.call_count, 3)
+
+    def test_hub_https_transient_failure_does_not_restart_chromium(self):
+        child = Mock()
+        child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
+        secure = 'https://hub.owner-domain.org/setup'
+        with patch.object(kiosk, 'local_hub_reachable', return_value=True), \
+             patch.object(kiosk, 'verified_hub_https', side_effect=[None, secure, None, secure]), \
+             patch.object(kiosk.time, 'sleep'):
+            self.assertFalse(kiosk.watch_hub_child(child, {'role': 'hub'}, secure))
+
     def test_hub_watchdog_does_not_restart_on_transient_failure(self):
         child = Mock()
         child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
