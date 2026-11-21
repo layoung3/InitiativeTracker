@@ -314,6 +314,79 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedDmRestoresAcrossWeeklyRestartAndForgetSurvivesAnotherRestart()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "secure-remember-dm-" + Guid.NewGuid());
+        var clock = new Clock();
+        string browserCookie;
+        Guid rememberedId;
+        using (var first = new Host(directory, clock))
+        {
+            using var dm = first.Client(); await dm.Bootstrap();
+            var result = await dm.Post("Remember", ("label", "DM tablet"));
+            Assert.Equal(HttpStatusCode.Redirect, result.StatusCode);
+            browserCookie = dm.Cookies[SecureAccess.BrowserCookie];
+            var trust = first.Access.Remembered(first.Access.Grants().Single()).Single();
+            Assert.Equal("DM tablet", trust.Label);
+            Assert.Equal("DM", trust.Identity.Role);
+            Assert.True(trust.Expires <= clock.GetUtcNow().AddDays(30));
+            rememberedId = trust.Id;
+        }
+        clock.Advance(TimeSpan.FromDays(8));
+        using (var second = new Host(directory, clock))
+        {
+            using var returned = second.Client();
+            returned.Cookies[SecureAccess.BrowserCookie] = browserCookie;
+            Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+            var response = await returned.Send("/secure-access");
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
+            var page = await (await returned.Send("/secure-access")).Content.ReadAsStringAsync();
+            Assert.Contains("DM tablet", page);
+            Assert.Contains("Forget browser", page);
+            Assert.Equal(HttpStatusCode.Redirect, (await returned.Post("ForgetRemembered",
+                ("id", rememberedId.ToString()))).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+        }
+        using (var third = new Host(directory, clock))
+        {
+            using var returned = third.Client();
+            returned.Cookies[SecureAccess.BrowserCookie] = browserCookie;
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access")).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+        }
+        Directory.Delete(directory, true);
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedBrowserIsOptInAndDeniedOnHttpOrAfterAbsoluteExpiry()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var browserCookie = dm.Cookies[SecureAccess.BrowserCookie];
+        host.Clock.Advance(TimeSpan.FromHours(13));
+        using var notRemembered = host.Client();
+        notRemembered.Cookies[SecureAccess.BrowserCookie] = browserCookie;
+        Assert.Equal(HttpStatusCode.OK, (await notRemembered.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await notRemembered.Send("/media/fixture")).StatusCode);
+
+        // A separate fresh physical authorization is required to opt in.
+        using var fresh = host.Client(); await fresh.Bootstrap();
+        Assert.Equal(HttpStatusCode.Redirect, (await fresh.Post("Remember", ("label", "Table DM"))).StatusCode);
+        var trusted = fresh.Cookies[SecureAccess.BrowserCookie];
+        using var http = host.Client(http: true);
+        http.Cookies[SecureAccess.BrowserCookie] = trusted;
+        Assert.Equal((HttpStatusCode)426, (await http.Send("/secure-access")).StatusCode);
+        host.Clock.Advance(TimeSpan.FromDays(31));
+        using var expired = host.Client();
+        expired.Cookies[SecureAccess.BrowserCookie] = trusted;
+        Assert.Equal(HttpStatusCode.OK, (await expired.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await expired.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalOneTapApprovesPlayerAndDisplayWithoutIssuingGrantsToOtherBrowsers()
     {
         using var host = new Host();
