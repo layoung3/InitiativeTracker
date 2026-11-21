@@ -20,8 +20,9 @@ async function authorizeMember(page,dm) {
     await dm.goto(base+'/secure-access');
     await dm.locator('form[action*=Approve]').filter({hasText:reference}).getByRole('button',{name:'Approve exact request',exact:true}).click();
     await page.reload();
-    await page.getByRole('button',{name:'Complete approved enrollment',exact:true}).click();
-    await page.getByRole('heading',{name:/Authorized as/}).waitFor();
+    // Approved member requests now auto-finish in their own browser. This also
+    // exercises the original secure-DM approval path without manual button entry.
+    await page.getByRole('heading',{name:/Authorized as/}).waitFor({timeout:20000});
     return await page.locator('form[action*=Revoke] input[name=id]').first().inputValue();
 }
 before(async () => {
@@ -139,6 +140,55 @@ test('physical HTTPS overlay denies then approves exact browser without transcri
         await overlay.waitFor({state:'hidden',timeout:15000});
     } finally {
         await hub.close(); await requester.close();
+    }
+});
+
+test('physical overlay approves a joined player and a paired display in their own browsers', {skip:!base || !tlsSandbox}, async () => {
+    const hub=await browser.newPage();
+    const player=await browser.newPage();
+    const dm=await browser.newPage();
+    const display=await browser.newPage();
+    try {
+        await hub.goto(base+'/setup');
+        const join=await hub.locator('.setup-grid section').nth(1).locator('strong').innerText();
+        await dm.goto(base+'/secure-access');
+        await dm.locator('[name=recovery]').check();
+        await dm.getByRole('button',{name:'Request physical DM proof',exact:true}).click();
+        const modal=hub.locator('#physicalApprovalOverlay');
+        await modal.waitFor({state:'visible',timeout:20000});
+        await modal.getByRole('button',{name:'Approve',exact:true}).click();
+        await dm.getByRole('heading',{name:'Authorized as DM',exact:true}).waitFor({timeout:20000});
+
+        await player.goto(base+'/join');
+        await player.locator('[name=JoinCode]').fill(join);
+        await player.locator('[name=PlayerName]').fill('Physical browser join fixture');
+        await player.getByRole('button',{name:'Create Player Profile',exact:true}).click();
+        await player.getByRole('link',{name:'Continue to My Characters'}).click();
+        await player.goto(base+'/secure-access');
+        await player.getByRole('button',{name:'Request secure approval',exact:true}).click();
+        const playerRef=await player.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        await modal.waitFor({state:'visible',timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(),playerRef);
+        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(),/Player authorization/);
+        await modal.getByRole('button',{name:'Approve',exact:true}).click();
+        await player.getByRole('heading',{name:'Authorized as Player',exact:true}).waitFor({timeout:20000});
+
+        await display.goto(base+'/display/pair');
+        const pair=await display.locator('.display-2').innerText();
+        await dm.goto(base+'/dm/devices');
+        await dm.locator('.list-group-item').filter({hasText:pair.trim()})
+            .getByRole('button',{name:'Approve',exact:true}).click();
+        await display.waitForURL('**/display');
+        await display.goto(base+'/secure-access');
+        await display.getByRole('button',{name:'Request secure approval',exact:true}).click();
+        const displayRef=await display.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        await modal.waitFor({state:'visible',timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(),displayRef);
+        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(),/Display authorization/);
+        await modal.getByRole('button',{name:'Approve',exact:true}).click();
+        await display.getByRole('heading',{name:'Authorized as Display',exact:true}).waitFor({timeout:20000});
+    } finally {
+        await hub.close();await player.close();await dm.close();await display.close();
     }
 });
 
