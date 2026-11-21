@@ -187,7 +187,11 @@ public sealed class N9SharedIntegrationTests
         {
             var response = await member.Send(path); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var html = await response.Content.ReadAsStringAsync();
-            Assert.Contains(name == "secure-access" ? "Authorized as Player" : "Security and trusted devices", html);
+            // Normal pages never display the advanced device/security link.
+            // The trusted-HTTPS physical overlay is independently rendered by the layout.
+            Assert.DoesNotContain("Security and trusted devices", html);
+            Assert.DoesNotContain("Private feature authorization", html);
+            if (name == "secure-access") Assert.Contains("Authorized as Player", html);
             if (directory is not null) { Directory.CreateDirectory(directory); await File.WriteAllTextAsync(Path.Combine(directory, name + ".html"), html); }
         }
         host.DeleteOnDispose();
