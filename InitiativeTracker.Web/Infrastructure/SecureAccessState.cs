@@ -259,7 +259,16 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     private static SecureEnrollment Public(SecureEnrollment request) => request with { Code = "", Browser = "", Identity = request.Identity with { Stamp = "" } };
     private SecureEnrollment? FindBrowser(string browser) { Cleanup(); return pending.Values.SingleOrDefault(p => p.Browser == browser); }
     public SecureEnrollment? ForBrowser(string browser) { lock (gate) return FindBrowser(browser) is { } request ? Public(request) : null; }
-    public IReadOnlyList<SecureEnrollment> PhysicalRequests() { lock (gate) { Cleanup(); return pending.Values.Where(p => p.Purpose.StartsWith("dm-")).ToArray(); } }
+    // Only the protected physical HTTPS endpoint exposes this queue. Member
+    // codes are not used: browser-bound completion requires explicit consent.
+    public IReadOnlyList<SecureEnrollment> PhysicalRequests()
+    {
+        lock (gate)
+        {
+            Cleanup();
+            return pending.Values.Where(p => p.Purpose.StartsWith("dm-") || p.Purpose.StartsWith("enroll-")).ToArray();
+        }
+    }
     // A physical tap approves only the exact, short-lived request. The browser
     // must independently redeem its own browser-bound challenge; a physical
     // response never issues a cookie or transfers proof to another browser.
@@ -280,6 +289,33 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
         {
             Cleanup();
             if (!pending.TryGetValue(id, out var request) || !request.Purpose.StartsWith("dm-"))
+                throw new SecureAccessDenied();
+            pending.Remove(id);
+        }
+    }
+    // The physical Razor handler has already verified canonical TLS, exact
+    // socket provenance, Origin, and antiforgery before calling this method.
+    // A physical decision marks a request only; it never creates a grant.
+    public void ApprovePhysicalRequest(Guid id)
+    {
+        lock (gate)
+        {
+            Cleanup();
+            if (!pending.TryGetValue(id, out var request) ||
+                request.Purpose is not ("dm-bootstrap" or "dm-recover" or "enroll-player" or "enroll-display") ||
+                request.PhysicalApproved || !StillMatches(request.Identity) ||
+                (request.Purpose.StartsWith("enroll-") && Read() is null))
+                throw new SecureAccessDenied();
+            pending[id] = request with { PhysicalApproved = true };
+        }
+    }
+    public void DenyPhysicalRequest(Guid id)
+    {
+        lock (gate)
+        {
+            Cleanup();
+            if (!pending.TryGetValue(id, out var request) ||
+                request.Purpose is not ("dm-bootstrap" or "dm-recover" or "enroll-player" or "enroll-display"))
                 throw new SecureAccessDenied();
             pending.Remove(id);
         }
@@ -393,9 +429,12 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
             var request = FindBrowser(browser);
             var state = Read();
             var approver = state?.Grants.SingleOrDefault(g => g.Id == request?.Approver);
-            if (request is null || state is null || request.Origin != origin || Capture(legacy) != request.Identity || approver is null ||
-                approver.Identity.Role != "DM" || approver.Generation != request.ApproverGeneration ||
-                Validate(approver.Id, approver.Generation, approver.Epoch, approver.Browser, origin) is null) throw new SecureAccessDenied();
+            if (request is null || !request.Purpose.StartsWith("enroll-") || state is null || request.Origin != origin ||
+                Capture(legacy) != request.Identity || !StillMatches(request.Identity) ||
+                (!request.PhysicalApproved && (approver is null || approver.Identity.Role != "DM" ||
+                    approver.Generation != request.ApproverGeneration ||
+                    Validate(approver.Id, approver.Generation, approver.Epoch, approver.Browser, origin) is null)))
+                throw new SecureAccessDenied();
             pending.Remove(request.Id);
             var grant = Issue(state, request);
             Save(state);
