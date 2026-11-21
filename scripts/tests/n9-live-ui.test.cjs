@@ -405,28 +405,31 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         assert.notEqual(displayRef, firstRef);
         assert.notEqual(displayRef, secondRef);
 
-        const waitForReference = value => hub.waitForFunction(expected =>
-            document.querySelector('#physicalApprovalReference')?.textContent?.trim() === expected,
-            value, {timeout:20000});
-        await waitForReference(firstRef);
-        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(), /Player authorization/);
-        await overlay.getByRole('button', {name:'Deny', exact:true}).click();
+        // A multi-request operator must be able to select an exact browser
+        // without relying on whichever pending item the compact overlay shows
+        // first. The standalone physical page exposes each pending request.
+        const decideExact = async (reference, role, action) => {
+            await hub.goto(base + '/secure-access/physical');
+            const section = hub.locator('section[data-request]').filter({hasText:reference});
+            await section.waitFor({state:'visible', timeout:20000});
+            assert.match(await section.innerText(), new RegExp(role + ' authorization'));
+            const buttonName = action === 'Approve' ? 'Approve browser' : 'Deny request';
+            await section.getByRole('button', {name:buttonName, exact:true}).click();
+        };
+        await decideExact(firstRef, 'Player', 'Deny');
         await first.goto(base + '/secure-access');
         assert.equal(await first.locator('#finishMemberApproval').count(), 0,
             'denied browser must not retain a redeemable request');
         assert.equal(await first.getByRole('heading', {name:/Authorized as/}).count(), 0,
             'denied browser must remain unauthorized');
 
-        await waitForReference(secondRef);
-        await overlay.getByRole('button', {name:'Approve', exact:true}).click();
+        await decideExact(secondRef, 'Player', 'Approve');
         await second.getByRole('heading', {name:'Authorized as Player', exact:true}).waitFor({timeout:20000});
         await display.reload();
         assert.equal(await display.getByRole('heading', {name:/Authorized as/}).count(), 0,
             'unapproved display must remain unauthorized');
 
-        await waitForReference(displayRef);
-        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(), /Display authorization/);
-        await overlay.getByRole('button', {name:'Approve', exact:true}).click();
+        await decideExact(displayRef, 'Display', 'Approve');
         await display.getByRole('heading', {name:'Authorized as Display', exact:true}).waitFor({timeout:20000});
         await first.goto(base + '/secure-access');
         assert.equal(await first.getByRole('heading', {name:/Authorized as/}).count(), 0,
