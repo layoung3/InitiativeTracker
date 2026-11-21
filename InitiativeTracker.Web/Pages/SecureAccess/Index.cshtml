@@ -15,7 +15,12 @@
 <form method="post" asp-page-handler="BeginDm"><label><input type="checkbox" name="recovery" value="true"> Initialize or recover: revoke all previous secure approvals</label><button>Request physical DM proof</button></form>
 @if (Model.Pending is { } pending && pending.Purpose.StartsWith("dm-")) {
 <p data-browser-reference="@pending.Reference">Browser reference: <strong>@pending.Reference</strong>. Request expires @pending.Expires.ToString("u").</p>
-<form method="post" asp-page-handler="Redeem"><label>Code from hub screen <input type="password" name="Code" autocomplete="off" maxlength="32" required></label><button>Authorize this browser</button></form>
+<p>On the physical hub, compare this browser reference and tap <strong>Approve browser</strong> or <strong>Deny request</strong>. This browser will finish automatically after approval.</p>
+<form method="post" asp-page-handler="FinishPhysical" id="finishPhysicalApproval" data-physical-approved="@(pending.PhysicalApproved ? "true" : "false")">
+    <button type="submit">Complete physical approval</button>
+</form>
+<details><summary>Manual code fallback</summary>
+<form method="post" asp-page-handler="Redeem"><label>Code from hub screen <input type="password" name="Code" autocomplete="off" maxlength="32" required></label><button>Authorize this browser</button></form></details>
 }
 </section>
 @if (User.IsInRole("Player") || User.IsInRole("Display")) {
@@ -41,4 +46,5 @@
 </section>
 }
 <p><a href="/secure-access">Refresh status</a> · <a href="/">Gameplay</a></p>
+<script src="/js/physical-approval.js" defer></script>
 </body></html>
