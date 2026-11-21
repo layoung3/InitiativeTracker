@@ -387,6 +387,80 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedPlayerCannotEscalateRolesAndCredentialChangeRevokesTrust()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var owner = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        await Enroll(player, dm);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Remember", ("label", "Player phone"))).StatusCode);
+        var browser = player.Cookies[SecureAccess.BrowserCookie];
+        host.Clock.Advance(TimeSpan.FromDays(8));
+        using var otherRole = host.Client();
+        otherRole.Cookies[SecureAccess.BrowserCookie] = browser;
+        otherRole.Legacy("DM");
+        Assert.Equal(HttpStatusCode.OK, (await otherRole.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await otherRole.Send("/media/fixture")).StatusCode);
+
+        using var restored = host.Client();
+        restored.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.Redirect, (await restored.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await restored.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await restored.Send("/media/fixture")).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.PlayerDeviceCredentials.Single(c => c.Id == owner.Credential).TokenHash = "rotated-credential";
+            db.SaveChanges();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await restored.Send("/media/fixture")).StatusCode);
+        using var replay = host.Client();
+        replay.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedDisplayLosesPrivateAccessWhenDeviceIsUntrusted()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var id = Guid.NewGuid();
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.RegisteredDevices.Add(new RegisteredDevice {
+                Id = id, Name = "Weekly table screen", DeviceType = "Display",
+                IsTrusted = true, PairedAtUtc = DateTime.UtcNow
+            });
+            db.SaveChanges();
+        }
+        using var display = host.Client(); display.Legacy("Display", display: id);
+        await Enroll(display, dm);
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("Remember", ("label", "Table screen"))).StatusCode);
+        var browser = display.Cookies[SecureAccess.BrowserCookie];
+        host.Clock.Advance(TimeSpan.FromDays(8));
+        using var returned = host.Client();
+        returned.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.Redirect, (await returned.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await returned.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.RegisteredDevices.Single(d => d.Id == id).IsTrusted = false;
+            db.SaveChanges();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+        using var afterRevocation = host.Client();
+        afterRevocation.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.OK, (await afterRevocation.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await afterRevocation.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalOneTapApprovesPlayerAndDisplayWithoutIssuingGrantsToOtherBrowsers()
     {
         using var host = new Host();
