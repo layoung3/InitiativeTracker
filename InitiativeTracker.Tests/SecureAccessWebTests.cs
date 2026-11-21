@@ -342,6 +342,8 @@ public sealed class SecureAccessWebTests
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access")).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await returned.Post("Remember", ("label", "Extend without proof"))).StatusCode);
             var page = await (await returned.Send("/secure-access")).Content.ReadAsStringAsync();
             Assert.Contains("DM tablet", page);
             Assert.Contains("Forget browser", page);
@@ -383,6 +385,27 @@ public sealed class SecureAccessWebTests
         expired.Cookies[SecureAccess.BrowserCookie] = trusted;
         Assert.Equal(HttpStatusCode.OK, (await expired.Send("/secure-access")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await expired.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task ExplicitGrantRevocationAlsoRevokesRememberedTrust()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var owner = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        await Enroll(player, dm);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Remember", ("label", "Test handset"))).StatusCode);
+        var browser = player.Cookies[SecureAccess.BrowserCookie];
+        var grantId = host.Access.Grants().Single(g => g.Identity.Role == "Player").Id;
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Revoke", ("id", grantId.ToString()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        using var replay = host.Client();
+        replay.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
         host.DeleteOnDispose();
     }
 
