@@ -25,6 +25,17 @@ def reachable(settings):
         return False
 
 
+def local_hub_reachable():
+    """Hub kiosk uses the fixed loopback HTTP health endpoint, not satellite config."""
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open('http://127.0.0.1:5000/system/health', timeout=4) as response:
+            result = json.load(response)
+            return result.get('status') == 'healthy' and result.get('product') == 'InitiativeTracker'
+    except (OSError, ValueError, KeyError):
+        return False
+
+
 def command(settings, home):
     if settings['role'] == 'hub':
         return [str(home / '.local/lib/initiativetracker-hub/initiativetracker-hub-launch')]
@@ -60,7 +71,7 @@ def watch_hub_child(child, settings):
         time.sleep(5)
         if child.poll() is not None:
             return False
-        if reachable(settings):
+        if local_hub_reachable():
             if needs_recovery:
                 return True
             offline = 0
