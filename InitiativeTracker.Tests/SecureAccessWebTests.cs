@@ -211,6 +211,25 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalNetworkReadoutRejectsRemoteClientsAndHasNoMutationHandler()
+    {
+        using var host = new Host();
+        using var remote = host.Client();
+        using var physical = host.Client(physical: true, http: true);
+        Assert.Equal(HttpStatusCode.NotFound, (await remote.Send("/setup/network-status")).StatusCode);
+        var read = await physical.Send("/setup/network-status");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        var html = await read.Content.ReadAsStringAsync();
+        Assert.Contains("Read-only information on the physical hub", html);
+        Assert.Contains("/setup", html);
+        Assert.DoesNotContain("name=\\"WifiPassword\\"", html);
+        Assert.DoesNotContain("Switch to private", html);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await physical.Send("/setup/network-status?handler=BeginHotspot", new FormUrlEncodedContent([]))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {
         using var host = new Host();
