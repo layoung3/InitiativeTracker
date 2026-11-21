@@ -4,10 +4,21 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Physical DM proof</title>
 <style>body{font:1.2rem system-ui;background:#111827;color:#eee;padding:2rem;max-width:55rem;margin:auto}section{overflow-wrap:anywhere;padding:1rem;border:1px solid #456;margin:1rem 0}.code{font:2rem monospace;overflow-wrap:anywhere}</style></head><body>
 <nav aria-label="Hub navigation" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"><a href="/setup" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Hub Setup</a><a href="/secure-access/physical" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Refresh requests</a></nav>
-<h1>Physical DM authorization</h1><p>Approve only a browser you control. Match its reference before entering its code over trusted HTTPS. Recovery revokes every previous secure approval.</p>
+<h1>Physical browser authorization</h1><p>Compare the full browser reference and requested role before approving. DM recovery revokes every previous secure approval. A physical tap never creates a browser session by itself.</p>
 @foreach (var request in Model.Requests) {
 <section data-request="@request.Id" data-physical-approved="@(request.PhysicalApproved ? "true" : "false")">
-    <p>Browser reference <strong>@request.Reference</strong> · @(request.Purpose == "dm-recover" ? "DM recovery — revokes all previous secure approvals" : "DM authorization")</p>
+    <p>Browser reference <strong>@request.Reference</strong> · @(request.Purpose switch {
+        "dm-recover" => "DM recovery — revokes all previous secure approvals",
+        "dm-bootstrap" => "DM authorization",
+        "enroll-player" => "Player authorization",
+        "enroll-display" => "Display authorization",
+        _ => "Unknown request"
+    })</p>
+    @if (request.Purpose.StartsWith("enroll-"))
+    {
+        <p>Exact identity: @request.Identity.Role · Player profile @request.Identity.Profile · Display @request.Identity.Display · Session @request.Identity.Session</p>
+        <p>Only approve the browser and identity shown on the requesting device. This does not pair an untrusted satellite or grant network administration.</p>
+    }
     <p>Expires @request.Expires.ToString("u"). One use only.</p>
     @if (request.PhysicalApproved)
     {
@@ -26,10 +37,13 @@
             </form>
         </div>
     }
-    <details><summary>Manual authorization code (fallback)</summary><p class="code" data-physical-code="@request.Code">@request.Code</p></details>
+    @if (request.Purpose.StartsWith("dm-"))
+    {
+        <details><summary>Manual authorization code (fallback)</summary><p class="code" data-physical-code="@request.Code">@request.Code</p></details>
+    }
 </section>
 }
-@if (Model.Requests.Count == 0) { <p>No pending DM requests. Start a request at the hub's HTTPS /secure-access page on the browser you want to authorize.</p> }
+@if (Model.Requests.Count == 0) { <p>No pending requests. Start a secure request on the browser you want to authorize.</p> }
 <form method="post" asp-page-handler="ClearRequests"><button>Clear pending requests and expired attempts</button></form>
 <p>This screen is available only through trusted HTTPS over loopback. It does not display agent enrollment credentials or change network trust.</p>
 </body></html>
