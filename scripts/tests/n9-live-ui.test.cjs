@@ -157,7 +157,7 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
             const begun=await beginResponse;
             assert.equal((await begun.request().allHeaders()).origin,new URL(base).origin,'browser form must retain a same-origin Origin header');
             assert.equal(begun.status(),302);
-            await dm.locator('[name=Code]').waitFor();
+            await dm.locator('[data-browser-reference]').waitFor();
             await dm.goto(base+'/secure-access/physical');
             const proof=await dm.locator('[data-physical-code]').getAttribute('data-physical-code');
             await dm.goto(base+'/secure-access');
