@@ -81,7 +81,7 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
             };
             access.Begin(purpose, browser, origin.Origin,
                 HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                User, physical: origin.Physical(HttpContext));
+                User, physical: legacy.Role == "DM" && origin.Physical(HttpContext));
             return RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }

@@ -55,6 +55,10 @@
                 </p>
                 <p class="text-body-secondary mb-1">@(isDm ? "DM" : Model.Role) browser reference</p>
                 <p class="approval-reference p-3 bg-body-tertiary rounded" data-browser-reference="@pending.Reference">@pending.Reference</p>
+                @if (pending.Purpose.StartsWith("enroll-", StringComparison.Ordinal))
+                {
+                    <p class="text-body-secondary small" data-request-identity="true">Player profile @pending.Identity.Profile · Display @pending.Identity.Display</p>
+                }
                 <p class="text-body-secondary small">This request expires at @pending.Expires.ToLocalTime().ToString("t"). Approval is valid only for this browser and identity.</p>
                 @if (ready)
                 {
