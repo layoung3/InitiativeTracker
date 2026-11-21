@@ -1,8 +1,8 @@
-// Only the requesting browser can finish its own bound, expiring approval.
+// DM, player and display enrollment completes only in its own bound browser.
 // The physical screen never sends a token, credential, or cookie to this page.
 (() => {
     'use strict';
-    const form = document.getElementById('finishPhysicalApproval');
+    const form = document.getElementById('finishPhysicalApproval') || document.getElementById('finishMemberApproval');
     if (!form) return;
     const request = () => {
         if (form.dataset.physicalApproved === 'true') {
