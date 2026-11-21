@@ -94,6 +94,22 @@ test('physical HTTPS authorization screen retains direct Setup escape', {skip:!b
     } finally {await page.close();}
 });
 
+test('physical setup network status stays on the hub and remains read-only', {skip:!base}, async () => {
+    const page=await browser.newPage();
+    try {
+        const response=await page.goto(base+'/setup');
+        assert.equal(response.status(),200);
+        const link=page.getByRole('link',{name:'Open Network Status',exact:true});
+        assert.equal(await link.getAttribute('href'),'/setup/network-status');
+        const target=await Promise.all([page.waitForNavigation(),link.click()]);
+        assert.equal(target[0].status(),200);
+        assert.equal(new URL(page.url()).pathname,'/setup/network-status');
+        await page.getByRole('heading',{name:'Hub network status',exact:true}).waitFor();
+        assert.equal(await page.locator('form').count(),0,'physical readout must have no network mutation forms');
+        assert.equal(await page.getByRole('link',{name:'Back to Hub Setup'}).getAttribute('href'),'/setup');
+    } finally {await page.close();}
+});
+
 test('actual upload, encounter pairing and realtime portrait/banner replacement preserve the table', {skip:!base}, async () => {
     const dm = await browser.newPage({viewport:{width:1280,height:800}});
     const player = await browser.newPage({viewport:{width:390,height:844}});
