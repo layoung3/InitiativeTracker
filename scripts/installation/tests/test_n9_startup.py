@@ -24,6 +24,36 @@ class N9StartupTests(unittest.TestCase):
         os.umask(original_umask)
         self.addCleanup(os.umask, original_umask)
 
+    def test_hub_recovery_uses_same_profile_and_never_reruns_updater(self):
+        home = Path('/home/table-player')
+        first = kiosk.command({'role': 'hub'}, home)
+        resume = kiosk.hub_resume_command(home)
+        self.assertEqual(first, [str(home / '.local/lib/initiativetracker-hub/initiativetracker-hub-launch')])
+        self.assertEqual(resume[0], '/usr/bin/chromium')
+        self.assertIn('--kiosk', resume)
+        self.assertIn('--user-data-dir=' + str(home / '.config/initiativetracker-hub/chromium'), resume)
+        self.assertEqual(resume[-1], 'http://127.0.0.1:5000/setup')
+        for forbidden in ['--ignore-certificate-errors', '--no-sandbox', 'initiativetracker-check-update']:
+            self.assertNotIn(forbidden, resume)
+
+    def test_hub_watchdog_recovers_only_after_sustained_outage_and_restored_health(self):
+        child = Mock()
+        child.poll.return_value = None
+        with patch.object(kiosk, 'reachable', side_effect=[True, False, False, False, True]) as probe, \\
+             patch.object(kiosk.time, 'sleep') as sleep:
+            self.assertTrue(kiosk.watch_hub_child(child, {'role': 'hub'}))
+        self.assertEqual(5, probe.call_count)
+        self.assertEqual(5, sleep.call_count)
+
+    def test_hub_watchdog_does_not_restart_on_transient_failure(self):
+        child = Mock()
+        child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
+        with patch.object(kiosk, 'reachable', side_effect=[False, True, False, True]) as probe, \\
+             patch.object(kiosk.time, 'sleep') as sleep:
+            self.assertFalse(kiosk.watch_hub_child(child, {'role': 'hub'}))
+        self.assertEqual(4, probe.call_count)
+        self.assertEqual(4, sleep.call_count)
+
     def test_waiting_profile_is_separate_and_local_for_alternate_home(self):
         home = Path('/srv/tables/desktop user')
         wait = kiosk.waiting_command(home)
