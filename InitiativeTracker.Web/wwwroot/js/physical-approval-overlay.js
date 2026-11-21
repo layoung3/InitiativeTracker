@@ -6,6 +6,7 @@
     if (!dialog || location.protocol !== 'https:') return;
     const reference = document.getElementById('physicalApprovalReference');
     const purpose = document.getElementById('physicalApprovalPurpose');
+    const identity = document.getElementById('physicalApprovalIdentity');
     const error = document.getElementById('physicalApprovalError');
     const approve = document.getElementById('physicalApproveButton');
     const deny = document.getElementById('physicalDenyButton');
@@ -38,6 +39,9 @@
             pending = {id, token};
             reference.textContent = browser;
             purpose.textContent = section.querySelector('p')?.textContent?.replace(/^Browser reference.*?·\s*/, '') || 'DM authorization';
+            const exactIdentity = section.querySelector('[data-request-identity]')?.textContent?.trim();
+            identity.textContent = exactIdentity || '';
+            identity.hidden = !exactIdentity;
             if (!dialog.open) dialog.showModal();
         } catch {
             // A transient network failure must never be interpreted as approval.

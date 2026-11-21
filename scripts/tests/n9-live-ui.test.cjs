@@ -170,6 +170,10 @@ test('physical overlay approves a joined player and a paired display in their ow
         await modal.waitFor({state:'visible',timeout:20000});
         assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(),playerRef);
         assert.match(await hub.locator('#physicalApprovalPurpose').innerText(),/Player authorization/);
+        const playerIdentity=(await player.locator('[data-browser-reference]').innerText()).match(/[0-9a-f]{8}-[0-9a-f-]{27,}/i)?.[0];
+        assert(playerIdentity,'requester must display the exact player identity');
+        assert((await hub.locator('#physicalApprovalIdentity').innerText()).includes(playerIdentity),
+            'physical overlay must show the same player identity as the requesting browser');
         await modal.getByRole('button',{name:'Approve',exact:true}).click();
         await player.getByRole('heading',{name:'Authorized as Player',exact:true}).waitFor({timeout:20000});
         await player.locator('form[action*=Remember] [name=label]').fill('Player phone fixture');
@@ -188,6 +192,10 @@ test('physical overlay approves a joined player and a paired display in their ow
         await modal.waitFor({state:'visible',timeout:20000});
         assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(),displayRef);
         assert.match(await hub.locator('#physicalApprovalPurpose').innerText(),/Display authorization/);
+        const displayIdentity=(await display.locator('[data-browser-reference]').innerText()).match(/[0-9a-f]{8}-[0-9a-f-]{27,}/i)?.[0];
+        assert(displayIdentity,'requester must display the exact display identity');
+        assert((await hub.locator('#physicalApprovalIdentity').innerText()).includes(displayIdentity),
+            'physical overlay must show the same display identity as the requesting browser');
         await modal.getByRole('button',{name:'Approve',exact:true}).click();
         await display.getByRole('heading',{name:'Authorized as Display',exact:true}).waitFor({timeout:20000});
         await display.locator('form[action*=Remember] [name=label]').fill('Table display fixture');

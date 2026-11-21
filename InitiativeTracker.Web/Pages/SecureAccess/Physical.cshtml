@@ -16,7 +16,7 @@
     })</p>
     @if (request.Purpose.StartsWith("enroll-"))
     {
-        <p>Exact identity: @request.Identity.Role · Player profile @request.Identity.Profile · Display @request.Identity.Display · Session @request.Identity.Session</p>
+        <p data-request-identity>Exact identity: @request.Identity.Role · Player profile @request.Identity.Profile · Display @request.Identity.Display · Session @request.Identity.Session</p>
         <p>Only approve the browser and identity shown on the requesting device. This does not pair an untrusted satellite or grant network administration.</p>
     }
     <p>Expires @request.Expires.ToString("u"). One use only.</p>
