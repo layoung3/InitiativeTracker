@@ -79,7 +79,18 @@
                 <form method="post" asp-page-handler="Begin">
                     <button type="submit" class="btn btn-primary w-100">Request approval again</button>
                 </form>
-                <a class="btn btn-link w-100" href="/">Return to game</a>
+                @if (Model.Role == "DM")
+                {
+                    <a class="btn btn-link w-100" href="/dm/login">Return to DM sign in</a>
+                }
+                else if (Model.Role == "Display")
+                {
+                    <a class="btn btn-link w-100" href="/display/pair">Return to display pairing</a>
+                }
+                else
+                {
+                    <a class="btn btn-link w-100" href="/join">Return to player join</a>
+                }
             }
         </div>
     </section>

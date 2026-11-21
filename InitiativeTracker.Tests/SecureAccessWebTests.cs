@@ -690,6 +690,7 @@ public sealed class SecureAccessWebTests
             }))).StatusCode);
         var denied = await (await player.Send("/secure-access/wait")).Content.ReadAsStringAsync();
         Assert.Contains("Approval not completed", denied);
+        Assert.Contains("href=\"/join\">Return to player join</a>", denied);
         Assert.Null(host.Access.ForBrowser(player.Browser));
         Assert.Null(host.Access.ForBrowser(player.Browser)); // Poll/reload is read-only.
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
