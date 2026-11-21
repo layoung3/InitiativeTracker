@@ -59,7 +59,9 @@ def verified_hub_https(settings):
             not host or origin != 'https://' + host or
             host != host.lower() or
             not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?', host) or
-            len(host.split('.')) < 3):
+            len(host.split('.')) < 3 or host.split('.')[-1] in
+            {'local', 'localhost', 'test', 'invalid', 'example', 'internal', 'lan', 'home', 'arpa', 'onion'} or
+            host.split('.')[-1].isdigit()):
             return None
         answers = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
         if not answers or any(not ipaddress.ip_address(item[4][0]).is_loopback for item in answers):
