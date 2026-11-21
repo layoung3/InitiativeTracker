@@ -92,6 +92,7 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
         {
             var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
             access.Remember(actor, label);
+            Infrastructure.SecureAccess.ExtendRememberedBrowserCookie(HttpContext);
             return RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
