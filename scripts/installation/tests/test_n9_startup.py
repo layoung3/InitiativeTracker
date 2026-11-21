@@ -202,7 +202,7 @@ class N9StartupTests(unittest.TestCase):
             (config / 'kiosk.json').write_text('{"role":"hub","hub_https_origin":"https://hub.owner-domain.org"}')
             # Stub only the already-validated selector; separate unit tests
             # exercise real DNS/TLS checks, including their failure paths.
-            (component / 'kiosk.py').write_text("print('https://hub.owner-domain.org/setup')\\n")
+            (component / 'kiosk.py').write_text("print('https://hub.owner-domain.org/setup')\n")
         environment = dict(os.environ, HOME=str(root / 'alternate-home'),
                            PATH=str(root) + ':/usr/bin:/bin', N9_EVENTS=str(log))
         result = subprocess.run(['/bin/bash', '-p', str(launch)], env=environment,
