@@ -161,6 +161,7 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
             await dm.goto(base+'/secure-access/physical');
             const proof=await dm.locator('[data-physical-code]').getAttribute('data-physical-code');
             await dm.goto(base+'/secure-access');
+            await dm.locator('details').filter({hasText:'Manual code fallback'}).locator('summary').click();
             await dm.locator('[name=Code]').fill(proof);
             await Promise.all([dm.waitForNavigation({waitUntil:'load'}),dm.getByRole('button',{name:'Authorize this browser',exact:true}).click()]);
             await dm.getByRole('heading',{name:'Authorized as DM',exact:true}).waitFor();
