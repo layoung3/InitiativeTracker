@@ -11,7 +11,11 @@
 <section aria-label="Remembered browser management">
 <h2>Remembered browsers</h2>
 <p>Secure sessions last up to 12 hours. You can explicitly remember this browser for 30 days to restore access across weekly games, provided its original game session, role and credentials remain valid. A remembered browser is a sensitive sign-in credential: use this only on a device you control.</p>
-@if (Model.TrustedBrowsers.Any(item => item.Browser == grant.Browser && item.Identity == grant.Identity))
+@if (grant.Restored)
+{
+<p role="status">This session was restored from remembered trust. Its 30-day trust cannot be extended without a fresh physical or DM approval.</p>
+}
+else if (Model.TrustedBrowsers.Any(item => item.Browser == grant.Browser && item.Identity == grant.Identity))
 {
 <p role="status">This browser is remembered. You can revoke it below.</p>
 }
