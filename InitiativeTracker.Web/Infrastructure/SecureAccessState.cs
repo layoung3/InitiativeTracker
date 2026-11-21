@@ -356,6 +356,100 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     public void ClearPending() { lock (gate) { pending.Clear(); rates.Clear(); } }
     public IReadOnlyList<SecureGrant> Grants() { lock (gate) return Read()?.Grants.Where(g => !g.Revoked && g.Expires > Now).ToArray() ?? []; }
 
+    public IReadOnlyList<SecureRememberedBrowser> Remembered(SecureGrant actor)
+    {
+        lock (gate)
+        {
+            if (Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null)
+                throw new SecureAccessDenied();
+            var state = Read() ?? throw new SecureAccessUnavailable();
+            return state.RememberedBrowsers
+                .Where(b => !b.Revoked && b.Expires > Now &&
+                    (actor.Identity.Role == "DM" || b.Identity == actor.Identity))
+                .OrderBy(b => b.Identity.Role).ThenBy(b => b.Label).ToArray();
+        }
+    }
+
+    // A user opts in only after fresh secure approval. Browser cookie remains a
+    // random host-only HttpOnly Secure credential; persistence stores its hash.
+    // Trust expires absolutely after 30 days, without sliding extension.
+    public SecureRememberedBrowser Remember(SecureGrant actor, string? label)
+    {
+        lock (gate)
+        {
+            if (Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null)
+                throw new SecureAccessDenied();
+            label = (label ?? "").Trim();
+            if (label.Length is < 1 or > 48 || label.Any(char.IsControl))
+                throw new SecureAccessDenied();
+            var state = Read() ?? throw new SecureAccessUnavailable();
+            state.RememberedBrowsers.RemoveAll(b => b.Revoked || b.Expires <= Now || b.Browser == actor.Browser);
+            if (state.RememberedBrowsers.Count >= 64) throw new SecureAccessDenied();
+            var trust = new SecureRememberedBrowser(Guid.NewGuid(), actor.Identity, actor.Browser, actor.Origin,
+                state.Epoch, 1, Now.AddDays(30), label);
+            state.RememberedBrowsers.Add(trust);
+            Save(state);
+            return trust;
+        }
+    }
+
+    // A remembered browser may restore only its original immutable role,
+    // hub/session, credential snapshot and trusted TLS origin. It cannot bypass
+    // revocation or impersonate a different already-signed-in legacy principal.
+    public SecureGrant? ResumeRemembered(string browser, string origin, ClaimsPrincipal legacy)
+    {
+        lock (gate)
+        {
+            if (browser.Length != 64 || !browser.All(Uri.IsHexDigit)) return null;
+            var state = Read();
+            var matches = state?.RememberedBrowsers.Where(b => !b.Revoked && b.Browser == browser &&
+                b.Origin == origin && b.Epoch == state.Epoch && b.Expires > Now &&
+                b.Expires <= Now.AddDays(30)).ToArray();
+            if (matches is not { Length: 1 }) return null;
+            var trust = matches[0];
+            if (!StillMatches(trust.Identity))
+            {
+                state!.RememberedBrowsers[state.RememberedBrowsers.IndexOf(trust)] =
+                    trust with { Revoked = true, Generation = trust.Generation + 1 };
+                Save(state);
+                return null;
+            }
+            if (legacy.Identity?.IsAuthenticated == true && Capture(legacy) != trust.Identity)
+                return null;
+            var existing = state!.Grants.FirstOrDefault(g => !g.Revoked && g.Epoch == state.Epoch &&
+                g.Identity == trust.Identity && g.Browser == browser && g.Origin == origin && g.Expires > Now);
+            if (existing is not null) return existing;
+            var request = new SecureEnrollment(Guid.NewGuid(), browser[..32], "remembered-return",
+                trust.Identity, browser, origin, Now.AddMinutes(5), "");
+            var grant = Issue(state, request);
+            Save(state);
+            return grant;
+        }
+    }
+
+    public void RevokeRemembered(SecureGrant actor, Guid id)
+    {
+        lock (gate)
+        {
+            if (Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null)
+                throw new SecureAccessDenied();
+            var state = Read() ?? throw new SecureAccessUnavailable();
+            var index = state.RememberedBrowsers.FindIndex(b => b.Id == id && !b.Revoked && b.Expires > Now);
+            if (index < 0) throw new SecureAccessDenied();
+            var target = state.RememberedBrowsers[index];
+            if (actor.Identity.Role != "DM" && actor.Identity != target.Identity)
+                throw new SecureAccessDenied();
+            state.RememberedBrowsers[index] = target with { Revoked = true, Generation = target.Generation + 1 };
+            for (var i = 0; i < state.Grants.Count; i++)
+                if (!state.Grants[i].Revoked && state.Grants[i].Browser == target.Browser &&
+                    state.Grants[i].Origin == target.Origin && state.Grants[i].Identity == target.Identity)
+                    state.Grants[i] = state.Grants[i] with {
+                        Revoked = true, Generation = state.Grants[i].Generation + 1
+                    };
+            Save(state);
+        }
+    }
+
     private SecureGrant Issue(SecureGrantState state, SecureEnrollment request)
     {
         state.Grants.RemoveAll(g => g.Expires <= Now);
