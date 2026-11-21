@@ -8,6 +8,31 @@
 @if (Model.Grant is { } grant) {
 <section><h2>Authorized as @grant.Identity.Role</h2><p>Expires @grant.Expires.ToString("u"). Browser access is restricted to this hub and game session.</p>
 <form method="post" asp-page-handler="Revoke"><input type="hidden" name="id" value="@grant.Id"><button>Revoke this secure session</button></form></section>
+<section aria-label="Remembered browser management">
+<h2>Remembered browsers</h2>
+<p>Secure sessions last up to 12 hours. You can explicitly remember this browser for 30 days to restore access across weekly games, provided its original game session, role and credentials remain valid. A remembered browser is a sensitive sign-in credential: use this only on a device you control.</p>
+@if (Model.TrustedBrowsers.Any(item => item.Browser == grant.Browser && item.Identity == grant.Identity))
+{
+<p role="status">This browser is remembered. You can revoke it below.</p>
+}
+else
+{
+<form method="post" asp-page-handler="Remember">
+    <label>Browser label <input name="label" value="My browser" maxlength="48" required autocomplete="off"></label>
+    <button type="submit">Remember this browser for 30 days</button>
+</form>
+}
+@if (Model.TrustedBrowsers.Count == 0) { <p>No remembered browsers.</p> }
+@foreach (var item in Model.TrustedBrowsers)
+{
+<form method="post" asp-page-handler="ForgetRemembered">
+<input type="hidden" name="id" value="@item.Id">
+<span><strong>@item.Label</strong> · @item.Identity.Role · @item.Identity.Profile @item.Identity.Display · expires @item.Expires.ToString("u")</span>
+<button type="submit">Forget browser</button>
+</form>
+}
+<p>Forgetting a browser also revokes its active secure sessions. DM authorization or device recovery invalidates remembered approvals when the relevant identities change.</p>
+</section>
 }
 @if (!Model.Initialized) { <p>Secure approval state is not initialized or is unavailable. A fresh physical recovery can create a new approval state; existing gameplay data is retained.</p> }
 <section><h2>DM authorization or recovery</h2>
