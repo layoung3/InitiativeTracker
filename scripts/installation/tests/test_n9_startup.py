@@ -38,6 +38,46 @@ class N9StartupTests(unittest.TestCase):
         with patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
             self.assertFalse(kiosk.local_hub_reachable())
 
+    def test_https_kiosk_requires_exact_loopback_dns_and_validated_tls_health(self):
+        settings = {'hub_https_origin': 'https://hub.owner-domain.org'}
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock()
+        opener = Mock()
+        opener.open.return_value = response
+        loopback = [(2, 1, 6, '', ('127.0.0.1', 443)), (10, 1, 6, '', ('::1', 443, 0, 0))]
+        with patch.object(kiosk.socket, 'getaddrinfo', return_value=loopback), \
+             patch.object(kiosk.urllib.request, 'build_opener', return_value=opener), \
+             patch.object(kiosk.json, 'load', return_value={'status': 'healthy', 'product': 'InitiativeTracker'}):
+            self.assertEqual(kiosk.hub_target(settings), 'https://hub.owner-domain.org/setup')
+        opener.open.assert_called_once_with('https://hub.owner-domain.org/system/health', timeout=4)
+
+        with patch.object(kiosk.socket, 'getaddrinfo',
+                          return_value=loopback + [(2, 1, 6, '', ('10.0.0.214', 443))]), \
+             patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
+            self.assertEqual(kiosk.hub_target(settings), 'http://127.0.0.1:5000/setup')
+        with patch.object(kiosk.socket, 'getaddrinfo', return_value=loopback), \
+             patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
+            opener.open.side_effect = OSError('certificate chain rejected')
+            self.assertEqual(kiosk.hub_target(settings), 'http://127.0.0.1:5000/setup')
+
+    def test_https_kiosk_rejects_unapproved_origins_without_dns_or_network(self):
+        unsafe = [
+            'http://hub.owner-domain.org', 'https://hub.owner-domain.org:5445',
+            'https://hub.owner-domain.org:443', 'https://hub.owner-domain.org/path',
+            'https://hub.owner-domain.org?x=1', 'https://user@hub.owner-domain.org',
+            'https://hub.owner-domain.org#section', 'https://127.0.0.1',
+            'https://hub.local', 'https://hub.owner-domain.org.',
+        ]
+        with patch.object(kiosk.socket, 'getaddrinfo') as dns, \
+             patch.object(kiosk.urllib.request, 'build_opener') as network:
+            for origin in unsafe:
+                with self.subTest(origin=origin):
+                    self.assertEqual(kiosk.hub_target({'hub_https_origin': origin}),
+                                     'http://127.0.0.1:5000/setup')
+            dns.assert_not_called()
+            network.assert_not_called()
+
     def test_hub_recovery_uses_same_profile_and_never_reruns_updater(self):
         home = Path('/home/table-player')
         first = kiosk.command({'role': 'hub'}, home)
