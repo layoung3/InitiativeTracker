@@ -185,7 +185,7 @@ test('physical overlay approves a joined player and a paired display in their ow
         await dm.goto(base+'/dm/devices');
         await dm.locator('.list-group-item').filter({hasText:pair.trim()})
             .getByRole('button',{name:'Approve',exact:true}).click();
-        await display.waitForURL('**/display');
+        await display.waitForURL('**/secure-access/wait*');
         await display.goto(base+'/secure-access');
         await display.getByRole('button',{name:'Request secure approval',exact:true}).click();
         const displayRef=await display.locator('[data-browser-reference]').getAttribute('data-browser-reference');
@@ -263,7 +263,8 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
         await dm.goto(base+'/dm/devices');
         const pending=dm.locator('.list-group-item').filter({hasText:pairingCode});
         await pending.getByRole('button',{name:'Approve',exact:true}).click();
-        await display.waitForURL('**/display');
+        if(tlsSandbox) await display.waitForURL('**/secure-access/wait*');
+        else await display.waitForURL('**/display');
         if(tlsSandbox) {await authorizeMember(display,dm);await display.goto(base+'/display');}
         await display.locator('.initiative-row').filter({hasText:'N9 Long Named Fantasy Hero'}).waitFor();
         // Browser-generated synthetic pixels: no original user image is modified.
@@ -385,7 +386,9 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
             await page.locator('[name=JoinCode]').fill(joinCode);
             await page.locator('[name=PlayerName]').fill(name);
             await page.getByRole('button', {name:'Create Player Profile', exact:true}).click();
-            await page.getByRole('link', {name:'Continue to My Characters'}).click();
+            // Keep the one-time recovery key visible until all three identities
+            // exist; the Continue link now deliberately starts auto-enrollment.
+            await page.getByRole('link', {name:'Continue to My Characters'}).waitFor();
         }
         await joinPlayer(first, 'Queue player A');
         await joinPlayer(second, 'Queue player B');
@@ -399,10 +402,10 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         await dm.goto(base + '/dm/devices');
         await dm.locator('.list-group-item').filter({hasText:pairCode})
             .getByRole('button', {name:'Approve', exact:true}).click();
-        await display.waitForURL('**/display');
+        await display.waitForURL('**/secure-access/wait*');
 
-        // All three browsers are now independently authenticated for their
-        // ordinary role. Queue the short-lived secure requests together.
+        // Both players have completed normal profile creation, and display
+        // pairing is DM-approved. Queue the short-lived secure requests together.
         async function queueMember(page) {
             await page.goto(base + '/secure-access');
             await page.getByRole('button', {name:'Request secure approval', exact:true}).click();
@@ -445,5 +448,61 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
             'approval of other browsers must not grant the denied player access');
     } finally {
         await hub.close(); await dm.close(); await first.close(); await second.close(); await display.close();
+    }
+});
+
+
+test('normal DM login and player QR journey wait for hub approval automatically', {skip:!base || !tlsSandbox}, async () => {
+    const hub = await browser.newPage();
+    const dm = await browser.newPage();
+    const player = await browser.newPage();
+    const rejected = await browser.newPage();
+    try {
+        await hub.goto(base + '/setup');
+        const pin = await hub.locator('.setup-grid section').nth(2).locator('strong').innerText();
+        const joinCode = await hub.locator('.setup-grid section').nth(1).locator('strong').innerText();
+        const modal = hub.locator('#physicalApprovalOverlay');
+
+        await dm.goto(base + '/dm/login');
+        await dm.locator('[name=Pin]').fill(pin);
+        await dm.getByRole('button', {name:'Continue', exact:true}).click();
+        await dm.getByRole('heading', {name:'Waiting for approval on hub', exact:true}).waitFor({timeout:20000});
+        const dmRef = await dm.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        assert(dmRef, 'DM normal sign-in must queue approval automatically');
+        assert.equal(new URL(dm.url()).pathname, '/secure-access/wait');
+        await modal.waitFor({state:'visible', timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(), dmRef);
+        await modal.getByRole('button', {name:'Approve', exact:true}).click();
+        await dm.waitForURL('**/dm', {timeout:20000});
+
+        async function joinNew(page, name) {
+            await page.goto(base + '/join');
+            await page.locator('[name=JoinCode]').fill(joinCode);
+            await page.locator('[name=PlayerName]').fill(name);
+            await page.getByRole('button', {name:'Create Player Profile', exact:true}).click();
+            await page.getByText('Save your recovery key').waitFor();
+            await page.getByRole('link', {name:'Continue to My Characters', exact:true}).click();
+            await page.getByRole('heading', {name:'Waiting for approval on hub', exact:true}).waitFor({timeout:20000});
+            assert.equal(new URL(page.url()).pathname, '/secure-access/wait');
+            return page.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        }
+        const playerRef = await joinNew(player, 'Auto-approval player fixture');
+        await modal.waitFor({state:'visible', timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(), playerRef);
+        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(), /Player authorization/);
+        await modal.getByRole('button', {name:'Approve', exact:true}).click();
+        await player.waitForURL('**/player', {timeout:20000});
+
+        const deniedRef = await joinNew(rejected, 'Auto-denied player fixture');
+        await modal.waitFor({state:'visible', timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(), deniedRef);
+        await modal.getByRole('button', {name:'Deny', exact:true}).click();
+        await rejected.getByRole('heading', {name:'Approval not completed', exact:true}).waitFor({timeout:20000});
+        await rejected.waitForTimeout(3500);
+        assert.equal(await rejected.getByRole('heading', {name:'Approval not completed', exact:true}).count(), 1,
+            'denied request must not automatically resubmit');
+        assert.equal(await modal.isVisible(), false, 'denied request must not appear again without retry');
+    } finally {
+        await hub.close(); await dm.close(); await player.close(); await rejected.close();
     }
 });

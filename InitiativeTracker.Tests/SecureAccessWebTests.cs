@@ -607,6 +607,99 @@ public sealed class SecureAccessWebTests
         host.DeleteOnDispose();
     }
 
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task NormalTrustedDmLoginShowsWaitingAndPhysicalApprovalWithoutManualSecureAccess()
+    {
+        using var host = new Host();
+        using var dm = host.Client();
+        using var physical = host.Client(physical: true);
+        var pin = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DmPin;
+        var loginToken = await dm.Token("/dm/login");
+        var login = await dm.Send("/dm/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Pin"] = pin, ["__RequestVerificationToken"] = loginToken
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        Assert.Contains("/secure-access/wait", login.Headers.Location?.ToString() ?? "");
+
+        // GET renders an antiforgery form but must not create a request or grant.
+        var waiting = await dm.Send("/secure-access/wait?start=true");
+        Assert.Equal(HttpStatusCode.OK, waiting.StatusCode);
+        var markup = await waiting.Content.ReadAsStringAsync();
+        Assert.Contains("Preparing approval", markup);
+        Assert.Contains("data-auto-submit=\"true\"", markup);
+        Assert.Null(host.Access.ForBrowser(dm.Browser));
+
+        var token = await dm.Token("/secure-access/wait?start=true");
+        var noCsrf = await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent([]));
+        Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        Assert.Null(host.Access.ForBrowser(dm.Browser));
+
+        var begin = await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+        Assert.Equal(HttpStatusCode.Redirect, begin.StatusCode);
+        var pending = dm.Pending;
+        Assert.Equal("dm-recover", pending.Purpose);
+        var pendingHtml = await (await dm.Send("/secure-access/wait")).Content.ReadAsStringAsync();
+        Assert.Contains("Waiting for approval on hub", pendingHtml);
+        Assert.Contains(pending.Reference, pendingHtml);
+
+        var physicalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = physicalToken
+            }))).StatusCode);
+        var finished = await dm.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await dm.Token("/secure-access/wait")
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, finished.StatusCode);
+        Assert.Equal("/dm", finished.Headers.Location?.ToString());
+        Assert.Null(host.Access.ForBrowser(dm.Browser));
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PlayerWaitingDenialDoesNotAutomaticallyStartAnotherRequest()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        using var physical = host.Client(physical: true);
+        var playerId = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", playerId.Profile, playerId.Player, playerId.Credential);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/secure-access/wait?start=true")).StatusCode);
+        await player.Token("/secure-access/wait?start=true");
+        Assert.Null(host.Access.ForBrowser(player.Browser));
+
+        var token = await player.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        var pending = player.Pending;
+        Assert.Equal("enroll-player", pending.Purpose);
+
+        var physicalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Deny",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = physicalToken
+            }))).StatusCode);
+        var denied = await (await player.Send("/secure-access/wait")).Content.ReadAsStringAsync();
+        Assert.Contains("Approval not completed", denied);
+        Assert.Null(host.Access.ForBrowser(player.Browser));
+        Assert.Null(host.Access.ForBrowser(player.Browser)); // Poll/reload is read-only.
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await player.Token("/secure-access/wait")
+            }))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {
