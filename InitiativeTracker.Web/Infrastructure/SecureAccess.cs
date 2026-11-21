@@ -66,6 +66,23 @@ public static class SecureAccess
         { Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/", IsEssential = true, MaxAge = TimeSpan.FromDays(30) });
         return SecureAccessService.Hash(value);
     }
+    // Upgrade the cookie from a previously installed 12-hour browser binding to
+    // the approved 30-day lifetime only after an explicit persisted opt-in.
+    // The raw token is read from the HTTPS request and sent only as a host-only
+    // Secure/HttpOnly response cookie; no server state stores its plaintext.
+    public static void ExtendRememberedBrowserCookie(HttpContext context)
+    {
+        var origin = context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>();
+        if (!origin.TrustedRequest(context) ||
+            !context.Request.Cookies.TryGetValue(BrowserCookie, out var raw) ||
+            raw.Length != 64 || !raw.All(Uri.IsHexDigit))
+            throw new SecureAccessDenied();
+        context.Response.Cookies.Append(BrowserCookie, raw, new CookieOptions
+        {
+            Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict,
+            Path = "/", IsEssential = true, MaxAge = TimeSpan.FromDays(30)
+        });
+    }
     public static SecureGrant? Ticket(HttpContext context, ClaimsPrincipal? principal)
     {
         var origin = context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>();
