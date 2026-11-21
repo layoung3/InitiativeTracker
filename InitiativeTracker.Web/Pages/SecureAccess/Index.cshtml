@@ -24,12 +24,16 @@
 }
 </section>
 @if (User.IsInRole("Player") || User.IsInRole("Display")) {
-<section><h2>Request approval for this player or display</h2><p>Sign in through the hub's normal HTTPS join/pairing flow first. Ask a securely authorized DM to compare your browser reference and approve the exact identity shown.</p>
+<section><h2>Request approval for this player or display</h2><p>First join or pair normally over trusted HTTPS, then request secure approval. Compare your browser reference and exact player/display identity with the physical hub. A securely authorized DM can also approve this exact request.</p>
 <form method="post" asp-page-handler="BeginMember"><button>Request secure approval</button></form>
 @if (Model.Pending is { } memberPending && memberPending.Purpose.StartsWith("enroll-")) {
 <p>Browser reference <strong>@memberPending.Reference</strong>; identity @memberPending.Identity.Profile @memberPending.Identity.Display.</p>
-<p>@(memberPending.Approver.HasValue ? "DM approved. Complete authorization in this browser." : "Waiting for secure DM approval.")</p>
-<form method="post" asp-page-handler="Finish"><button>Complete approved enrollment</button></form>
+<p>@(memberPending.PhysicalApproved ? "Physical hub approved. Completing in this exact browser." :
+    memberPending.Approver.HasValue ? "Secure DM approved. Completing in this browser." : "Waiting for physical hub or secure DM approval.")</p>
+<form method="post" asp-page-handler="Finish" id="finishMemberApproval"
+      data-physical-approved="@(memberPending.PhysicalApproved || memberPending.Approver.HasValue ? "true" : "false")">
+    <button>Complete approved enrollment</button>
+</form>
 }
 </section>
 }
