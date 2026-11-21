@@ -15,11 +15,17 @@ public sealed class SecureAccessUnavailable : Exception { }
 public sealed record SecureIdentity(string Role, Guid Session, Guid? Profile, Guid? Player, Guid? Credential, Guid? Display, string Stamp);
 public sealed record SecureGrant(Guid Id, SecureIdentity Identity, string Browser, string Origin, Guid Epoch, int Generation,
     DateTimeOffset Expires, bool Revoked = false);
+// Remembered-browser state contains only a SHA-256 hash of the host-only,
+ // Secure/HttpOnly random browser cookie. It never stores a reusable raw token.
+public sealed record SecureRememberedBrowser(Guid Id, SecureIdentity Identity, string Browser, string Origin,
+    Guid Epoch, int Generation, DateTimeOffset Expires, string Label, bool Revoked = false);
 public sealed class SecureGrantState
 {
     public int Format { get; set; } = 1;
     public Guid Epoch { get; set; } = Guid.NewGuid();
     public List<SecureGrant> Grants { get; set; } = [];
+    // Optional in pre-remembered Format=1 state; absence reads as an empty set.
+    public List<SecureRememberedBrowser> RememberedBrowsers { get; set; } = [];
 }
 public sealed record SecureEnrollment(Guid Id, string Reference, string Purpose, SecureIdentity Identity, string Browser,
     string Origin, DateTimeOffset Expires, string Code, int Attempts = 0, Guid? Approver = null, int ApproverGeneration = 0,
@@ -99,7 +105,17 @@ public class SecureGrantPersistence(SecureAccessStorage storage, IDataProtection
             return state is { Format: 1 } && state.Epoch != Guid.Empty && state.Grants is { Count: <= 256 } &&
                 state.Grants.All(g => g is not null && g.Identity is not null && g.Id != Guid.Empty && g.Epoch == state.Epoch && g.Generation >= 1 &&
                     g.Browser is { Length: 64 } && g.Identity.Stamp is { Length: 64 } && g.Identity.Role is "DM" or "Player" or "Display") &&
-                state.Grants.Select(g => g.Id).Distinct().Count() == state.Grants.Count ? state : null;
+                state.Grants.Select(g => g.Id).Distinct().Count() == state.Grants.Count &&
+                state.RememberedBrowsers is { Count: <= 64 } &&
+                state.RememberedBrowsers.All(b => b is not null && b.Identity is not null &&
+                    b.Id != Guid.Empty && b.Epoch == state.Epoch && b.Generation >= 1 &&
+                    b.Browser is { Length: 64 } && b.Browser.All(Uri.IsHexDigit) &&
+                    b.Origin is { Length: > 8 and <= 300 } && b.Origin.StartsWith("https://", StringComparison.Ordinal) &&
+                    b.Label is { Length: >= 1 and <= 48 } && !b.Label.Any(char.IsControl) &&
+                    b.Identity.Stamp is { Length: 64 } && b.Identity.Role is "DM" or "Player" or "Display") &&
+                state.RememberedBrowsers.Select(b => b.Id).Distinct().Count() == state.RememberedBrowsers.Count &&
+                state.RememberedBrowsers.Where(b => !b.Revoked).Select(b => b.Browser).Distinct().Count() ==
+                    state.RememberedBrowsers.Count(b => !b.Revoked) ? state : null;
         }
         catch (Exception e) when (StorageFailure(e) || e is JsonException)
         { return null; }
