@@ -230,6 +230,56 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task OneTapPhysicalApproveDenyAndBrowserCompletionRespectHttpsCsrfAndIdentity()
+    {
+        using var host = new Host();
+        using var requester = host.Client();
+        using var physical = host.Client(physical: true);
+        using var remote = host.Client();
+        await remote.Token(); // Independent secure browser.
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm", ("recovery", "true"))).StatusCode);
+        var pending = requester.Pending;
+        var screen = await physical.Send("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.OK, screen.StatusCode);
+        var markup = await screen.Content.ReadAsStringAsync();
+        Assert.Contains("Approve browser", markup);
+        Assert.Contains("Deny request", markup);
+        Assert.Contains(pending.Reference, markup);
+        Assert.Contains("revokes all previous secure approvals", markup);
+        var token = await physical.Token("/secure-access/physical");
+        var approval = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["id"] = pending.Id.ToString(),
+            ["__RequestVerificationToken"] = token
+        });
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await remote.Send("/secure-access/physical?handler=Approve", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await physical.Send("/secure-access/physical?handler=Approve", approval)).StatusCode);
+        var requesterHtml = await (await requester.Send("/secure-access")).Content.ReadAsStringAsync();
+        Assert.Contains("data-physical-approved=\"true\"", requesterHtml);
+        Assert.Equal(HttpStatusCode.Forbidden, (await remote.Post("FinishPhysical")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("FinishPhysical")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await requester.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await requester.Post("FinishPhysical")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm")).StatusCode);
+        var denied = requester.Pending.Id;
+        var denyToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await physical.Send("/secure-access/physical?handler=Deny",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = denied.ToString(), ["__RequestVerificationToken"] = denyToken
+                }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await requester.Post("FinishPhysical")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {
         using var host = new Host();
