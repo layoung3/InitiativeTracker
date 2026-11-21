@@ -1,0 +1,31 @@
+@page "/setup/network-status"
+@model InitiativeTracker.Web.Pages.Setup.NetworkStatusModel
+@{
+    ViewData["Title"] = "Physical Hub Network Status";
+}
+<div class="container py-4" style="max-width:760px">
+    <header class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h1 class="h3 mb-1">Hub network status</h1>
+            <p class="text-body-secondary mb-0">Read-only information on the physical hub.</p>
+        </div>
+        <a href="/setup" class="btn btn-lg btn-primary" style="min-height:48px">Back to Hub Setup</a>
+    </header>
+    <section class="card mb-3"><div class="card-body">
+        <h2 class="h5">Current connection</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Interface</dt><dd class="col-sm-8">@Model.Status.InterfaceName</dd>
+            <dt class="col-sm-4">Connection</dt><dd class="col-sm-8">@Model.Status.Connection</dd>
+            <dt class="col-sm-4">IPv4</dt><dd class="col-sm-8">@(Model.Status.Ipv4 ?? "No Wi-Fi address")</dd>
+            <dt class="col-sm-4">Connected</dt><dd class="col-sm-8">@(Model.Status.IsConnected ? "Yes" : "No")</dd>
+        </dl>
+        @if (Model.Status.Message is not null)
+        {
+            <p class="alert alert-info mb-0" role="status">@Model.Status.Message</p>
+        }
+    </div></section>
+    <p class="small text-body-secondary">No network configuration changes are available here.
+        This page never initiates a Wi-Fi scan or changes the active connection.
+        Remote DM network administration remains separately authenticated.</p>
+    <a href="/setup/network-status" class="btn btn-lg btn-outline-primary" style="min-height:48px">Refresh status</a>
+</div>
