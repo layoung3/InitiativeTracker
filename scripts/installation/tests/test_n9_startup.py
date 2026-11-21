@@ -24,6 +24,20 @@ class N9StartupTests(unittest.TestCase):
         os.umask(original_umask)
         self.addCleanup(os.umask, original_umask)
 
+    def test_hub_health_probe_uses_fixed_loopback_without_proxy_or_satellite_settings(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock()
+        opener = Mock()
+        opener.open.return_value = response
+        with patch.object(kiosk.urllib.request, 'build_opener', return_value=opener), \
+             patch.object(kiosk.json, 'load', return_value={'status': 'healthy', 'product': 'InitiativeTracker'}):
+            self.assertTrue(kiosk.local_hub_reachable())
+        opener.open.assert_called_once_with('http://127.0.0.1:5000/system/health', timeout=4)
+        opener.open.side_effect = OSError('hub offline')
+        with patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
+            self.assertFalse(kiosk.local_hub_reachable())
+
     def test_hub_recovery_uses_same_profile_and_never_reruns_updater(self):
         home = Path('/home/table-player')
         first = kiosk.command({'role': 'hub'}, home)
@@ -39,7 +53,7 @@ class N9StartupTests(unittest.TestCase):
     def test_hub_watchdog_recovers_only_after_sustained_outage_and_restored_health(self):
         child = Mock()
         child.poll.return_value = None
-        with patch.object(kiosk, 'reachable', side_effect=[True, False, False, False, True]) as probe, \
+        with patch.object(kiosk, 'local_hub_reachable', side_effect=[True, False, False, False, True]) as probe, \
              patch.object(kiosk.time, 'sleep') as sleep:
             self.assertTrue(kiosk.watch_hub_child(child, {'role': 'hub'}))
         self.assertEqual(5, probe.call_count)
@@ -48,7 +62,7 @@ class N9StartupTests(unittest.TestCase):
     def test_hub_watchdog_does_not_restart_on_transient_failure(self):
         child = Mock()
         child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
-        with patch.object(kiosk, 'reachable', side_effect=[False, True, False, True]) as probe, \
+        with patch.object(kiosk, 'local_hub_reachable', side_effect=[False, True, False, True]) as probe, \
              patch.object(kiosk.time, 'sleep') as sleep:
             self.assertFalse(kiosk.watch_hub_child(child, {'role': 'hub'}))
         self.assertEqual(4, probe.call_count)
