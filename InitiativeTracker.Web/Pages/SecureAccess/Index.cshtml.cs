@@ -43,6 +43,17 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
         catch (SecureAccessUnavailable) { return StatusCode(503); }
         finally { ModelState.Clear(); }
     }
+    public async Task<IActionResult> OnPostFinishPhysicalAsync()
+    {
+        try
+        {
+            var grant = access.FinishPhysicalDm(Binding, origin.Origin);
+            await Infrastructure.SecureAccess.SignIn(HttpContext, grant);
+            return RedirectToPage();
+        }
+        catch (SecureAccessDenied) { return StatusCode(403); }
+        catch (SecureAccessUnavailable) { return StatusCode(503); }
+    }
     public async Task<IActionResult> OnPostApproveAsync(Guid id)
     {
         try { access.Approve(await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied(), id); return RedirectToPage(); }
