@@ -174,7 +174,7 @@ class N9StartupTests(unittest.TestCase):
             self.assertFalse(kiosk.reachable(settings))
         self.assertTrue(all(c.args[0].startswith('https://hub.example/') for c in opener.open.call_args_list))
 
-    def launcher(self, failing=False, updater_exit=0):
+    def launcher(self, failing=False, updater_exit=0, secure=False):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
@@ -194,6 +194,15 @@ class N9StartupTests(unittest.TestCase):
         text = text.replace('/usr/bin/chromium', str(root / 'chromium'))
         launch = root / 'launch'
         launch.write_text(text)
+        if secure:
+            config = root / 'alternate-home/.config/initiativetracker-hub'
+            component = root / 'alternate-home/.local/lib/initiativetracker-hub'
+            config.mkdir(parents=True, exist_ok=True)
+            component.mkdir(parents=True, exist_ok=True)
+            (config / 'kiosk.json').write_text('{"role":"hub","hub_https_origin":"https://hub.owner-domain.org"}')
+            # Stub only the already-validated selector; separate unit tests
+            # exercise real DNS/TLS checks, including their failure paths.
+            (component / 'kiosk.py').write_text("print('https://hub.owner-domain.org/setup')\\n")
         environment = dict(os.environ, HOME=str(root / 'alternate-home'),
                            PATH=str(root) + ':/usr/bin:/bin', N9_EVENTS=str(log))
         result = subprocess.run(['/bin/bash', '-p', str(launch)], env=environment,
@@ -208,6 +217,15 @@ class N9StartupTests(unittest.TestCase):
         browser = next(x for x in lines if x.startswith('chromium'))
         self.assertIn('--user-data-dir=' + home + '/.config/initiativetracker-hub/chromium', browser)
         self.assertTrue(browser.endswith('http://127.0.0.1:5000/setup'))
+
+    def test_launcher_opt_in_https_preserves_updater_order_and_browser_profile(self):
+        result, lines, home = self.launcher(secure=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        phases = [x.split()[0] for x in lines if x.split()[0] in ('health', 'updater', 'chromium')]
+        self.assertEqual(phases, ['health', 'updater', 'health', 'chromium'])
+        browser = next(x for x in lines if x.startswith('chromium'))
+        self.assertIn('--user-data-dir=' + home + '/.config/initiativetracker-hub/chromium', browser)
+        self.assertTrue(browser.endswith('https://hub.owner-domain.org/setup'))
 
     def test_launcher_health_failure_exits_before_updater_or_chromium(self):
         result, lines, _ = self.launcher(failing=True)
