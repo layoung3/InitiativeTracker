@@ -39,7 +39,7 @@ class N9StartupTests(unittest.TestCase):
     def test_hub_watchdog_recovers_only_after_sustained_outage_and_restored_health(self):
         child = Mock()
         child.poll.return_value = None
-        with patch.object(kiosk, 'reachable', side_effect=[True, False, False, False, True]) as probe, \\
+        with patch.object(kiosk, 'reachable', side_effect=[True, False, False, False, True]) as probe, \
              patch.object(kiosk.time, 'sleep') as sleep:
             self.assertTrue(kiosk.watch_hub_child(child, {'role': 'hub'}))
         self.assertEqual(5, probe.call_count)
@@ -48,7 +48,7 @@ class N9StartupTests(unittest.TestCase):
     def test_hub_watchdog_does_not_restart_on_transient_failure(self):
         child = Mock()
         child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
-        with patch.object(kiosk, 'reachable', side_effect=[False, True, False, True]) as probe, \\
+        with patch.object(kiosk, 'reachable', side_effect=[False, True, False, True]) as probe, \
              patch.object(kiosk.time, 'sleep') as sleep:
             self.assertFalse(kiosk.watch_hub_child(child, {'role': 'hub'}))
         self.assertEqual(4, probe.call_count)
