@@ -222,7 +222,7 @@ public sealed class SecureAccessWebTests
         var html = await read.Content.ReadAsStringAsync();
         Assert.Contains("Read-only information on the physical hub", html);
         Assert.Contains("/setup", html);
-        Assert.DoesNotContain("name=\\"WifiPassword\\"", html);
+        Assert.DoesNotContain("WifiPassword", html);
         Assert.DoesNotContain("Switch to private", html);
         var mutation = await physical.Send("/setup/network-status?handler=BeginHotspot", new FormUrlEncodedContent([]));
         Assert.False(mutation.IsSuccessStatusCode);
