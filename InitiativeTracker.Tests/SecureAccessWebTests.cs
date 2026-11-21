@@ -325,6 +325,13 @@ public sealed class SecureAccessWebTests
             using var dm = first.Client(); await dm.Bootstrap();
             var result = await dm.Post("Remember", ("label", "DM tablet"));
             Assert.Equal(HttpStatusCode.Redirect, result.StatusCode);
+            var refreshed = result.Headers.GetValues("Set-Cookie").Single(x =>
+                x.StartsWith(SecureAccess.BrowserCookie + "=", StringComparison.Ordinal));
+            Assert.Contains("max-age=2592000", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("httponly", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("secure", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("samesite=strict", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("domain=", refreshed, StringComparison.OrdinalIgnoreCase);
             browserCookie = dm.Cookies[SecureAccess.BrowserCookie];
             var trust = first.Access.Remembered(first.Access.Grants().Single()).Single();
             Assert.Equal("DM tablet", trust.Label);
