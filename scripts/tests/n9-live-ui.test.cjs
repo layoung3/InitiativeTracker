@@ -375,21 +375,22 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         await overlay.getByRole('button', {name:'Approve', exact:true}).click();
         await dm.getByRole('heading', {name:'Authorized as DM', exact:true}).waitFor({timeout:20000});
 
-        async function queuePlayer(page, name) {
+        // Prepare ordinary join and pairing BEFORE creating pending secure
+        // approval requests. This synthetic fixture uses loopback for every
+        // browser, unlike remote phones; an existing pending request would
+        // otherwise open the physical-only overlay on a Join form and intercept
+        // unrelated clicks. Production remote clients never receive that overlay.
+        async function joinPlayer(page, name) {
             await page.goto(base + '/join');
             await page.locator('[name=JoinCode]').fill(joinCode);
             await page.locator('[name=PlayerName]').fill(name);
             await page.getByRole('button', {name:'Create Player Profile', exact:true}).click();
             await page.getByRole('link', {name:'Continue to My Characters'}).click();
-            await page.goto(base + '/secure-access');
-            await page.getByRole('button', {name:'Request secure approval', exact:true}).click();
-            return page.locator('[data-browser-reference]').getAttribute('data-browser-reference');
         }
-        const firstRef = await queuePlayer(first, 'Queue player A');
-        const secondRef = await queuePlayer(second, 'Queue player B');
-        assert.notEqual(firstRef, secondRef, 'independent browsers must have unique references');
+        await joinPlayer(first, 'Queue player A');
+        await joinPlayer(second, 'Queue player B');
 
-        // The exact Setup QR destination now enters DM-approved pairing;
+        // The exact Setup QR destination enters DM-approved pairing;
         // the QR invitation alone never grants a Display session.
         await display.goto(base + displayQrPath);
         await display.waitForURL('**/display/pair');
@@ -399,11 +400,19 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         await dm.locator('.list-group-item').filter({hasText:pairCode})
             .getByRole('button', {name:'Approve', exact:true}).click();
         await display.waitForURL('**/display');
-        await display.goto(base + '/secure-access');
-        await display.getByRole('button', {name:'Request secure approval', exact:true}).click();
-        const displayRef = await display.locator('[data-browser-reference]').getAttribute('data-browser-reference');
-        assert.notEqual(displayRef, firstRef);
-        assert.notEqual(displayRef, secondRef);
+
+        // All three browsers are now independently authenticated for their
+        // ordinary role. Queue the short-lived secure requests together.
+        async function queueMember(page) {
+            await page.goto(base + '/secure-access');
+            await page.getByRole('button', {name:'Request secure approval', exact:true}).click();
+            return page.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        }
+        const firstRef = await queueMember(first);
+        const secondRef = await queueMember(second);
+        const displayRef = await queueMember(display);
+        assert.equal(new Set([firstRef, secondRef, displayRef]).size, 3,
+            'three independent browsers must have unique references');
 
         // A multi-request operator must be able to select an exact browser
         // without relying on whichever pending item the compact overlay shows
