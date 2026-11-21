@@ -34,6 +34,43 @@ def command(settings, home):
             settings['hub_url'] + '/display']
 
 
+def hub_resume_command(home):
+    """Reopen the existing hub profile after a service outage, no updater check.
+
+    The ordinary launcher is still used for first startup. Recovery must not
+    present an update prompt or change the installed application on its own.
+    """
+    return ['/usr/bin/chromium', '--kiosk', '--start-maximized', '--noerrdialogs',
+            '--disable-infobars', '--no-first-run', '--disable-session-crashed-bubble',
+            '--disable-features=TranslateUI', '--disable-pinch',
+            '--overscroll-history-navigation=0', '--password-store=basic',
+            '--user-data-dir=' + str(home / '.config/initiativetracker-hub/chromium'),
+            'http://127.0.0.1:5000/setup']
+
+
+def watch_hub_child(child, settings):
+    """Return True only after a sustained hub outage and healthy recovery.
+
+    Short failures cannot disrupt a live game. This runs outside the browser,
+    so a Chromium network-error page cannot strand the physical touchscreen.
+    """
+    offline = 0
+    needs_recovery = False
+    while child.poll() is None:
+        time.sleep(5)
+        if child.poll() is not None:
+            return False
+        if reachable(settings):
+            if needs_recovery:
+                return True
+            offline = 0
+        else:
+            offline += 1
+            if offline >= 3:
+                needs_recovery = True
+    return False
+
+
 def waiting_command(home):
     """Local, inert page; separate profile cannot change pairing cookies."""
     local = home / '.local/lib/initiativetracker-satellite/waiting.html'
@@ -97,14 +134,26 @@ def supervise(settings, home):
         subprocess.run(['/usr/bin/wlr-randr', '--output', settings['display_output'],
                         '--mode', settings['display_mode']], check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    recovering = False
     while True:
         if settings['role'] == 'satellite':
             wait_for_satellite_hub(settings, home)
         # Child output is intentionally not accumulated into an unbounded log.
         # The root updater's diagnostic journal remains available locally.
-        child = subprocess.Popen(command(settings, home), start_new_session=True,
+        # The first launch retains updater-before-Chromium ordering. A recovery
+        # launch skips the updater and uses the identical persistent hub profile.
+        args = hub_resume_command(home) if settings['role'] == 'hub' and recovering else command(settings, home)
+        child = subprocess.Popen(args, start_new_session=True,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        child.wait()
+        if settings['role'] == 'hub':
+            restored = watch_hub_child(child, settings)
+            if restored:
+                stop_child(child)
+                recovering = True
+            else:
+                child.wait()
+        else:
+            child.wait()
         time.sleep(5)
 
 
