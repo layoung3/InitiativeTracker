@@ -1,14 +1,18 @@
 #!/usr/bin/python3 -I
 """Labwc-owned kiosk supervisor. Preserves hub updater-before-browser ordering."""
 import fcntl
+import ipaddress
 import json
 import os
+import re
+import socket
 from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import urlsplit
 
 
 def reachable(settings):
@@ -36,6 +40,44 @@ def local_hub_reachable():
         return False
 
 
+
+def verified_hub_https(settings):
+    """Optional secure kiosk URL; no private DNS, insecure TLS, or HTTP authority.
+
+    The local operator must separately provision trusted HTTPS, loopback-only
+    hub DNS, and this explicit kiosk setting. A valid remote DNS answer must
+    never be treated as physical proof merely because TLS succeeds.
+    """
+    origin = settings.get('hub_https_origin')
+    if not isinstance(origin, str) or len(origin) > 265:
+        return None
+    try:
+        parsed = urlsplit(origin)
+        host = parsed.hostname
+        if (parsed.scheme != 'https' or parsed.username or parsed.password or
+            parsed.path or parsed.query or parsed.fragment or parsed.port not in (None, 443) or
+            not host or origin != 'https://' + host or
+            host != host.lower() or
+            not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?', host) or
+            len(host.split('.')) < 3):
+            return None
+        answers = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        if not answers or any(not ipaddress.ip_address(item[4][0]).is_loopback for item in answers):
+            return None
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(origin + '/system/health', timeout=4) as response:
+            result = json.load(response)
+            if result.get('status') != 'healthy' or result.get('product') != 'InitiativeTracker':
+                return None
+        return origin + '/setup'
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def hub_target(settings):
+    return verified_hub_https(settings) or 'http://127.0.0.1:5000/setup'
+
+
 def command(settings, home):
     if settings['role'] == 'hub':
         return [str(home / '.local/lib/initiativetracker-hub/initiativetracker-hub-launch')]
@@ -45,7 +87,7 @@ def command(settings, home):
             settings['hub_url'] + '/display']
 
 
-def hub_resume_command(home):
+def hub_resume_command(home, settings=None):
     """Reopen the existing hub profile after a service outage, no updater check.
 
     The ordinary launcher is still used for first startup. Recovery must not
@@ -56,7 +98,7 @@ def hub_resume_command(home):
             '--disable-features=TranslateUI', '--disable-pinch',
             '--overscroll-history-navigation=0', '--password-store=basic',
             '--user-data-dir=' + str(home / '.config/initiativetracker-hub/chromium'),
-            'http://127.0.0.1:5000/setup']
+            hub_target(settings or {})]
 
 
 def watch_hub_child(child, settings):
@@ -153,7 +195,7 @@ def supervise(settings, home):
         # The root updater's diagnostic journal remains available locally.
         # The first launch retains updater-before-Chromium ordering. A recovery
         # launch skips the updater and uses the identical persistent hub profile.
-        args = hub_resume_command(home) if settings['role'] == 'hub' and recovering else command(settings, home)
+        args = hub_resume_command(home, settings) if settings['role'] == 'hub' and recovering else command(settings, home)
         child = subprocess.Popen(args, start_new_session=True,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if settings['role'] == 'hub':
@@ -169,4 +211,13 @@ def supervise(settings, home):
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    if len(sys.argv) == 3 and sys.argv[1] == '--hub-target':
+        try:
+            chosen = json.loads(Path(sys.argv[2]).read_text())
+            if chosen.get('role') != 'hub':
+                raise ValueError('Not a hub configuration')
+            print(hub_target(chosen))
+        except (OSError, ValueError, KeyError, TypeError):
+            print('http://127.0.0.1:5000/setup')
+    else:
+        sys.exit(main())
