@@ -6,7 +6,7 @@
 <nav aria-label="Hub navigation" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"><a href="/setup" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Hub Setup</a><a href="/secure-access/physical" style="color:#8cf;display:inline-block;padding:.65rem;border:1px solid #567;border-radius:.4rem">Refresh requests</a></nav>
 <h1>Physical DM authorization</h1><p>Approve only a browser you control. Match its reference before entering its code over trusted HTTPS. Recovery revokes every previous secure approval.</p>
 @foreach (var request in Model.Requests) {
-<section data-request="@request.Id">
+<section data-request="@request.Id" data-physical-approved="@(request.PhysicalApproved ? "true" : "false")">
     <p>Browser reference <strong>@request.Reference</strong> · @(request.Purpose == "dm-recover" ? "DM recovery — revokes all previous secure approvals" : "DM authorization")</p>
     <p>Expires @request.Expires.ToString("u"). One use only.</p>
     @if (request.PhysicalApproved)
