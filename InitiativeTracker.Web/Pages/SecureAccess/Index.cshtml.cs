@@ -16,6 +16,9 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
     public IReadOnlyList<SecureGrant> Grants { get; private set; } = [];
     public IReadOnlyList<SecureRememberedBrowser> TrustedBrowsers { get; private set; } = [];
     public bool Initialized => access.Initialized;
+    // A QR quick-connect Display identity has no trusted device-id yet; do not
+    // offer a secure enrollment action that will always fail with 403.
+    public bool CanEnrollMember => access.Capture(User)?.Role is "Player" or "Display";
     private string Binding => Infrastructure.SecureAccess.Browser(HttpContext) ?? throw new SecureAccessDenied();
     private string Peer => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     public async Task<IActionResult> OnGetAsync()

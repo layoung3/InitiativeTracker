@@ -283,6 +283,14 @@
 
     <div class="offcanvas-body">
 
+        @if (satelliteReadability && !User.HasClaim(claim => claim.Type == "device_id"))
+        {
+            <div class="alert alert-info small" role="note">
+                This display was connected through the quick-access QR. To use private images, have the DM pair this device.
+                <a href="/display/pair" class="btn btn-outline-primary btn-sm mt-2">Pair with DM</a>
+            </div>
+        }
+
         <fieldset class="display-theme-fieldset">
 
             <legend class="display-theme-legend">

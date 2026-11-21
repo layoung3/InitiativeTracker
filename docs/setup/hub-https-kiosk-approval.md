@@ -51,3 +51,11 @@ A returning browser opens `/secure-access` to restore a **new 12-hour secure gra
 ## CI history and current gate
 
 The prior CI startup/artifact failure was resolved when the owner temporarily made the repository public. The fully tested prior checkpoint `18951c85f6ac5e0ce2d63e4ba200de5d69a4ba9a` passed all six workflows. This newer player/display and remembered-browser implementation requires **fresh exact-head** .NET and real-browser test evidence; previous green runs do not certify new commits. No physical Pi testing is claimed.
+
+## Phase 2 — disposable player/display user-journey acceptance
+
+Phase 1 passed on exact commit `290da36f5b1904a4e0d1f08218f04f661efc79ca` across all six hosted workflows. Phase 2 covers the entire player QR/manual join and display quick-connect/pair flow using real browser sessions and separate identities, including a queue of simultaneous player and display requests. These tests are disposable; no real Pi or production network changes are authorized.
+
+The Setup display QR retains its legacy quick-view `/display/connect?token=…` behavior. A quick-connected display has no DM-approved device identity and must *not* receive private-media authority. The secure-access page and display appearance panel provide a **Request DM pairing** route; `/display/pair` permits an unpaired quick-connected Display cookie to create a request. The existing DM pairing decision creates a trusted device ID; only then may the browser request physical/DM secure approval. Already trusted paired devices retain their existing redirect to the display.
+
+Acceptance includes: different player browsers receive distinct references; the physical operator may deny one while retaining others; approval redeems only the correct browser and role; legacy quick-connect alone cannot authorize private media; exact player/display identity is visible in the hub overlay; remembered 30-day trust, expiration, cancellation, credential/identity revocation, HTTP denial and manual-code fallback are covered by the existing secure access tests. Camera QR scanning, physical touch and kiosk boot remain separate physical acceptance gates.

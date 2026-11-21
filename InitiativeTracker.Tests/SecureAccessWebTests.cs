@@ -562,6 +562,49 @@ public sealed class SecureAccessWebTests
         host.DeleteOnDispose();
     }
 
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task QuickConnectDisplayCanPairWithDmBeforePhysicalSecureEnrollment()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        using var display = host.Client();
+        var token = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DisplayToken;
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await display.Send("/display/connect?token=" + Uri.EscapeDataString(token))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await display.Send("/display")).StatusCode);
+        var secure = await display.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, secure.StatusCode);
+        Assert.Contains("Request DM pairing", await secure.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, (await display.Post("BeginMember")).StatusCode);
+        // A legacy Display cookie must not trap the device in the /display/pair redirect.
+        var pairing = await display.Send("/display/pair");
+        Assert.Equal(HttpStatusCode.OK, pairing.StatusCode);
+        Assert.Contains("Pair Display", await pairing.Content.ReadAsStringAsync());
+        Guid pairingId;
+        using (var db = host.Factory.CreateDbContext())
+            pairingId = db.DevicePairingRequests.Single().Id;
+        host.App.Services.GetRequiredService<DeviceRegistryService>().ApprovePairing(pairingId);
+        var status = await display.Send("/display/pair?handler=Status");
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Contains("approved", await status.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("BeginMember")).StatusCode);
+        using var physical = host.Client(physical: true);
+        var verification = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await physical.Send("/secure-access/physical?handler=Approve",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = display.Pending.Id.ToString(),
+                    ["__RequestVerificationToken"] = verification
+                }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("Finish")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await display.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await display.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {

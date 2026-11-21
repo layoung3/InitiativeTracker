@@ -354,3 +354,86 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
         }
     } finally {await dm.close();await player.close();await display.close();}
 });
+
+
+test('concurrent player and quick-connect display requests remain isolated', {skip:!base || !tlsSandbox}, async () => {
+    const hub = await browser.newPage();
+    const dm = await browser.newPage();
+    const first = await browser.newPage();
+    const second = await browser.newPage();
+    const display = await browser.newPage();
+    try {
+        await hub.goto(base + '/setup');
+        const joinCode = await hub.locator('.setup-grid section').nth(1).locator('strong').innerText();
+        const displayQrPath = await hub.getByRole('link', {name:'Display Pairing', exact:true}).getAttribute('href');
+        assert.match(displayQrPath, /^\/display\/connect\?token=/);
+        await dm.goto(base + '/secure-access');
+        await dm.locator('[name=recovery]').check();
+        await dm.getByRole('button', {name:'Request physical DM proof', exact:true}).click();
+        const overlay = hub.locator('#physicalApprovalOverlay');
+        await overlay.waitFor({state:'visible', timeout:20000});
+        await overlay.getByRole('button', {name:'Approve', exact:true}).click();
+        await dm.getByRole('heading', {name:'Authorized as DM', exact:true}).waitFor({timeout:20000});
+
+        async function queuePlayer(page, name) {
+            await page.goto(base + '/join');
+            await page.locator('[name=JoinCode]').fill(joinCode);
+            await page.locator('[name=PlayerName]').fill(name);
+            await page.getByRole('button', {name:'Create Player Profile', exact:true}).click();
+            await page.getByRole('link', {name:'Continue to My Characters'}).click();
+            await page.goto(base + '/secure-access');
+            await page.getByRole('button', {name:'Request secure approval', exact:true}).click();
+            return page.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        }
+        const firstRef = await queuePlayer(first, 'Queue player A');
+        const secondRef = await queuePlayer(second, 'Queue player B');
+        assert.notEqual(firstRef, secondRef, 'independent browsers must have unique references');
+
+        // Exercise the exact legacy quick-connect destination advertised by Setup.
+        // This grants neither registered-device trust nor private media authority.
+        await display.goto(base + displayQrPath);
+        await display.waitForURL('**/display');
+        await display.goto(base + '/secure-access');
+        await display.getByRole('link', {name:'Request DM pairing', exact:true}).click();
+        await display.getByRole('heading', {name:'Pair Display', exact:true}).waitFor();
+        const pairCode = (await display.locator('.display-2').innerText()).trim();
+        await dm.goto(base + '/dm/devices');
+        await dm.locator('.list-group-item').filter({hasText:pairCode})
+            .getByRole('button', {name:'Approve', exact:true}).click();
+        await display.waitForURL('**/display');
+        await display.goto(base + '/secure-access');
+        await display.getByRole('button', {name:'Request secure approval', exact:true}).click();
+        const displayRef = await display.locator('[data-browser-reference]').getAttribute('data-browser-reference');
+        assert.notEqual(displayRef, firstRef);
+        assert.notEqual(displayRef, secondRef);
+
+        const waitForReference = value => hub.waitForFunction(expected =>
+            document.querySelector('#physicalApprovalReference')?.textContent?.trim() === expected,
+            value, {timeout:20000});
+        await waitForReference(firstRef);
+        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(), /Player authorization/);
+        await overlay.getByRole('button', {name:'Deny', exact:true}).click();
+        await first.goto(base + '/secure-access');
+        assert.equal(await first.locator('#finishMemberApproval').count(), 0,
+            'denied browser must not retain a redeemable request');
+        assert.equal(await first.getByRole('heading', {name:/Authorized as/}).count(), 0,
+            'denied browser must remain unauthorized');
+
+        await waitForReference(secondRef);
+        await overlay.getByRole('button', {name:'Approve', exact:true}).click();
+        await second.getByRole('heading', {name:'Authorized as Player', exact:true}).waitFor({timeout:20000});
+        await display.reload();
+        assert.equal(await display.getByRole('heading', {name:/Authorized as/}).count(), 0,
+            'unapproved display must remain unauthorized');
+
+        await waitForReference(displayRef);
+        assert.match(await hub.locator('#physicalApprovalPurpose').innerText(), /Display authorization/);
+        await overlay.getByRole('button', {name:'Approve', exact:true}).click();
+        await display.getByRole('heading', {name:'Authorized as Display', exact:true}).waitFor({timeout:20000});
+        await first.goto(base + '/secure-access');
+        assert.equal(await first.getByRole('heading', {name:/Authorized as/}).count(), 0,
+            'approval of other browsers must not grant the denied player access');
+    } finally {
+        await hub.close(); await dm.close(); await first.close(); await second.close(); await display.close();
+    }
+});
