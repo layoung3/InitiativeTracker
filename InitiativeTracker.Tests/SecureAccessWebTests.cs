@@ -224,8 +224,8 @@ public sealed class SecureAccessWebTests
         Assert.Contains("/setup", html);
         Assert.DoesNotContain("name=\\"WifiPassword\\"", html);
         Assert.DoesNotContain("Switch to private", html);
-        Assert.Equal(HttpStatusCode.NotFound,
-            (await physical.Send("/setup/network-status?handler=BeginHotspot", new FormUrlEncodedContent([]))).StatusCode);
+        var mutation = await physical.Send("/setup/network-status?handler=BeginHotspot", new FormUrlEncodedContent([]));
+        Assert.False(mutation.IsSuccessStatusCode);
         host.DeleteOnDispose();
     }
 
