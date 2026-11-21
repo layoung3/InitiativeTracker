@@ -78,6 +78,20 @@ show_loading 'Preparing your table…\nThe display opens automatically when the 
 wait_for_hub || exit 75
 close_loading
 
+# Secure physical mode is opt-in only. A separate reviewed configuration names
+# the exact HTTPS origin; kiosk.py verifies system trust, loopback-only DNS and
+# healthy local app before selecting it. Fail back to legacy local Setup without
+# granting any secure authorization over HTTP.
+KIOSK_SETTINGS="${HOME}/.config/initiativetracker-hub/kiosk.json"
+KIOSK_HELPER="${HOME}/.local/lib/initiativetracker-hub/kiosk.py"
+if [[ -f "$KIOSK_SETTINGS" && -f "$KIOSK_HELPER" ]]; then
+    CANDIDATE=$(/usr/bin/python3 -I "$KIOSK_HELPER" --hub-target "$KIOSK_SETTINGS") || CANDIDATE=""
+    if [[ "$CANDIDATE" == "http://127.0.0.1:5000/setup" ||
+          ( "$CANDIDATE" == https://* && "$CANDIDATE" == */setup ) ]]; then
+        TARGET_URL="$CANDIDATE"
+    fi
+fi
+
 exec /usr/bin/chromium \
     --kiosk \
     --start-maximized \
