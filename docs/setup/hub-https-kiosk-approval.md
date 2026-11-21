@@ -24,12 +24,20 @@ The Python startup tests exercise canonical URL filtering, mixed/remote DNS reje
 
 ## Approval flow scope
 
-1. A DM requests secure authorization from their own trusted HTTPS browser and sees a short browser reference.
-2. The **physical** HTTPS hub screen exposes the exact request and a five-minute decision. It can approve or deny using touch-sized controls. A modal overlays shared-layout hub pages; the separate physical proof page remains an accessible fallback.
-3. The remote browser waits, then completes only its own browser-bound, same-origin, CSRF-protected secure session. A manual code fallback remains available.
-4. Physical denial, expiry, cancellation and duplicate completion fail closed; an approval tap does not itself give the physical screen a remote browser session.
+1. A DM requests secure authorization from their own trusted HTTPS browser and sees a short browser reference. Existing physical-code fallback and DM recovery remain available.
+2. A player first joins through the normal HTTPS join flow, or a display pairs through the normal DM-approved display flow. Only an identity already valid for the current game session may request additional secure enrollment.
+3. The **physical** canonical HTTPS hub shows each pending DM/player/display request and the exact browser reference, request purpose, role, profile/display ID, and session. The local operator makes an explicit Approve or Deny decision with touch-sized controls; the overlay appears only on physically verified HTTPS pages. A securely authorized DM may still approve players and displays remotely by the original protected flow.
+4. The requesting browser alone completes its own pending enrollment via same-origin antiforgery-protected POST. It cannot transfer approval to another browser. Approvals expire after five minutes, are single-use, and are invalidated by cancellation, identity changes and restart. A physical tap never grants network-administration or satellite-agent privileges.
 
-**Not implemented here:** one-tap player/display approvals from a verified DM grant, durable multi-week remembered devices/revocation, touchscreen boot branding, or a guarantee that the overlay works on every legacy HTTP page. Do not claim those capabilities complete.
+### Opt-in remembered browsers
+
+After fresh DM, player or display approval, the user can explicitly choose **Remember this browser for 30 days** and label it. The existing `__Host-` browser cookie is 256-bit random, Secure, HttpOnly, SameSite=Strict, host-only and now has a 30-day maximum age; **only its SHA-256 hash** is held in Data Protection-encrypted, fsync-protected durable state. No raw browser token is stored on the server, and a browser is not remembered by default.
+
+The remembered credential is a sensitive bearer cookie rather than an unforgeable hardware device identity; someone who copies it could replay it during its validity. Use it only on devices the owner controls. It is bound to the exact trusted HTTPS origin, hub game-session identity, role and immutable credential fingerprint. A revoked player credential, untrusted/deleted display, changed DM PIN, session change, secure recovery epoch, or explicit Forget/Revoke prevents restoration.
+
+A returning browser opens `/secure-access` to restore a **new 12-hour secure grant**, without repeating physical approval, only while the absolute 30-day trust is valid. The original browser cookie alone has no authority over HTTP and cannot authorize new roles. Restored sessions cannot extend their own 30-day trust; extending the time requires a fresh physical or DM authorization. A DM may revoke remembered browsers; individuals may revoke their own. Cancel/revoke, relevant identity changes and DM recovery invalidate their trust. No database migration is added: preexisting Format=1 secure state reads an absent remembered-browser list as empty.
+
+**Not implemented here:** touchscreen boot branding, full remembered-device hardware attestation, or an overlay on legacy HTTP pages. Real physical touch, browser profile and boot/recovery acceptance remain required.
 
 ## Review and production gates
 
@@ -40,6 +48,6 @@ The Python startup tests exercise canonical URL filtering, mixed/remote DNS reje
 5. Request explicit owner approval for physical Pi deployment, any desktop autostart/supervisor transition, optional `hub_https_origin`, certificate/DNS or configuration changes, and a rollback procedure. Keep application data, updater, satellite and network settings unchanged unless separately approved.
 6. Verify same browser profile, normal startup/pairing/play, fullscreen recovery, live pending requests, exact-browser approval, deny/replay/expiry, and stable HTTP/HTTPS health after deployment.
 
-## Current CI blocker
+## CI history and current gate
 
-In several PR #15 runs on 2026-11-21, earlier tests reached successful test summaries but `actions/upload-artifact` failed because the GitHub Actions artifact storage quota was exceeded. Later workflows report failed jobs with zero steps within seconds, so no meaningful exact-head validation can be inferred from their conclusions. Do not merge on that basis.
+The prior CI startup/artifact failure was resolved when the owner temporarily made the repository public. The fully tested prior checkpoint `18951c85f6ac5e0ce2d63e4ba200de5d69a4ba9a` passed all six workflows. This newer player/display and remembered-browser implementation requires **fresh exact-head** .NET and real-browser test evidence; previous green runs do not certify new commits. No physical Pi testing is claimed.
