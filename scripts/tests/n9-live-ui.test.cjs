@@ -110,6 +110,38 @@ test('physical setup network status stays on the hub and remains read-only', {sk
     } finally {await page.close();}
 });
 
+test('physical HTTPS overlay denies then approves exact browser without transcribing a code', {skip:!base || !tlsSandbox}, async () => {
+    const requester=await browser.newPage();
+    const hub=await browser.newPage();
+    try {
+        await hub.goto(base+'/setup');
+        await requester.goto(base+'/secure-access');
+        const begin=async () => {
+            await requester.locator('[name=recovery]').check();
+            await requester.getByRole('button',{name:'Request physical DM proof',exact:true}).click();
+            await requester.locator('[data-browser-reference]').waitFor();
+            return (await requester.locator('[data-browser-reference]').getAttribute('data-browser-reference'));
+        };
+        const reference=await begin();
+        const overlay=hub.locator('#physicalApprovalOverlay');
+        await overlay.waitFor({state:'visible',timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(),reference);
+        await overlay.getByRole('button',{name:'Deny'}).click();
+        await overlay.waitFor({state:'hidden'});
+        await requester.reload();
+        assert.equal(await requester.locator('[data-browser-reference]').count(),0);
+
+        const second=await begin();
+        await overlay.waitFor({state:'visible',timeout:20000});
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(),second);
+        await overlay.getByRole('button',{name:'Approve',exact:true}).click();
+        await requester.getByRole('heading',{name:'Authorized as DM',exact:true}).waitFor({timeout:20000});
+        await overlay.waitFor({state:'hidden',timeout:15000});
+    } finally {
+        await hub.close(); await requester.close();
+    }
+});
+
 test('actual upload, encounter pairing and realtime portrait/banner replacement preserve the table', {skip:!base}, async () => {
     const dm = await browser.newPage({viewport:{width:1280,height:800}});
     const player = await browser.newPage({viewport:{width:390,height:844}});
