@@ -63,7 +63,7 @@
                         @if (SecureOrigin.Enabled && User.Identity?.IsAuthenticated == true)
             {
                 <nav class="container py-2 small" aria-label="Private feature authorization">
-                    <a href="@(SecureOrigin.Origin + "/secure-access")">Secure authorization for private images and character changes</a>
+                    <a href="@(SecureOrigin.Origin + "/secure-access")">Security and trusted devices</a>
                 </nav>
             }
             @RenderBody()

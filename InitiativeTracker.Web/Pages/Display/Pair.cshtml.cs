@@ -1,4 +1,5 @@
 using InitiativeTracker.Web.Data;
+using InitiativeTracker.Web.Infrastructure;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,18 +21,15 @@ public class PairModel : PageModel
     private readonly DeviceRegistryService
         _deviceRegistry;
 
-    private readonly GameSessionService
-        _gameSession;
+    private readonly GameSessionService _gameSession;
+    private readonly ITrustedBrowserOrigin _secureOrigin;
 
-    public PairModel(
-        DeviceRegistryService deviceRegistry,
-        GameSessionService gameSession)
+    public PairModel(DeviceRegistryService deviceRegistry, GameSessionService gameSession,
+        ITrustedBrowserOrigin secureOrigin)
     {
-        _deviceRegistry =
-            deviceRegistry;
-
-        _gameSession =
-            gameSession;
+        _deviceRegistry = deviceRegistry;
+        _gameSession = gameSession;
+        _secureOrigin = secureOrigin;
     }
 
     public DevicePairingRequest PairingRequest
@@ -119,7 +117,8 @@ public class PairModel : PageModel
             return new JsonResult(new
             {
                 status = "approved",
-                redirect = "/display"
+                redirect = _secureOrigin.TrustedRequest(HttpContext)
+                    ? "/secure-access/wait?start=true" : "/display"
             });
         }
 
