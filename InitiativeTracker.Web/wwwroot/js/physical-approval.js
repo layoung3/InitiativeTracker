@@ -10,6 +10,12 @@
             form.requestSubmit();
             return;
         }
+        // Manual fallback must remain usable: don't reload while its code
+        // field is open, or while the browser tab is hidden.
+        if (document.hidden || document.querySelector('details[open]')) {
+            window.setTimeout(request, 4000);
+            return;
+        }
         // A fresh GET reads server-side approval state. No background POST,
         // polling API, bearer code, cross-origin request or trust bypass.
         window.location.reload();
