@@ -11,7 +11,7 @@
 }
 @if (!Model.Initialized) { <p>Secure approval state is not initialized or is unavailable. A fresh physical recovery can create a new approval state; existing gameplay data is retained.</p> }
 <section><h2>DM authorization or recovery</h2>
-<p>Request a code, then open <strong>/secure-access/physical</strong> on the hub's physical screen using its trusted HTTPS address resolved locally to loopback. Match the browser reference. Type the code here; no code is placed in a URL or QR image.</p>
+<p>Request authorization, then compare the browser reference on the physical hub and tap Approve or Deny. The hub must use its trusted HTTPS physical connection for one-tap approval. A manual code remains available as a fallback; no code is placed in a URL or QR image.</p>
 <form method="post" asp-page-handler="BeginDm"><label><input type="checkbox" name="recovery" value="true"> Initialize or recover: revoke all previous secure approvals</label><button>Request physical DM proof</button></form>
 @if (Model.Pending is { } pending && pending.Purpose.StartsWith("dm-")) {
 <p data-browser-reference="@pending.Reference">Browser reference: <strong>@pending.Reference</strong>. Request expires @pending.Expires.ToString("u").</p>
