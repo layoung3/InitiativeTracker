@@ -562,6 +562,14 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
             for (var i = 0; i < state.Grants.Count; i++)
                 if (!state.Grants[i].Revoked && state.Grants[i].Browser == browser)
                 { state.Grants[i] = state.Grants[i] with { Revoked = true, Generation = state.Grants[i].Generation + 1 }; changed = true; }
+            for (var i = 0; i < state.RememberedBrowsers.Count; i++)
+                if (!state.RememberedBrowsers[i].Revoked && state.RememberedBrowsers[i].Browser == browser)
+                {
+                    state.RememberedBrowsers[i] = state.RememberedBrowsers[i] with {
+                        Revoked = true, Generation = state.RememberedBrowsers[i].Generation + 1
+                    };
+                    changed = true;
+                }
             if (changed) Save(state);
         }
     }
@@ -573,7 +581,17 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
             var state = Read() ?? throw new SecureAccessDenied();
             var index = state.Grants.FindIndex(g => g.Id == id);
             if (index < 0) throw new SecureAccessDenied();
-            state.Grants[index] = state.Grants[index] with { Revoked = true, Generation = state.Grants[index].Generation + 1 };
+            var revoked = state.Grants[index];
+            state.Grants[index] = revoked with { Revoked = true, Generation = revoked.Generation + 1 };
+            // Revoking a secure session must never leave its remembered-browser
+            // credential able to silently issue a replacement session.
+            for (var i = 0; i < state.RememberedBrowsers.Count; i++)
+                if (!state.RememberedBrowsers[i].Revoked &&
+                    state.RememberedBrowsers[i].Browser == revoked.Browser &&
+                    state.RememberedBrowsers[i].Identity == revoked.Identity)
+                    state.RememberedBrowsers[i] = state.RememberedBrowsers[i] with {
+                        Revoked = true, Generation = state.RememberedBrowsers[i].Generation + 1
+                    };
             Save(state);
         }
     }
@@ -601,6 +619,18 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
                 var grant = state.Grants[i];
                 if (!grant.Revoked && (ids.Contains(grant.Identity.Profile ?? Guid.Empty) || ids.Contains(grant.Identity.Display ?? Guid.Empty)))
                 { state.Grants[i] = grant with { Revoked = true, Generation = grant.Generation + 1 }; changed = true; }
+            }
+            for (var i = 0; i < state.RememberedBrowsers.Count; i++)
+            {
+                var trust = state.RememberedBrowsers[i];
+                if (!trust.Revoked && (ids.Contains(trust.Identity.Profile ?? Guid.Empty) ||
+                    ids.Contains(trust.Identity.Display ?? Guid.Empty)))
+                {
+                    state.RememberedBrowsers[i] = trust with {
+                        Revoked = true, Generation = trust.Generation + 1
+                    };
+                    changed = true;
+                }
             }
             if (changed) Save(state);
         }
