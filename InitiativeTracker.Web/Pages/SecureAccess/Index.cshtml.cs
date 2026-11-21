@@ -14,15 +14,30 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
     public SecureGrant? Grant { get; private set; }
     public IReadOnlyList<SecureEnrollment> Requests { get; private set; } = [];
     public IReadOnlyList<SecureGrant> Grants { get; private set; } = [];
+    public IReadOnlyList<SecureRememberedBrowser> TrustedBrowsers { get; private set; } = [];
     public bool Initialized => access.Initialized;
     private string Binding => Infrastructure.SecureAccess.Browser(HttpContext) ?? throw new SecureAccessDenied();
     private string Peer => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    public async Task OnGetAsync()
+    public async Task<IActionResult> OnGetAsync()
     {
         var browser = Infrastructure.SecureAccess.Browser(HttpContext, create: true)!;
         Pending = access.ForBrowser(browser);
         Grant = await Infrastructure.SecureAccess.Current(HttpContext);
-        if (Grant?.Identity.Role == "DM") { Requests = access.MemberRequests(); Grants = access.Grants(); }
+        if (Grant is null && Pending is null)
+        {
+            var restored = access.ResumeRemembered(browser, origin.Origin, User);
+            if (restored is not null)
+            {
+                await Infrastructure.SecureAccess.SignIn(HttpContext, restored);
+                return RedirectToPage();
+            }
+        }
+        if (Grant is not null)
+        {
+            TrustedBrowsers = access.Remembered(Grant);
+            if (Grant.Identity.Role == "DM") { Requests = access.MemberRequests(); Grants = access.Grants(); }
+        }
+        return Page();
     }
     public IActionResult OnPostBeginDm(bool recovery = false) => Attempt(() =>
         access.Begin(recovery ? "dm-recover" : "dm-bootstrap", Binding, origin.Origin, Peer, User, physical: origin.Physical(HttpContext)));
@@ -66,6 +81,28 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
         {
             var grant = access.Finish(Binding, origin.Origin, User);
             await Infrastructure.SecureAccess.SignIn(HttpContext, grant);
+            return RedirectToPage();
+        }
+        catch (SecureAccessDenied) { return StatusCode(403); }
+        catch (SecureAccessUnavailable) { return StatusCode(503); }
+    }
+    public async Task<IActionResult> OnPostRememberAsync(string? label)
+    {
+        try
+        {
+            var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
+            access.Remember(actor, label);
+            return RedirectToPage();
+        }
+        catch (SecureAccessDenied) { return StatusCode(403); }
+        catch (SecureAccessUnavailable) { return StatusCode(503); }
+    }
+    public async Task<IActionResult> OnPostForgetRememberedAsync(Guid id)
+    {
+        try
+        {
+            var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
+            access.RevokeRemembered(actor, id);
             return RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
