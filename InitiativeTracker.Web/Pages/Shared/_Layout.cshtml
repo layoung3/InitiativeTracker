@@ -37,6 +37,23 @@
                title="Return to hub setup">Hub Setup</a>
         </nav>
     }
+    @* Only an actual trusted physical HTTPS connection may display the secure
+       approval overlay. Legacy HTTP gameplay never obtains physical authority. *@
+    @if (SecureOrigin.Enabled && SecureOrigin.Physical(Context))
+    {
+        <dialog id="physicalApprovalOverlay" aria-labelledby="physicalApprovalTitle"
+                style="max-width:min(92vw,600px);width:92vw;background:#111827;color:#f8fafc;border:2px solid #93c5fd;border-radius:16px;padding:1.5rem;box-shadow:0 12px 50px #0009;">
+            <h2 id="physicalApprovalTitle" class="h4">Physical approval requested</h2>
+            <p>Compare this browser reference to the requesting device before deciding.</p>
+            <p id="physicalApprovalPurpose" role="status"></p>
+            <p class="h5">Browser reference: <strong id="physicalApprovalReference" class="font-monospace"></strong></p>
+            <div class="d-flex flex-wrap gap-3 mt-4">
+                <button type="button" class="btn btn-success btn-lg flex-fill" id="physicalApproveButton" style="min-height:56px">Approve</button>
+                <button type="button" class="btn btn-danger btn-lg flex-fill" id="physicalDenyButton" style="min-height:56px">Deny</button>
+            </div>
+            <p id="physicalApprovalError" role="alert" class="mt-3"></p>
+        </dialog>
+    }
     <div class="app-shell">
 
         <main class="app-main"
@@ -62,5 +79,9 @@
 
     @await RenderSectionAsync("Scripts", required: false)
     <script src="~/js/media.js" asp-append-version="true"></script>
+    @if (SecureOrigin.Enabled && SecureOrigin.Physical(Context))
+    {
+        <script src="~/js/physical-approval-overlay.js" asp-append-version="true" defer></script>
+    }
 </body>
 </html>
