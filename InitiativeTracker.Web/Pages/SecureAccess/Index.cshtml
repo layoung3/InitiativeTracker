@@ -52,11 +52,6 @@ else
 <form method="post" asp-page-handler="Redeem"><label>Code from hub screen <input type="password" name="Code" autocomplete="off" maxlength="32" required></label><button>Authorize this browser</button></form></details>
 }
 </section>
-@if (User.IsInRole("Display") && !Model.CanEnrollMember) {
-<section aria-label="Pair this display for secure access"><h2>Pair this display with the DM</h2>
-<p>This display used the quick-connect QR shortcut. It can show initiative, but private images and secure display authorization require a separate DM-approved pairing. Pairing does not grant satellite or network administration access.</p>
-<p><a href="/display/pair">Request DM pairing</a></p></section>
-}
 @if (Model.CanEnrollMember) {
 <section><h2>Request approval for this player or display</h2><p>First join or pair normally over trusted HTTPS, then request secure approval. Compare your browser reference and exact player/display identity with the physical hub. A securely authorized DM can also approve this exact request.</p>
 <form method="post" asp-page-handler="BeginMember"><button>Request secure approval</button></form>

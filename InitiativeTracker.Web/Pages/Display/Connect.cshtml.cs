@@ -17,22 +17,14 @@ public class ConnectModel : PageModel
         _gameSession = gameSession;
     }
 
-    public async Task<IActionResult> OnGetAsync(
-        string? token)
+    public IActionResult OnGet(string? token)
     {
-        if (!_gameSession.ValidateDisplayToken(
-            token))
-        {
+        if (!_gameSession.ValidateDisplayToken(token))
             return Unauthorized();
-        }
 
-        await DeviceAuthenticationService
-            .SignInAsync(
-                HttpContext,
-                _gameSession.CurrentSession,
-                "Display");
-
-        return RedirectToPage(
-            "/Display/Index");
+        // QR is an invitation to pair, not proof of a trusted registered device.
+        // Issuing an unpaired Display cookie here is rejected by the existing
+        // cookie validator; never weaken that validation to make the QR work.
+        return RedirectToPage("/Display/Pair");
     }
 }

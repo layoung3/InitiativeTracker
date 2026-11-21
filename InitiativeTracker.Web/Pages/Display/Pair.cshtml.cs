@@ -42,12 +42,7 @@ public class PairModel : PageModel
 
     public IActionResult OnGet()
     {
-        // A quick-connect QR grants the legacy Display role without a registered
-        // device id. It must still be allowed to request DM pairing for private
-        // media; an already paired, trusted display keeps the old redirect.
-        if (User.IsInRole("Display") &&
-            Guid.TryParse(User.FindFirst("device_id")?.Value, out var deviceId) &&
-            _deviceRegistry.IsTrustedDisplay(deviceId))
+        if (User.IsInRole("Display"))
         {
             return RedirectToPage(
                 "/Display/Index");

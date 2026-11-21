@@ -570,14 +570,16 @@ public sealed class SecureAccessWebTests
         using var dm = host.Client(); await dm.Bootstrap();
         using var display = host.Client();
         var token = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DisplayToken;
-        Assert.Equal(HttpStatusCode.Redirect,
-            (await display.Send("/display/connect?token=" + Uri.EscapeDataString(token))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await display.Send("/display")).StatusCode);
-        var secure = await display.Send("/secure-access");
-        Assert.Equal(HttpStatusCode.OK, secure.StatusCode);
-        Assert.Contains("Request DM pairing", await secure.Content.ReadAsStringAsync());
+        using var invalid = host.Client();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await invalid.Send("/display/connect?token=invalid")).StatusCode);
+        var invitation = await display.Send("/display/connect?token=" + Uri.EscapeDataString(token));
+        Assert.Equal(HttpStatusCode.Redirect, invitation.StatusCode);
+        Assert.Contains("/display/pair", invitation.Headers.Location?.ToString() ?? "",
+            StringComparison.OrdinalIgnoreCase);
+        // QR invitation must never create an unpaired Display authority cookie.
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Send("/display")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await display.Post("BeginMember")).StatusCode);
-        // A legacy Display cookie must not trap the device in the /display/pair redirect.
         var pairing = await display.Send("/display/pair");
         Assert.Equal(HttpStatusCode.OK, pairing.StatusCode);
         Assert.Contains("Pair Display", await pairing.Content.ReadAsStringAsync());

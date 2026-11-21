@@ -389,12 +389,10 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         const secondRef = await queuePlayer(second, 'Queue player B');
         assert.notEqual(firstRef, secondRef, 'independent browsers must have unique references');
 
-        // Exercise the exact legacy quick-connect destination advertised by Setup.
-        // This grants neither registered-device trust nor private media authority.
+        // The exact Setup QR destination now enters DM-approved pairing;
+        // the QR invitation alone never grants a Display session.
         await display.goto(base + displayQrPath);
-        await display.waitForURL('**/display');
-        await display.goto(base + '/secure-access');
-        await display.getByRole('link', {name:'Request DM pairing', exact:true}).click();
+        await display.waitForURL('**/display/pair');
         await display.getByRole('heading', {name:'Pair Display', exact:true}).waitFor();
         const pairCode = (await display.locator('.display-2').innerText()).trim();
         await dm.goto(base + '/dm/devices');
