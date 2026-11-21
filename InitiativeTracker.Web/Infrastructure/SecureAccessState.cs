@@ -14,7 +14,7 @@ public sealed class SecureAccessDenied : Exception { }
 public sealed class SecureAccessUnavailable : Exception { }
 public sealed record SecureIdentity(string Role, Guid Session, Guid? Profile, Guid? Player, Guid? Credential, Guid? Display, string Stamp);
 public sealed record SecureGrant(Guid Id, SecureIdentity Identity, string Browser, string Origin, Guid Epoch, int Generation,
-    DateTimeOffset Expires, bool Revoked = false);
+    DateTimeOffset Expires, bool Revoked = false, bool Restored = false);
 // Remembered-browser state contains only a SHA-256 hash of the host-only,
  // Secure/HttpOnly random browser cookie. It never stores a reusable raw token.
 public sealed record SecureRememberedBrowser(Guid Id, SecureIdentity Identity, string Browser, string Origin,
@@ -377,7 +377,8 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     {
         lock (gate)
         {
-            if (Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null)
+            if (actor.Restored ||
+                Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null)
                 throw new SecureAccessDenied();
             label = (label ?? "").Trim();
             if (label.Length is < 1 or > 48 || label.Any(char.IsControl))
@@ -454,7 +455,8 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     {
         state.Grants.RemoveAll(g => g.Expires <= Now);
         if (state.Grants.Count >= 256) throw new SecureAccessDenied();
-        var grant = new SecureGrant(Guid.NewGuid(), request.Identity, request.Browser, request.Origin, state.Epoch, 1, Now.AddHours(12));
+        var grant = new SecureGrant(Guid.NewGuid(), request.Identity, request.Browser, request.Origin, state.Epoch, 1,
+            Now.AddHours(12), Restored: request.Purpose == "remembered-return");
         state.Grants.Add(grant);
         return grant;
     }
