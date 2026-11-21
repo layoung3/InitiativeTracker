@@ -230,6 +230,28 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalApprovalOverlayIsAvailableOnlyOnTrustedLocalHttps()
+    {
+        using var host = new Host();
+        using var physical = host.Client(physical: true);
+        using var legacy = host.Client(physical: true, http: true);
+        using var remote = host.Client();
+        var secure = await physical.Send("/setup");
+        Assert.Equal(HttpStatusCode.OK, secure.StatusCode);
+        var secureHtml = await secure.Content.ReadAsStringAsync();
+        Assert.Contains("physicalApprovalOverlay", secureHtml);
+        Assert.Contains("/js/physical-approval-overlay.js", secureHtml);
+
+        var http = await legacy.Send("/setup");
+        Assert.Equal(HttpStatusCode.OK, http.StatusCode);
+        var httpHtml = await http.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("physicalApprovalOverlay", httpHtml);
+        Assert.DoesNotContain("/js/physical-approval-overlay.js", httpHtml);
+        Assert.Equal(HttpStatusCode.NotFound, (await remote.Send("/setup")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task OneTapPhysicalApproveDenyAndBrowserCompletionRespectHttpsCsrfAndIdentity()
     {
         using var host = new Host();
