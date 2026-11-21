@@ -269,6 +269,14 @@ public sealed class SecureAccessWebTests
         Assert.Contains(pending.Reference, markup);
         Assert.Contains("revokes all previous secure approvals", markup);
         var token = await physical.Token("/secure-access/physical");
+        // A physical HTTPS request without the Razor antiforgery token cannot
+        // make a decision, even when the exact request id is known.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await physical.Send("/secure-access/physical?handler=Approve",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = pending.Id.ToString()
+                }))).StatusCode);
         var approval = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["id"] = pending.Id.ToString(),
@@ -281,6 +289,12 @@ public sealed class SecureAccessWebTests
             }))).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect,
             (await physical.Send("/secure-access/physical?handler=Approve", approval)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await physical.Send("/secure-access/physical?handler=Approve",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
+                }))).StatusCode);
         var requesterHtml = await (await requester.Send("/secure-access")).Content.ReadAsStringAsync();
         Assert.Contains("data-physical-approved=\"true\"", requesterHtml);
         Assert.Equal(HttpStatusCode.Forbidden, (await remote.Post("FinishPhysical")).StatusCode);
