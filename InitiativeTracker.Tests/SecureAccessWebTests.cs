@@ -314,6 +314,78 @@ public sealed class SecureAccessWebTests
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalOneTapApprovesPlayerAndDisplayWithoutIssuingGrantsToOtherBrowsers()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        using var physical = host.Client(physical: true);
+        var owner = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        var pending = player.Pending;
+        var screen = await physical.Send("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.OK, screen.StatusCode);
+        var html = await screen.Content.ReadAsStringAsync();
+        Assert.Contains("Player authorization", html);
+        Assert.Contains(pending.Reference, html);
+        Assert.Contains(owner.Profile.ToString(), html);
+        Assert.DoesNotContain("data-physical-code=", html);
+        var token = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.True(player.Pending.PhysicalApproved);
+        using var other = host.Client();
+        other.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        await other.Token();
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Post("Finish")).StatusCode);
+        var waitingHtml = await (await player.Send("/secure-access")).Content.ReadAsStringAsync();
+        Assert.Contains("id=\"finishMemberApproval\"", waitingHtml);
+        Assert.Contains("data-physical-approved=\"true\"", waitingHtml);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("Finish")).StatusCode);
+
+        // Denial consumes this exact pending request; a stale browser cannot finish.
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        var denied = player.Pending.Id;
+        token = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Deny",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = denied.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("Finish")).StatusCode);
+
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.RegisteredDevices.Add(new RegisteredDevice {
+                Id = Guid.Parse("29dc33a4-5b1d-4c68-8cc9-8a1edfa4329e"),
+                Name = "Table display", DeviceType = "Display", IsTrusted = true,
+                PairedAtUtc = DateTime.UtcNow
+            });
+            db.SaveChanges();
+        }
+        using var display = host.Client();
+        display.Legacy("Display", display: Guid.Parse("29dc33a4-5b1d-4c68-8cc9-8a1edfa4329e"));
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("BeginMember")).StatusCode);
+        var displayPending = display.Pending;
+        html = await (await physical.Send("/secure-access/physical")).Content.ReadAsStringAsync();
+        Assert.Contains("Display authorization", html);
+        Assert.Contains(displayPending.Identity.Display.ToString(), html);
+        token = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = displayPending.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("Finish")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await display.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await display.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {
         using var host = new Host();
