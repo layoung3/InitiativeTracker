@@ -172,6 +172,9 @@ test('physical overlay approves a joined player and a paired display in their ow
         assert.match(await hub.locator('#physicalApprovalPurpose').innerText(),/Player authorization/);
         await modal.getByRole('button',{name:'Approve',exact:true}).click();
         await player.getByRole('heading',{name:'Authorized as Player',exact:true}).waitFor({timeout:20000});
+        await player.locator('form[action*=Remember] [name=label]').fill('Player phone fixture');
+        await player.getByRole('button',{name:'Remember this browser for 30 days',exact:true}).click();
+        await player.getByText('Player phone fixture').waitFor();
 
         await display.goto(base+'/display/pair');
         const pair=await display.locator('.display-2').innerText();
@@ -187,6 +190,15 @@ test('physical overlay approves a joined player and a paired display in their ow
         assert.match(await hub.locator('#physicalApprovalPurpose').innerText(),/Display authorization/);
         await modal.getByRole('button',{name:'Approve',exact:true}).click();
         await display.getByRole('heading',{name:'Authorized as Display',exact:true}).waitFor({timeout:20000});
+        await display.locator('form[action*=Remember] [name=label]').fill('Table display fixture');
+        await display.getByRole('button',{name:'Remember this browser for 30 days',exact:true}).click();
+        await display.getByText('Table display fixture').waitFor();
+        await dm.goto(base+'/secure-access');
+        const remembered=dm.locator('form[action*=ForgetRemembered]').filter({hasText:'Player phone fixture'});
+        await remembered.getByRole('button',{name:'Forget browser',exact:true}).click();
+        await player.goto(base+'/secure-access');
+        assert.equal(await player.getByRole('heading',{name:'Authorized as Player',exact:true}).count(),0,
+            'revoked remembered player cannot silently regain authority');
     } finally {
         await hub.close();await player.close();await dm.close();await display.close();
     }
