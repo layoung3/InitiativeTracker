@@ -11,13 +11,13 @@ public sealed class PhysicalModel(SecureAccessService access) : PageModel
     public IReadOnlyList<SecureEnrollment> Requests { get; private set; } = [];
     public IActionResult OnPostApprove(Guid id)
     {
-        try { access.ApprovePhysicalDm(id); return RedirectToPage(); }
+        try { access.ApprovePhysicalRequest(id); return RedirectToPage(); }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }
     public IActionResult OnPostDeny(Guid id)
     {
-        try { access.DenyPhysicalDm(id); return RedirectToPage(); }
+        try { access.DenyPhysicalRequest(id); return RedirectToPage(); }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }
