@@ -240,13 +240,13 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.OK, secure.StatusCode);
         var secureHtml = await secure.Content.ReadAsStringAsync();
         Assert.Contains("physicalApprovalOverlay", secureHtml);
-        Assert.Contains("/js/physical-approval-overlay.js", secureHtml);
+        Assert.Contains("<script src=\"/js/physical-approval-overlay.js", secureHtml);
 
         var http = await legacy.Send("/setup");
         Assert.Equal(HttpStatusCode.OK, http.StatusCode);
         var httpHtml = await http.Content.ReadAsStringAsync();
         Assert.DoesNotContain("physicalApprovalOverlay", httpHtml);
-        Assert.DoesNotContain("/js/physical-approval-overlay.js", httpHtml);
+        Assert.DoesNotContain("<script src=\"/js/physical-approval-overlay.js", httpHtml);
         Assert.Equal(HttpStatusCode.NotFound, (await remote.Send("/setup")).StatusCode);
         host.DeleteOnDispose();
     }
