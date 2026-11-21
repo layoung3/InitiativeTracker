@@ -63,7 +63,7 @@ public static class SecureAccess
         if (!create || !context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>().TrustedRequest(context)) return null;
         value = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         context.Response.Cookies.Append(BrowserCookie, value, new CookieOptions
-        { Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/", IsEssential = true, MaxAge = TimeSpan.FromHours(12) });
+        { Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/", IsEssential = true, MaxAge = TimeSpan.FromDays(30) });
         return SecureAccessService.Hash(value);
     }
     public static SecureGrant? Ticket(HttpContext context, ClaimsPrincipal? principal)
