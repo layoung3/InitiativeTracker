@@ -29,7 +29,7 @@ public sealed class SecureGrantState
 }
 public sealed record SecureEnrollment(Guid Id, string Reference, string Purpose, SecureIdentity Identity, string Browser,
     string Origin, DateTimeOffset Expires, string Code, int Attempts = 0, Guid? Approver = null, int ApproverGeneration = 0,
-    bool PhysicalApproved = false);
+    bool PhysicalApproved = false, bool RememberRequested = false);
 public sealed record SecureAccessStorage(string Root, bool Persistent);
 public enum SecurePersistenceSync { StoreDirectory, ParentDirectory, FenceCreated, StateReplaced, FenceRemoved, FailureFence }
 
@@ -275,6 +275,22 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     private static SecureEnrollment Public(SecureEnrollment request) => request with { Code = "", Browser = "", Identity = request.Identity with { Stamp = "" } };
     private SecureEnrollment? FindBrowser(string browser) { Cleanup(); return pending.Values.SingleOrDefault(p => p.Browser == browser); }
     public SecureEnrollment? ForBrowser(string browser) { lock (gate) return FindBrowser(browser) is { } request ? Public(request) : null; }
+
+    // A normal waiting browser may explicitly opt in to remembering its exact
+    // role/session/credential after the pending physical or DM approval finishes.
+    // The preference itself is transient and never confers trust or access.
+    public void SetRememberPreference(string browser, Guid requestId, SecureIdentity identity, bool remember)
+    {
+        lock (gate)
+        {
+            var request = FindBrowser(browser);
+            if (request is null || request.Id != requestId || request.Identity != identity ||
+                !StillMatches(request.Identity) || request.Purpose is not
+                    ("dm-bootstrap" or "dm-recover" or "enroll-player" or "enroll-display"))
+                throw new SecureAccessDenied();
+            pending[request.Id] = request with { RememberRequested = remember };
+        }
+    }
     // Only the protected physical HTTPS endpoint exposes this queue. Member
     // codes are not used: browser-bound completion requires explicit consent.
     public IReadOnlyList<SecureEnrollment> PhysicalRequests()

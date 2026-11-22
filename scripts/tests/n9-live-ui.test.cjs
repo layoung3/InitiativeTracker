@@ -127,6 +127,10 @@ test('normal DM login and player QR journey wait for hub approval automatically'
         await dm.locator('[name=Pin]').fill(pin);
         await dm.getByRole('button', {name:'Continue', exact:true}).click();
         await dm.getByRole('heading', {name:'Waiting for approval on hub', exact:true}).waitFor({timeout:20000});
+        const remember = dm.getByRole('checkbox', {name:'Remember this browser for 30 days'});
+        assert.equal(await remember.isChecked(), false, '30-day trust is opt-in, never default');
+        await remember.check();
+        await dm.getByText('Choice saved for this approval.').waitFor({timeout:20000});
         const dmRef = await dm.locator('[data-browser-reference]').getAttribute('data-browser-reference');
         assert(dmRef, 'DM normal sign-in must queue approval automatically');
         assert.equal(new URL(dm.url()).pathname, '/secure-access/wait');
@@ -134,6 +138,8 @@ test('normal DM login and player QR journey wait for hub approval automatically'
         assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(), dmRef);
         await modal.getByRole('button', {name:'Approve', exact:true}).click();
         await dm.waitForURL('**/dm', {timeout:20000});
+        await dm.goto(base + '/secure-access');
+        await dm.getByText('This browser is remembered. You can revoke it below.').waitFor();
 
         async function joinNew(page, name) {
             await page.goto(base + '/join');

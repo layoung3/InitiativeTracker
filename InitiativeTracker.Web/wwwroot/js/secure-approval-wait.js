@@ -12,7 +12,46 @@
         return;
     }
     if (!document.querySelector('[data-await-approval]')) return;
+    const preferenceForm = document.querySelector('form[data-remember-preference]');
+    let savingPreference = false;
+    if (preferenceForm) {
+        const checkbox = preferenceForm.querySelector('input[name=remember]');
+        const status = preferenceForm.querySelector('[data-preference-status]');
+        const save = preferenceForm.querySelector('[data-preference-save]');
+        const persist = async () => {
+            if (savingPreference) return;
+            savingPreference = true;
+            checkbox.disabled = true;
+            save.disabled = true;
+            status.textContent = 'Saving choice…';
+            try {
+                const response = await fetch(preferenceForm.action, {
+                    method: 'POST', credentials: 'same-origin', cache: 'no-store',
+                    redirect: 'follow', headers: {'Content-Type':'application/x-www-form-urlencoded'},
+                    body: new URLSearchParams(new FormData(preferenceForm))
+                });
+                if (!response.ok || new URL(response.url).origin !== location.origin)
+                    throw new Error('Preference rejected');
+                status.textContent = 'Choice saved for this approval.';
+            } catch {
+                checkbox.checked = !checkbox.checked;
+                status.textContent = 'Could not save the choice. Try again.';
+            } finally {
+                checkbox.disabled = false;
+                save.disabled = false;
+                savingPreference = false;
+            }
+        };
+        preferenceForm.addEventListener('submit', event => {
+            event.preventDefault();
+            persist();
+        });
+        checkbox.addEventListener('change', persist);
+        // The explicit button remains available when JavaScript is unavailable.
+        save.hidden = true;
+    }
     const refresh = () => {
+        if (savingPreference) { window.setTimeout(refresh, 750); return; }
         if (document.hidden) {
             document.addEventListener('visibilitychange', refresh, {once: true});
             return;

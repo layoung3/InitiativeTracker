@@ -88,6 +88,20 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }
 
+    public IActionResult OnPostRememberPreference(Guid id, bool remember = false)
+    {
+        try
+        {
+            var identity = access.Capture(User) ?? throw new SecureAccessDenied();
+            var browser = Infrastructure.SecureAccess.Browser(HttpContext)
+                ?? throw new SecureAccessDenied();
+            access.SetRememberPreference(browser, id, identity, remember);
+            return RedirectToPage();
+        }
+        catch (SecureAccessDenied) { return StatusCode(403); }
+        catch (SecureAccessUnavailable) { return StatusCode(503); }
+    }
+
     public async Task<IActionResult> OnPostFinishAsync()
     {
         try
@@ -99,6 +113,19 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
                 ? access.FinishPhysicalDm(browser, origin.Origin)
                 : access.Finish(browser, origin.Origin, User);
             await Infrastructure.SecureAccess.SignIn(HttpContext, grant);
+            // The checkbox is explicitly saved on the exact pending request.
+            // Neither a browser GET nor a physical hub approval implies consent.
+            if (request.RememberRequested)
+            {
+                access.Remember(grant, grant.Identity.Role switch
+                {
+                    "DM" => "DM browser",
+                    "Player" => "Player browser",
+                    "Display" => "Display browser",
+                    _ => throw new SecureAccessDenied()
+                });
+                Infrastructure.SecureAccess.ExtendRememberedBrowserCookie(HttpContext);
+            }
             return LocalRedirect(Landing(grant.Identity.Role));
         }
         catch (SecureAccessDenied) { return StatusCode(403); }

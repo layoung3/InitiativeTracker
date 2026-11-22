@@ -662,6 +662,95 @@ public sealed class SecureAccessWebTests
         host.DeleteOnDispose();
     }
 
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task WaitingRememberPreferenceRequiresCsrfExactBrowserAndApproval()
+    {
+        using var host = new Host();
+        using var physical = host.Client(physical: true);
+        using var dm = host.Client();
+        using var other = host.Client();
+        dm.Legacy("DM");
+        other.Legacy("DM");
+        var token = await dm.Token("/secure-access/wait?start=true");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        var pending = dm.Pending;
+        Assert.False(pending.RememberRequested);
+        Assert.Equal(HttpStatusCode.BadRequest, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true"
+            }))).StatusCode);
+        Assert.False(dm.Pending.RememberRequested);
+
+        await other.Token("/secure-access/wait");
+        var otherToken = await other.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = otherToken
+            }))).StatusCode);
+        Assert.False(dm.Pending.RememberRequested);
+
+        var formToken = await dm.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = Guid.NewGuid().ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+        Assert.False(dm.Pending.RememberRequested);
+
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+        Assert.True(dm.Pending.RememberRequested);
+        var waiting = await (await dm.Send("/secure-access/wait")).Content.ReadAsStringAsync();
+        Assert.Contains("Remember this browser for 30 days", waiting);
+        Assert.Contains("checked=\"checked\"", waiting);
+
+        var physicalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = physicalToken
+            }))).StatusCode);
+        var finishToken = await dm.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = finishToken
+            }))).StatusCode);
+        var grant = host.Access.Grants().Single(g => g.Browser == dm.Browser);
+        Assert.Single(host.Access.Remembered(grant));
+        Assert.Equal("DM browser", host.Access.Remembered(grant)[0].Label);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+
+        // Missing opt-in means no persistent trust for this other browser.
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await other.Token("/secure-access/wait")
+            }))).StatusCode);
+        var noConsent = other.Pending;
+        var token2 = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = noConsent.Id.ToString(), ["__RequestVerificationToken"] = token2
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await other.Token("/secure-access/wait")
+            }))).StatusCode);
+        var otherGrant = host.Access.Grants().Single(g => g.Browser == other.Browser);
+        Assert.Empty(host.Access.Remembered(otherGrant).Where(b => b.Browser == other.Browser));
+        host.DeleteOnDispose();
+    }
+
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PlayerWaitingDenialDoesNotAutomaticallyStartAnotherRequest()
     {

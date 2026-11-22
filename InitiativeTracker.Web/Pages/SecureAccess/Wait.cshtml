@@ -60,6 +60,21 @@
                     <p class="text-body-secondary small" data-request-identity="true">Player profile @pending.Identity.Profile · Display @pending.Identity.Display</p>
                 }
                 <p class="text-body-secondary small">This request expires at @pending.Expires.ToLocalTime().ToString("t"). Approval is valid only for this browser and identity.</p>
+                @if (!ready)
+                {
+                    <form method="post" asp-page-handler="RememberPreference" data-remember-preference="true"
+                          class="border rounded p-3 mb-3">
+                        <input type="hidden" name="id" value="@pending.Id" />
+                        <label class="form-check mb-1">
+                            <input class="form-check-input" type="checkbox" name="remember" value="true"
+                                   checked="@pending.RememberRequested" />
+                            <span class="form-check-label fw-semibold">Remember this browser for 30 days</span>
+                        </label>
+                        <p class="small text-body-secondary mb-1">Optional. Only use on a device you control. Trust stays bound to this hub, game session and identity and can be revoked.</p>
+                        <button type="submit" class="btn btn-outline-secondary btn-sm mt-1" data-preference-save>Save preference</button>
+                        <p role="status" data-preference-status class="small mt-2 mb-0" aria-live="polite"></p>
+                    </form>
+                }
                 @if (ready)
                 {
                     <form method="post" asp-page-handler="Finish" data-auto-submit="true">
