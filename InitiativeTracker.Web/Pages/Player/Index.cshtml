@@ -864,7 +864,7 @@
         <hr />
 
 
-        @if (SecureOrigin.TrustedRequest(Context))
+        @if (SecureOrigin.TrustedRequest(ViewContext.HttpContext))
         {
             <section class="mb-4">
                 <h3 class="h6">Remembered Browser Approvals</h3>

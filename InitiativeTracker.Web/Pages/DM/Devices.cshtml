@@ -24,7 +24,7 @@
         </div>
 
         <div>
-            @if (SecureOrigin.TrustedRequest(Context))
+            @if (SecureOrigin.TrustedRequest(ViewContext.HttpContext))
             {
                 <a href="/secure-access/devices" class="btn btn-outline-secondary">
                     Remembered Browsers
