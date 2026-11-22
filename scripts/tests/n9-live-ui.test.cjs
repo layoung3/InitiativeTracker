@@ -314,6 +314,9 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
         await player.getByRole('link',{name:'Continue to My Characters'}).click();
         let playerGrant;
         if(tlsSandbox) {
+            // The join link redirects through the auto-begin form and then to
+            // waiting; never evaluate against a document during this navigation.
+            await player.getByRole('heading',{name:'Waiting for approval on hub',exact:true}).waitFor({timeout:20000});
             assert.equal(await player.evaluate(()=>fetch('/appearance/application/00000000-0000-0000-0000-000000000000').then(r=>r.status)),403);
             playerGrant=await authorizeMember(player,dm);
             await player.goto(base+'/player');
@@ -439,8 +442,12 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         await dm.goto(base + '/secure-access');
         await dm.locator('[name=recovery]').check();
         await dm.getByRole('button', {name:'Request physical DM proof', exact:true}).click();
+        const dmRef = await dm.locator('[data-browser-reference]').getAttribute('data-browser-reference');
         const overlay = hub.locator('#physicalApprovalOverlay');
         await overlay.waitFor({state:'visible', timeout:20000});
+        // Only approve the reference from this DM request. A prior failed
+        // scenario must not silently lend authority to an unrelated browser.
+        assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(), dmRef);
         await overlay.getByRole('button', {name:'Approve', exact:true}).click();
         await dm.getByRole('heading', {name:'Authorized as DM', exact:true}).waitFor({timeout:20000});
 
