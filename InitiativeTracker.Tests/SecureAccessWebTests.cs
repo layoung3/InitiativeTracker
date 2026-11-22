@@ -550,7 +550,8 @@ public sealed class SecureAccessWebTests
         var displayPending = display.Pending;
         html = await (await physical.Send("/secure-access/physical")).Content.ReadAsStringAsync();
         Assert.Contains("Display authorization", html);
-        Assert.Contains(displayPending.Identity.Display.ToString(), html);
+        Assert.NotNull(displayPending.Identity.Display);
+        Assert.Contains(displayPending.Identity.Display.Value.ToString(), html);
         token = await physical.Token("/secure-access/physical");
         Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
             new FormUrlEncodedContent(new Dictionary<string, string> {
@@ -751,7 +752,7 @@ public sealed class SecureAccessWebTests
                 ["__RequestVerificationToken"] = await other.Token("/secure-access/wait")
             }))).StatusCode);
         var otherGrant = host.Access.Grants().Single(g => g.Browser == other.Browser);
-        Assert.Empty(host.Access.Remembered(otherGrant).Where(b => b.Browser == other.Browser));
+        Assert.DoesNotContain(host.Access.Remembered(otherGrant), b => b.Browser == other.Browser);
         var forgetToken = await dm.Token("/secure-access");
         Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access?handler=Forget",
             new FormUrlEncodedContent(new Dictionary<string, string> {
@@ -899,7 +900,7 @@ public sealed class SecureAccessWebTests
                 ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = physicalCsrf
             }))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
-        Assert.Empty(host.Access.Grants().Where(g => g.Id == grant.Id));
+        Assert.DoesNotContain(host.Access.Grants(), g => g.Id == grant.Id);
         host.DeleteOnDispose();
     }
 
@@ -922,7 +923,7 @@ public sealed class SecureAccessWebTests
         var html = await dm.Content.ReadAsStringAsync();
         Assert.Contains("href=\"/dm\">Back to DM Controls", html);
         Assert.Contains("href=\"/dm/devices\">Connected Devices", html);
-        Assert.Contains("DM + Hub", html);
+        Assert.Contains("DM + Hub", WebUtility.HtmlDecode(html));
         host.DeleteOnDispose();
     }
 
@@ -997,7 +998,7 @@ public sealed class SecureAccessWebTests
         using var second = host.Client(); second.Legacy("DM");
         await second.Bootstrap(recovery: false);
         Assert.Equal(HttpStatusCode.OK, (await second.Send("/dm")).StatusCode);
-        var secondGrant = Assert.Single(host.Access.Grants().Where(g => g.Browser == second.Browser));
+        var secondGrant = Assert.Single(host.Access.Grants(), g => g.Browser == second.Browser);
         var token = await first.Token("/secure-access");
         var revoke = await first.Send("/secure-access?handler=Revoke",
             new FormUrlEncodedContent(new Dictionary<string, string>
