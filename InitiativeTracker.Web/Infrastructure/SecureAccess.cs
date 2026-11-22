@@ -137,7 +137,7 @@ public static class SecureAccess
             return handler is not ("ENDTURN" or "ADJUSTHP" or "SETHP" or "SETTEMPORARYHP" or "TOGGLEINSPIRATION" or "SETEXHAUSTION" or
                 "TOGGLECONDITION" or "ADDCUSTOMCONDITION" or "REMOVECONDITION" or "ADJUSTSPELLSLOT" or "RESTOREALLSPELLSLOTS" or
                 "CASTSPELL" or "ENDCONCENTRATION" or "TOGGLESPELLPREPARED" or "TOGGLEINVENTORYITEMEQUIPPED" or "ADJUSTINVENTORYITEMQUANTITY");
-        return IsPage(request, "/Player/Index", "/player") && handler is "CREATECHARACTER" or "ADDCHARACTER" or "REGENERATERECOVERYKEY";
+        return IsPage(request, "/Player/Index", "/player") && handler is "CREATECHARACTER" or "ADDCHARACTER" or "REGENERATERECOVERYKEY" or "RENAMEPROFILE";
     }
     private static bool AdminMutation(HttpRequest request) => !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) &&
         (request.Path.StartsWithSegments("/dm/players") || request.Path.StartsWithSegments("/dm/profiles") || request.Path.StartsWithSegments("/dm/devices") ||

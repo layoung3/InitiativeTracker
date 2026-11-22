@@ -763,6 +763,51 @@ public sealed class SecureAccessWebTests
         host.DeleteOnDispose();
     }
 
+
+    [LinuxFact("Requires Linux HTTPS secure-grant persistence.")]
+    public async Task ApprovedPlayerCanRenameOnlyItsOwnProfileWithoutInvalidatingSecureTrust()
+    {
+        using var host = new Host();
+        using var dm = host.Client();
+        await dm.Bootstrap();
+        var ids = AddPlayer(host);
+        var otherIds = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", ids.Profile, ids.Player, ids.Credential);
+        await player.Token();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await player.Send("/player?handler=RenameProfile",
+                new FormUrlEncodedContent(new Dictionary<string, string> {
+                    ["playerName"] = "New Name",
+                    ["__RequestVerificationToken"] = await player.Token("/player")
+                }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Approve", ("id", player.Pending.Id.ToString()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
+        var renameToken = await player.Token("/player");
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/player?handler=RenameProfile",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["playerName"] = "  Better Player Name  ",
+                ["__RequestVerificationToken"] = renameToken
+            }))).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            Assert.Equal("Better Player Name", db.PlayerProfiles.Single(p => p.Id == ids.Profile).Name);
+            Assert.Equal("Better Player Name", db.PlayerConnections.Single(p => p.Id == ids.Player).Name);
+            Assert.NotEqual("Better Player Name", db.PlayerProfiles.Single(p => p.Id == otherIds.Profile).Name);
+        }
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+        var badToken = await player.Token("/player");
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/player?handler=RenameProfile",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["playerName"] = new string('x', 41),
+                ["__RequestVerificationToken"] = badToken
+            }))).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+            Assert.Equal("Better Player Name", db.PlayerProfiles.Single(p => p.Id == ids.Profile).Name);
+        host.DeleteOnDispose();
+    }
+
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PlayerWaitingDenialDoesNotAutomaticallyStartAnotherRequest()
     {
