@@ -17,10 +17,6 @@
           asp-append-version="true" />
 }
 
-<div class="dm-turn-context" role="status">
-    @(Model.Encounter.IsStarted ? $"Round {Model.Encounter.Round} · Current: {Model.Encounter.CurrentCombatant?.Name}" : "Encounter Setup")
-</div>
-
 <div class="container-fluid dm-page px-3 px-lg-4 py-3 py-lg-4">
     <img src="@InitiativeTracker.Web.Services.MediaPaths.CampaignBanner" class="tracker-banner tracker-campaign-banner mb-3" data-tracker-media alt="Campaign banner" />
 
@@ -30,35 +26,13 @@
         justify-content-between
         align-items-lg-center
         gap-3
-        mb-4">
+        mb-3">
 
         <div>
 
             <h1 class="dm-title mb-1">
                 DM Controls
             </h1>
-
-            <div class="dm-encounter-summary text-muted">
-
-                @if (Model.Encounter.IsStarted)
-                {
-                    <span>
-                        Round @Model.Encounter.Round
-                        ·
-                        Current:
-                        <strong>
-                            @Model.Encounter.CurrentCombatant?.Name
-                        </strong>
-                    </span>
-                }
-                else
-                {
-                    <span>
-                        Encounter Setup
-                    </span>
-                }
-
-            </div>
 
         </div>
 
@@ -102,6 +76,9 @@
 
     </header>
 
+    <div class="dm-turn-context mb-4" role="status">
+        @(Model.Encounter.IsStarted ? $"Round {Model.Encounter.Round} · Current: {Model.Encounter.CurrentCombatant?.Name}" : "Encounter Setup")
+    </div>
 
     <div asp-validation-summary="All"
          class="text-danger mb-3">
