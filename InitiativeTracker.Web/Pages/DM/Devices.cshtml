@@ -1,4 +1,5 @@
 ﻿@page "/dm/devices"
+@inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
 @model InitiativeTracker.Web.Pages.Dm.DevicesModel
 
 @{
@@ -23,6 +24,12 @@
         </div>
 
         <div>
+            @if (SecureOrigin.TrustedRequest(Context))
+            {
+                <a href="/secure-access/devices" class="btn btn-outline-secondary">
+                    Remembered Browsers
+                </a>
+            }
             <a href="/dm/players"
                class="btn btn-outline-secondary">
                 Stored Players

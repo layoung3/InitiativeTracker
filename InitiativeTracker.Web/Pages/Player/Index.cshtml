@@ -1,4 +1,5 @@
 ﻿@page "/player"
+@inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
 @model InitiativeTracker.Web.Pages.Player.IndexModel
 
 @{
@@ -862,6 +863,20 @@
 
         <hr />
 
+
+        @if (SecureOrigin.TrustedRequest(Context))
+        {
+            <section class="mb-4">
+                <h3 class="h6">Remembered Browser Approvals</h3>
+                <p class="small text-body-secondary">
+                    Review or revoke optional 30-day approval for this game's browser sessions.
+                </p>
+                <a href="/secure-access/devices" class="btn btn-outline-secondary w-100">
+                    Manage Remembered Browsers
+                </a>
+            </section>
+            <hr />
+        }
 
         <section>
 
