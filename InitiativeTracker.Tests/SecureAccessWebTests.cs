@@ -725,10 +725,10 @@ public sealed class SecureAccessWebTests
         var grant = host.Access.Grants().Single(g => g.Browser == dm.Browser);
         Assert.Single(host.Access.Remembered(grant));
         Assert.Equal("DM browser", host.Access.Remembered(grant)[0].Label);
-        var devicesPage = await dm.Send("/secure-access/devices");
+        var devicesPage = await dm.Send("/secure-access");
         Assert.Equal(HttpStatusCode.OK, devicesPage.StatusCode);
         Assert.Contains("DM browser", await devicesPage.Content.ReadAsStringAsync());
-        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/secure-access/devices")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/secure-access")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
             new FormUrlEncodedContent(new Dictionary<string, string> {
                 ["id"] = pending.Id.ToString(), ["remember"] = "true",
@@ -752,8 +752,8 @@ public sealed class SecureAccessWebTests
             }))).StatusCode);
         var otherGrant = host.Access.Grants().Single(g => g.Browser == other.Browser);
         Assert.Empty(host.Access.Remembered(otherGrant).Where(b => b.Browser == other.Browser));
-        var forgetToken = await dm.Token("/secure-access/devices");
-        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/devices?handler=Forget",
+        var forgetToken = await dm.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access?handler=Forget",
             new FormUrlEncodedContent(new Dictionary<string, string> {
                 ["id"] = host.Access.Remembered(grant).Single().Id.ToString(),
                 ["__RequestVerificationToken"] = forgetToken
