@@ -87,6 +87,12 @@
                     @accountError
                 </div>
             }
+            @if (TempData["AccountNotice"] is string accountNotice)
+            {
+                <div class="alert alert-success" role="status">
+                    @accountNotice
+                </div>
+            }
 
 
             @if (Model.Characters.Count == 0)

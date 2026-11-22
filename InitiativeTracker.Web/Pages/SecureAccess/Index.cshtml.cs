@@ -1,127 +1,124 @@
+using InitiativeTracker.Web.Data;
 using InitiativeTracker.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 
 namespace InitiativeTracker.Web.Pages.SecureAccess;
+
+public sealed record SecurityDeviceRow(Guid Id, string Owner, string Device, string Role,
+    string BrowserReference, DateTimeOffset Expires, bool IsCurrent, bool Remembered);
 
 [AllowAnonymous]
 [RequestSizeLimit(8192)]
 [RequestFormLimits(ValueLengthLimit = 256, ValueCountLimit = 16)]
-public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin origin) : PageModel
+public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin origin,
+    IDbContextFactory<InitiativeTrackerDbContext> factory) : PageModel
 {
-    public SecureEnrollment? Pending { get; private set; }
-    public SecureGrant? Grant { get; private set; }
+    public bool IsPhysical { get; private set; }
+    public bool IsDm { get; private set; }
+    public string BackUrl => IsPhysical ? "/setup" : "/dm/devices";
+    public IReadOnlyList<SecurityDeviceRow> Sessions { get; private set; } = [];
+    public IReadOnlyList<SecurityDeviceRow> RememberedDevices { get; private set; } = [];
     public IReadOnlyList<SecureEnrollment> Requests { get; private set; } = [];
-    public IReadOnlyList<SecureGrant> Grants { get; private set; } = [];
-    public IReadOnlyList<SecureRememberedBrowser> TrustedBrowsers { get; private set; } = [];
-    public bool Initialized => access.Initialized;
-    // A QR quick-connect Display identity has no trusted device-id yet; do not
-    // offer a secure enrollment action that will always fail with 403.
-    public bool CanEnrollMember => access.Capture(User)?.Role is "Player" or "Display";
-    private string Binding => Infrastructure.SecureAccess.Browser(HttpContext) ?? throw new SecureAccessDenied();
-    private string Peer => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    private async Task<SecureGrant?> Authorized()
+    {
+        IsPhysical = origin.Physical(HttpContext);
+        var grant = await Infrastructure.SecureAccess.Current(HttpContext);
+        IsDm = grant?.Identity.Role == "DM";
+        if (!IsPhysical && !IsDm) throw new SecureAccessDenied();
+        return grant;
+    }
+
     public async Task<IActionResult> OnGetAsync()
     {
-        var browser = Infrastructure.SecureAccess.Browser(HttpContext, create: true)!;
-        Pending = access.ForBrowser(browser);
-        Grant = await Infrastructure.SecureAccess.Current(HttpContext);
-        if (Grant is null && Pending is null)
+        try
         {
-            var restored = access.ResumeRemembered(browser, origin.Origin, User);
-            if (restored is not null)
+            var actor = await Authorized();
+            var grants = access.Grants();
+            var trusted = IsPhysical ? access.PhysicalRemembered() : access.Remembered(actor!);
+            var visible = trusted.Where(x => !x.Revoked).ToArray();
+
+            using var db = factory.CreateDbContext();
+            var profiles = db.PlayerProfiles.AsNoTracking().ToDictionary(p => p.Id);
+            var playerDevices = db.PlayerDeviceCredentials.AsNoTracking().ToDictionary(c => c.Id);
+            var displays = db.RegisteredDevices.AsNoTracking().ToDictionary(d => d.Id);
+            var browser = Infrastructure.SecureAccess.Browser(HttpContext);
+            string Owner(SecureIdentity identity) => identity.Role switch
             {
-                await Infrastructure.SecureAccess.SignIn(HttpContext, restored);
-                return RedirectToPage();
+                "DM" => "Dungeon Master",
+                "Player" when identity.Profile is Guid id && profiles.TryGetValue(id, out var profile)
+                    => profile.Name,
+                "Display" when identity.Display is Guid id && displays.TryGetValue(id, out var device)
+                    => device.Name,
+                "Player" => "Player (profile unavailable)",
+                _ => "Display (device unavailable)"
+            };
+            string Device(SecureIdentity identity, string binding)
+            {
+                var remembered = visible.FirstOrDefault(b => b.Browser == binding && b.Identity == identity);
+                if (remembered is not null) return remembered.Label;
+                if (identity.Role == "Player" && identity.Credential is Guid cid &&
+                    playerDevices.TryGetValue(cid, out var credential)) return credential.Name;
+                if (identity.Role == "Display" && identity.Display is Guid did &&
+                    displays.TryGetValue(did, out var display)) return display.Name;
+                return identity.Role == "DM" ? "DM browser" : "Web browser";
             }
-        }
-        if (Grant is not null)
-        {
-            TrustedBrowsers = access.Remembered(Grant);
-            if (Grant.Identity.Role == "DM") { Requests = access.MemberRequests(); Grants = access.Grants(); }
-        }
-        return Page();
-    }
-    public IActionResult OnPostBeginDm(bool recovery = false) => Attempt(() =>
-        access.Begin(recovery ? "dm-recover" : "dm-bootstrap", Binding, origin.Origin, Peer, User, physical: origin.Physical(HttpContext)));
-    public IActionResult OnPostBeginMember() => Attempt(() =>
-    {
-        var identity = access.Capture(User) ?? throw new SecureAccessDenied();
-        access.Begin(identity.Role == "Player" ? "enroll-player" : "enroll-display", Binding, origin.Origin, Peer, User);
-    });
-    public async Task<IActionResult> OnPostRedeemAsync()
-    {
-        try
-        {
-            var grant = access.RedeemDm(Binding, origin.Origin, (await Request.ReadFormAsync())["Code"].ToString(), Peer);
-            await Infrastructure.SecureAccess.SignIn(HttpContext, grant);
-            return RedirectToPage();
-        }
-        catch (SecureAccessDenied) { return StatusCode(403); }
-        catch (SecureAccessUnavailable) { return StatusCode(503); }
-        finally { ModelState.Clear(); }
-    }
-    public async Task<IActionResult> OnPostFinishPhysicalAsync()
-    {
-        try
-        {
-            var grant = access.FinishPhysicalDm(Binding, origin.Origin);
-            await Infrastructure.SecureAccess.SignIn(HttpContext, grant);
-            return RedirectToPage();
+            // Do not expose raw cookie values, credential hashes or certificates in the UI.
+            Sessions = grants.OrderBy(g => Owner(g.Identity)).ThenBy(g => Device(g.Identity, g.Browser))
+                .Select(g => new SecurityDeviceRow(g.Id, Owner(g.Identity), Device(g.Identity, g.Browser),
+                    g.Identity.Role, g.Browser[..8], g.Expires,
+                    g.Browser == browser && actor?.Id == g.Id,
+                    visible.Any(t => t.Browser == g.Browser && t.Identity == g.Identity))).ToArray();
+            RememberedDevices = visible.OrderBy(t => Owner(t.Identity)).ThenBy(t => t.Label)
+                .Select(t => new SecurityDeviceRow(t.Id, Owner(t.Identity), Device(t.Identity, t.Browser),
+                    t.Identity.Role, t.Browser[..8], t.Expires,
+                    t.Browser == browser && actor?.Identity == t.Identity, true)).ToArray();
+            if (IsDm) Requests = access.MemberRequests();
+            Response.Headers.CacheControl = "no-store, private";
+            return Page();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }
-    public async Task<IActionResult> OnPostApproveAsync(Guid id)
-    {
-        try { access.Approve(await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied(), id); return RedirectToPage(); }
-        catch (SecureAccessDenied) { return StatusCode(403); }
-        catch (SecureAccessUnavailable) { return StatusCode(503); }
-    }
-    public async Task<IActionResult> OnPostFinishAsync()
-    {
-        try
-        {
-            var grant = access.Finish(Binding, origin.Origin, User);
-            await Infrastructure.SecureAccess.SignIn(HttpContext, grant);
-            return RedirectToPage();
-        }
-        catch (SecureAccessDenied) { return StatusCode(403); }
-        catch (SecureAccessUnavailable) { return StatusCode(503); }
-    }
-    public async Task<IActionResult> OnPostRememberAsync(string? label)
-    {
-        try
-        {
-            var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
-            access.Remember(actor, label);
-            Infrastructure.SecureAccess.ExtendRememberedBrowserCookie(HttpContext);
-            return RedirectToPage();
-        }
-        catch (SecureAccessDenied) { return StatusCode(403); }
-        catch (SecureAccessUnavailable) { return StatusCode(503); }
-    }
-    public async Task<IActionResult> OnPostForgetRememberedAsync(Guid id)
-    {
-        try
-        {
-            var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
-            access.RevokeRemembered(actor, id);
-            return RedirectToPage();
-        }
-        catch (SecureAccessDenied) { return StatusCode(403); }
-        catch (SecureAccessUnavailable) { return StatusCode(503); }
-    }
-    public IActionResult OnPostCancel() => Attempt(() => access.Cancel(Binding));
+
     public async Task<IActionResult> OnPostRevokeAsync(Guid id)
     {
-        try { access.Revoke(await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied(), id); return RedirectToPage(); }
+        try
+        {
+            var actor = await Authorized();
+            if (IsPhysical) access.RevokePhysicalSession(id);
+            else access.Revoke(actor!, id);
+            return RedirectToPage();
+        }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }
-    private IActionResult Attempt(Action action)
+
+    public async Task<IActionResult> OnPostForgetAsync(Guid id)
     {
-        try { action(); return RedirectToPage(); }
+        try
+        {
+            var actor = await Authorized();
+            if (IsPhysical) access.RevokePhysicalRemembered(id);
+            else access.RevokeRemembered(actor!, id);
+            return RedirectToPage();
+        }
+        catch (SecureAccessDenied) { return StatusCode(403); }
+        catch (SecureAccessUnavailable) { return StatusCode(503); }
+    }
+
+    public async Task<IActionResult> OnPostApproveAsync(Guid id)
+    {
+        try
+        {
+            var actor = await Authorized();
+            if (!IsDm || actor is null) throw new SecureAccessDenied();
+            access.Approve(actor, id);
+            return RedirectToPage();
+        }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }

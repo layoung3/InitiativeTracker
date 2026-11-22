@@ -372,6 +372,24 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
     public void ClearPending() { lock (gate) { pending.Clear(); rates.Clear(); } }
     public IReadOnlyList<SecureGrant> Grants() { lock (gate) return Read()?.Grants.Where(g => !g.Revoked && g.Expires > Now).ToArray() ?? []; }
 
+    // These are only called by the physical-only or secure DM administration
+    // page after it has independently verified its trusted transport and role.
+    public IReadOnlyList<SecureRememberedBrowser> PhysicalRemembered()
+    {
+        lock (gate)
+            return Read()?.RememberedBrowsers.Where(b => !b.Revoked && b.Expires > Now).ToArray() ?? [];
+    }
+
+    public void RevokePhysicalSession(Guid id)
+    {
+        lock (gate) RevokeSessionCore(id);
+    }
+
+    public void RevokePhysicalRemembered(Guid id)
+    {
+        lock (gate) RevokeRememberedCore(id);
+    }
+
     public IReadOnlyList<SecureRememberedBrowser> Remembered(SecureGrant actor)
     {
         lock (gate)
@@ -451,20 +469,28 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
             if (Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null)
                 throw new SecureAccessDenied();
             var state = Read() ?? throw new SecureAccessUnavailable();
-            var index = state.RememberedBrowsers.FindIndex(b => b.Id == id && !b.Revoked && b.Expires > Now);
-            if (index < 0) throw new SecureAccessDenied();
-            var target = state.RememberedBrowsers[index];
+            var target = state.RememberedBrowsers.FirstOrDefault(b => b.Id == id && !b.Revoked && b.Expires > Now)
+                ?? throw new SecureAccessDenied();
             if (actor.Identity.Role != "DM" && actor.Identity != target.Identity)
                 throw new SecureAccessDenied();
-            state.RememberedBrowsers[index] = target with { Revoked = true, Generation = target.Generation + 1 };
-            for (var i = 0; i < state.Grants.Count; i++)
-                if (!state.Grants[i].Revoked && state.Grants[i].Browser == target.Browser &&
-                    state.Grants[i].Origin == target.Origin && state.Grants[i].Identity == target.Identity)
-                    state.Grants[i] = state.Grants[i] with {
-                        Revoked = true, Generation = state.Grants[i].Generation + 1
-                    };
-            Save(state);
+            RevokeRememberedCore(id);
         }
+    }
+
+    private void RevokeRememberedCore(Guid id)
+    {
+        var state = Read() ?? throw new SecureAccessUnavailable();
+        var index = state.RememberedBrowsers.FindIndex(b => b.Id == id && !b.Revoked && b.Expires > Now);
+        if (index < 0) throw new SecureAccessDenied();
+        var target = state.RememberedBrowsers[index];
+        state.RememberedBrowsers[index] = target with { Revoked = true, Generation = target.Generation + 1 };
+        for (var i = 0; i < state.Grants.Count; i++)
+            if (!state.Grants[i].Revoked && state.Grants[i].Browser == target.Browser &&
+                state.Grants[i].Origin == target.Origin && state.Grants[i].Identity == target.Identity)
+                state.Grants[i] = state.Grants[i] with {
+                    Revoked = true, Generation = state.Grants[i].Generation + 1
+                };
+        Save(state);
     }
 
     private SecureGrant Issue(SecureGrantState state, SecureEnrollment request)
@@ -596,23 +622,27 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
         lock (gate)
         {
             if (Validate(actor.Id, actor.Generation, actor.Epoch, actor.Browser, actor.Origin) is null || (actor.Identity.Role != "DM" && actor.Id != id)) throw new SecureAccessDenied();
-            var state = Read() ?? throw new SecureAccessDenied();
-            var index = state.Grants.FindIndex(g => g.Id == id);
-            if (index < 0) throw new SecureAccessDenied();
-            var revoked = state.Grants[index];
-            state.Grants[index] = revoked with { Revoked = true, Generation = revoked.Generation + 1 };
-            // Revoking a secure session must never leave its remembered-browser
-            // credential able to silently issue a replacement session.
-            for (var i = 0; i < state.RememberedBrowsers.Count; i++)
-                if (!state.RememberedBrowsers[i].Revoked &&
-                    state.RememberedBrowsers[i].Browser == revoked.Browser &&
-                    state.RememberedBrowsers[i].Identity == revoked.Identity)
-                    state.RememberedBrowsers[i] = state.RememberedBrowsers[i] with {
-                        Revoked = true, Generation = state.RememberedBrowsers[i].Generation + 1
-                    };
-            Save(state);
+            RevokeSessionCore(id);
         }
     }
+    private void RevokeSessionCore(Guid id)
+    {
+        var state = Read() ?? throw new SecureAccessDenied();
+        var index = state.Grants.FindIndex(g => g.Id == id && !g.Revoked && g.Expires > Now);
+        if (index < 0) throw new SecureAccessDenied();
+        var revoked = state.Grants[index];
+        state.Grants[index] = revoked with { Revoked = true, Generation = revoked.Generation + 1 };
+        // A revoked session cannot silently restore itself using remembered trust.
+        for (var i = 0; i < state.RememberedBrowsers.Count; i++)
+            if (!state.RememberedBrowsers[i].Revoked &&
+                state.RememberedBrowsers[i].Browser == revoked.Browser &&
+                state.RememberedBrowsers[i].Identity == revoked.Identity)
+                state.RememberedBrowsers[i] = state.RememberedBrowsers[i] with {
+                    Revoked = true, Generation = state.RememberedBrowsers[i].Generation + 1
+                };
+        Save(state);
+    }
+
     public void InvalidateIdentities(IEnumerable<Guid> identifiers)
     {
         lock (gate)
