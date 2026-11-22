@@ -19,10 +19,10 @@ async function authorizeMember(page,dm) {
     await page.getByRole('heading',{name:'Waiting for approval on hub',exact:true}).waitFor({timeout:20000});
     const reference=await page.locator('[data-browser-reference]').getAttribute('data-browser-reference');
     assert(reference, 'requesting browser has an automatic approval reference');
-    await dm.goto(base+'/secure-access');
+    await dm.goto(base+'/secure-access/manual');
     await dm.locator('form[action*=Approve]').filter({hasText:reference}).getByRole('button',{name:'Approve exact request',exact:true}).click();
     await page.waitForURL(url=>['/player','/display'].includes(new URL(url).pathname),{timeout:20000});
-    await page.goto(base+'/secure-access');
+    await page.goto(base+'/secure-access/manual');
     await page.getByRole('heading',{name:/Authorized as/}).waitFor({timeout:20000});
     return await page.locator('form[action*=Revoke] input[name=id]').first().inputValue();
 }
@@ -138,7 +138,7 @@ test('normal DM login and player QR journey wait for hub approval automatically'
         assert.equal((await hub.locator('#physicalApprovalReference').innerText()).trim(), dmRef);
         await modal.getByRole('button', {name:'Approve', exact:true}).click();
         await dm.waitForURL('**/dm', {timeout:20000});
-        await dm.goto(base + '/secure-access');
+        await dm.goto(base + '/secure-access/manual');
         await dm.getByText('This browser is remembered. You can revoke it below.').waitFor();
         await dm.goto(base + '/dm/devices');
         await dm.getByRole('link', {name:'Remembered Browsers'}).click();
@@ -182,7 +182,7 @@ test('physical HTTPS overlay denies then approves exact browser without transcri
     const hub=await browser.newPage();
     try {
         await hub.goto(base+'/setup');
-        await requester.goto(base+'/secure-access');
+        await requester.goto(base+'/secure-access/manual');
         const begin=async () => {
             await requester.locator('[name=recovery]').check();
             await requester.getByRole('button',{name:'Request physical DM proof',exact:true}).click();
@@ -217,7 +217,7 @@ test('physical overlay approves a joined player and a paired display in their ow
     try {
         await hub.goto(base+'/setup');
         const join=await hub.locator('.setup-grid section').nth(1).locator('strong').innerText();
-        await dm.goto(base+'/secure-access');
+        await dm.goto(base+'/secure-access/manual');
         await dm.locator('[name=recovery]').check();
         await dm.getByRole('button',{name:'Request physical DM proof',exact:true}).click();
         const modal=hub.locator('#physicalApprovalOverlay');
@@ -241,7 +241,7 @@ test('physical overlay approves a joined player and a paired display in their ow
             'physical overlay must show the same player identity as the requesting browser');
         await modal.getByRole('button',{name:'Approve',exact:true}).click();
         await player.waitForURL('**/player',{timeout:20000});
-        await player.goto(base+'/secure-access');
+        await player.goto(base+'/secure-access/manual');
         await player.getByRole('heading',{name:'Authorized as Player',exact:true}).waitFor();
         await player.locator('form[action*=Remember] [name=label]').fill('Player phone fixture');
         await player.getByRole('button',{name:'Remember this browser for 30 days',exact:true}).click();
@@ -264,15 +264,15 @@ test('physical overlay approves a joined player and a paired display in their ow
             'physical overlay must show the same display identity as the requesting browser');
         await modal.getByRole('button',{name:'Approve',exact:true}).click();
         await display.waitForURL('**/display',{timeout:20000});
-        await display.goto(base+'/secure-access');
+        await display.goto(base+'/secure-access/manual');
         await display.getByRole('heading',{name:'Authorized as Display',exact:true}).waitFor();
         await display.locator('form[action*=Remember] [name=label]').fill('Table display fixture');
         await display.getByRole('button',{name:'Remember this browser for 30 days',exact:true}).click();
         await display.getByText('Table display fixture').waitFor();
-        await dm.goto(base+'/secure-access');
+        await dm.goto(base+'/secure-access/manual');
         const remembered=dm.locator('form[action*=ForgetRemembered]').filter({hasText:'Player phone fixture'});
         await remembered.getByRole('button',{name:'Forget browser',exact:true}).click();
-        await player.goto(base+'/secure-access');
+        await player.goto(base+'/secure-access/manual');
         assert.equal(await player.getByRole('heading',{name:'Authorized as Player',exact:true}).count(),0,
             'revoked remembered player cannot silently regain authority');
     } finally {
@@ -288,7 +288,7 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
         await dm.goto(base+'/setup');
         const code=await dm.locator('.setup-grid section').nth(1).locator('strong').innerText();
         if(tlsSandbox) {
-            await dm.goto(base+'/secure-access');
+            await dm.goto(base+'/secure-access/manual');
             await dm.locator('[name=recovery]').check();
             const beginResponse=dm.waitForResponse(response=>response.url().includes('handler=BeginDm')&&response.request().method()==='POST');
             await dm.getByRole('button',{name:'Request physical DM proof',exact:true}).click();
@@ -298,7 +298,7 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
             await dm.locator('[data-browser-reference]').waitFor();
             await dm.goto(base+'/secure-access/physical');
             const proof=await dm.locator('[data-physical-code]').getAttribute('data-physical-code');
-            await dm.goto(base+'/secure-access');
+            await dm.goto(base+'/secure-access/manual');
             await dm.locator('details').filter({hasText:'Manual code fallback'}).locator('summary').click();
             await dm.locator('[name=Code]').fill(proof);
             await Promise.all([dm.waitForNavigation({waitUntil:'load'}),dm.getByRole('button',{name:'Authorize this browser',exact:true}).click()]);
@@ -410,7 +410,7 @@ test('actual upload, encounter pairing and realtime portrait/banner replacement 
             assert.equal((await bad).status(),400);
             assert((await pixel())[2]>200);
             // Revoke only this player's secure grant through the actual DM form.
-            await dm.goto(base+'/secure-access');
+            await dm.goto(base+'/secure-access/manual');
             await dm.locator('form[action*=Revoke]').filter({has:dm.locator('input[name=id][value="'+playerGrant+'"]')}).getByRole('button',{name:'Revoke',exact:true}).click();
             assert.equal(await player.evaluate(path=>fetch(path).then(r=>r.status),'/media/character/'+characterId+'/portrait'),403);
             assert.equal(await player.evaluate(()=>{const form=document.querySelector('form[action*=Upload]');return fetch(form.action,{method:'POST',body:new FormData(form)}).then(r=>r.status);}),403);
@@ -439,7 +439,7 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         const joinCode = await hub.locator('.setup-grid section').nth(1).locator('strong').innerText();
         const displayQrPath = await hub.getByRole('link', {name:'Display Pairing', exact:true}).getAttribute('href');
         assert.match(displayQrPath, /^\/display\/connect\?token=/);
-        await dm.goto(base + '/secure-access');
+        await dm.goto(base + '/secure-access/manual');
         await dm.locator('[name=recovery]').check();
         await dm.getByRole('button', {name:'Request physical DM proof', exact:true}).click();
         const dmRef = await dm.locator('[data-browser-reference]').getAttribute('data-browser-reference');
@@ -482,7 +482,7 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
         // Both players have completed normal profile creation, and display
         // pairing is DM-approved. Queue the short-lived secure requests together.
         async function queueMember(page) {
-            await page.goto(base + '/secure-access');
+            await page.goto(base + '/secure-access/manual');
             await page.getByRole('button', {name:'Request secure approval', exact:true}).click();
             return page.locator('[data-browser-reference]').getAttribute('data-browser-reference');
         }
@@ -505,7 +505,7 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
             await section.getByRole('button', {name:buttonName, exact:true}).click();
         };
         await decideExact(firstRef, 'Player', 'Deny');
-        await first.goto(base + '/secure-access');
+        await first.goto(base + '/secure-access/manual');
         assert.equal(await first.locator('#finishMemberApproval').count(), 0,
             'denied browser must not retain a redeemable request');
         assert.equal(await first.getByRole('heading', {name:/Authorized as/}).count(), 0,
@@ -519,9 +519,9 @@ test('concurrent player and quick-connect display requests remain isolated', {sk
 
         await decideExact(displayRef, 'Display', 'Approve');
         await display.waitForURL('**/display', {timeout:20000});
-        await display.goto(base + '/secure-access');
+        await display.goto(base + '/secure-access/manual');
         await display.getByRole('heading', {name:'Authorized as Display', exact:true}).waitFor();
-        await first.goto(base + '/secure-access');
+        await first.goto(base + '/secure-access/manual');
         assert.equal(await first.getByRole('heading', {name:/Authorized as/}).count(), 0,
             'approval of other browsers must not grant the denied player access');
     } finally {

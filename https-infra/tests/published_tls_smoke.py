@@ -192,17 +192,17 @@ def main():
                 connection.close()
                 return result
             def auth_post(handler, fields=None):
-                status, page = auth_request('/secure-access')
+                status, page = auth_request('/secure-access/manual')
                 assert status == 200
                 token = unescape(re.search(r'name="__RequestVerificationToken"[^>]*value="([^"]+)"', page)[1])
-                return auth_request('/secure-access?handler=' + handler, (fields or {}) | {'__RequestVerificationToken': token})
+                return auth_request('/secure-access/manual?handler=' + handler, (fields or {}) | {'__RequestVerificationToken': token})
             assert auth_post('BeginDm', {'recovery': 'true'})[0] == 302
             status, screen = auth_request('/secure-access/physical')
             assert status == 200
             proof = re.search(r'data-physical-code="([^"]+)"', screen)[1]
-            assert proof not in auth_request('/secure-access')[1]
+            assert proof not in auth_request('/secure-access/manual')[1]
             assert auth_post('Redeem', {'Code': proof})[0] == 302
-            assert 'Authorized as DM' in auth_request('/secure-access')[1]
+            assert 'Authorized as DM' in auth_request('/secure-access/manual')[1]
             assert auth_post('Redeem', {'Code': proof})[0] == 403
             checks += 2
             # Preserve an established TLS stream across cache eviction and >16 rotations.
@@ -229,13 +229,13 @@ def main():
                     held.sendall(f'GET /system/health HTTP/1.0\r\nHost: {host}:5445\r\n\r\n'.encode())
                     assert held.recv(4096).startswith((b'HTTP/1.1 200', b'HTTP/1.0 200'))
             checks += 2
-            assert 'Authorized as DM' in auth_request('/secure-access')[1]
+            assert 'Authorized as DM' in auth_request('/secure-access/manual')[1]
             checks += 1
             process.terminate(); process.wait(timeout=10)
             process = subprocess.Popen([args.dotnet, str(args.publish.resolve() / 'InitiativeTracker.Web.dll')], cwd=args.publish.resolve(), env=env, stdout=log, stderr=log)
             for _ in range(80):
                 try:
-                    if 'Authorized as DM' in auth_request('/secure-access')[1]:
+                    if 'Authorized as DM' in auth_request('/secure-access/manual')[1]:
                         break
                 except (OSError, ValueError):
                     pass

@@ -35,7 +35,7 @@ public sealed class SecureN9IntegrationTests
         using var host = new Host(); using var dm = host.Client(); dm.Legacy("DM");
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send(Editor(Guid.Empty, "application"))).StatusCode);
         await dm.Bootstrap();
-        var authorityPage=await dm.Send("/secure-access");
+        var authorityPage=await dm.Send("/secure-access/manual");
         Assert.Equal("same-origin",authorityPage.Headers.GetValues("Referrer-Policy").Single());
         var token = await dm.Token(Editor(Guid.Empty, "application"));
         var saved = await dm.Send(Editor(Guid.Empty, "application") + "?handler=Settings", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -65,7 +65,7 @@ public sealed class SecureN9IntegrationTests
         using var host=new Host(); using var dm=host.Client(); await dm.Bootstrap();
         var token=await dm.Token();
         dm.Client.DefaultRequestHeaders.Add("Origin",origin);
-        using var proof=await dm.Send("/secure-access?handler=BeginDm",new FormUrlEncodedContent(new Dictionary<string,string>
+        using var proof=await dm.Send("/secure-access/manual?handler=BeginDm",new FormUrlEncodedContent(new Dictionary<string,string>
             {["__RequestVerificationToken"]=token,["recovery"]="true"}),origin:false);
         Assert.Equal(HttpStatusCode.Forbidden,proof.StatusCode);
         using var settings=await dm.Send(Editor(Guid.Empty,"application")+"?handler=Settings",new FormUrlEncodedContent(new Dictionary<string,string>

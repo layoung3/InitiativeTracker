@@ -150,7 +150,7 @@ public sealed class SecureAccessWebTests
             }
             return response;
         }
-        public async Task<string> Token(string page = "/secure-access")
+        public async Task<string> Token(string page = "/secure-access/manual")
         {
             var response = await Send(page);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -162,7 +162,7 @@ public sealed class SecureAccessWebTests
             return await PostToken(handler, token, values);
         }
         public Task<HttpResponseMessage> PostToken(string handler, string token, params (string Key, string Value)[] values) =>
-            Send("/secure-access?handler=" + handler, new FormUrlEncodedContent(values.Select(p => new KeyValuePair<string, string>(p.Key, p.Value)).Append(new("__RequestVerificationToken", token))));
+            Send("/secure-access/manual?handler=" + handler, new FormUrlEncodedContent(values.Select(p => new KeyValuePair<string, string>(p.Key, p.Value)).Append(new("__RequestVerificationToken", token))));
         public void Legacy(string role, Guid? profile = null, Guid? player = null, Guid? credential = null, Guid? display = null)
         {
             var session = Host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.SessionId;
@@ -189,7 +189,7 @@ public sealed class SecureAccessWebTests
         {
             Assert.Equal(HttpStatusCode.Redirect, (await Post("BeginDm", ("recovery", recovery.ToString()))).StatusCode);
             var code = await PhysicalCode(); Assert.Equal(16, code.Length);
-            Assert.DoesNotContain(code, await (await Send("/secure-access")).Content.ReadAsStringAsync());
+            Assert.DoesNotContain(code, await (await Send("/secure-access/manual")).Content.ReadAsStringAsync());
             Assert.Equal(HttpStatusCode.Redirect, (await Post("Redeem", ("Code", code))).StatusCode);
         }
         public void Dispose() => Client.Dispose();
@@ -293,7 +293,7 @@ public sealed class SecureAccessWebTests
                 {
                     ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
                 }))).StatusCode);
-        var requesterHtml = await (await requester.Send("/secure-access")).Content.ReadAsStringAsync();
+        var requesterHtml = await (await requester.Send("/secure-access/manual")).Content.ReadAsStringAsync();
         Assert.Contains("data-physical-approved=\"true\"", requesterHtml);
         Assert.Equal(HttpStatusCode.Forbidden, (await remote.Post("FinishPhysical")).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("FinishPhysical")).StatusCode);
@@ -345,13 +345,13 @@ public sealed class SecureAccessWebTests
             using var returned = second.Client();
             returned.Cookies[SecureAccess.BrowserCookie] = browserCookie;
             Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
-            var response = await returned.Send("/secure-access");
+            var response = await returned.Send("/secure-access/manual");
             Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access/manual")).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await returned.Post("Remember", ("label", "Extend without proof"))).StatusCode);
-            var page = await (await returned.Send("/secure-access")).Content.ReadAsStringAsync();
+            var page = await (await returned.Send("/secure-access/manual")).Content.ReadAsStringAsync();
             Assert.Contains("DM tablet", page);
             Assert.Contains("Forget browser", page);
             Assert.Equal(HttpStatusCode.Redirect, (await returned.Post("ForgetRemembered",
@@ -362,7 +362,7 @@ public sealed class SecureAccessWebTests
         {
             using var returned = third.Client();
             returned.Cookies[SecureAccess.BrowserCookie] = browserCookie;
-            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access/manual")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
         }
         Directory.Delete(directory, true);
@@ -377,7 +377,7 @@ public sealed class SecureAccessWebTests
         host.Clock.Advance(TimeSpan.FromHours(13));
         using var notRemembered = host.Client();
         notRemembered.Cookies[SecureAccess.BrowserCookie] = browserCookie;
-        Assert.Equal(HttpStatusCode.OK, (await notRemembered.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await notRemembered.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await notRemembered.Send("/media/fixture")).StatusCode);
 
         // A separate fresh physical authorization is required to opt in.
@@ -386,11 +386,11 @@ public sealed class SecureAccessWebTests
         var trusted = fresh.Cookies[SecureAccess.BrowserCookie];
         using var http = host.Client(http: true);
         http.Cookies[SecureAccess.BrowserCookie] = trusted;
-        Assert.Equal((HttpStatusCode)426, (await http.Send("/secure-access")).StatusCode);
+        Assert.Equal((HttpStatusCode)426, (await http.Send("/secure-access/manual")).StatusCode);
         host.Clock.Advance(TimeSpan.FromDays(31));
         using var expired = host.Client();
         expired.Cookies[SecureAccess.BrowserCookie] = trusted;
-        Assert.Equal(HttpStatusCode.OK, (await expired.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await expired.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await expired.Send("/media/fixture")).StatusCode);
         host.DeleteOnDispose();
     }
@@ -411,7 +411,7 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
         using var replay = host.Client();
         replay.Cookies[SecureAccess.BrowserCookie] = browser;
-        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
         host.DeleteOnDispose();
     }
@@ -431,13 +431,13 @@ public sealed class SecureAccessWebTests
         using var otherRole = host.Client();
         otherRole.Cookies[SecureAccess.BrowserCookie] = browser;
         otherRole.Legacy("DM");
-        Assert.Equal(HttpStatusCode.OK, (await otherRole.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await otherRole.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await otherRole.Send("/media/fixture")).StatusCode);
 
         using var restored = host.Client();
         restored.Cookies[SecureAccess.BrowserCookie] = browser;
-        Assert.Equal(HttpStatusCode.Redirect, (await restored.Send("/secure-access")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await restored.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await restored.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await restored.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await restored.Send("/media/fixture")).StatusCode);
         using (var db = host.Factory.CreateDbContext())
         {
@@ -447,7 +447,7 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await restored.Send("/media/fixture")).StatusCode);
         using var replay = host.Client();
         replay.Cookies[SecureAccess.BrowserCookie] = browser;
-        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
         host.DeleteOnDispose();
     }
@@ -473,7 +473,7 @@ public sealed class SecureAccessWebTests
         host.Clock.Advance(TimeSpan.FromDays(8));
         using var returned = host.Client();
         returned.Cookies[SecureAccess.BrowserCookie] = browser;
-        Assert.Equal(HttpStatusCode.Redirect, (await returned.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await returned.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await returned.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
@@ -485,7 +485,7 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
         using var afterRevocation = host.Client();
         afterRevocation.Cookies[SecureAccess.BrowserCookie] = browser;
-        Assert.Equal(HttpStatusCode.OK, (await afterRevocation.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await afterRevocation.Send("/secure-access/manual")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await afterRevocation.Send("/media/fixture")).StatusCode);
         host.DeleteOnDispose();
     }
@@ -518,7 +518,7 @@ public sealed class SecureAccessWebTests
         other.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
         await other.Token();
         Assert.Equal(HttpStatusCode.Forbidden, (await other.Post("Finish")).StatusCode);
-        var waitingHtml = await (await player.Send("/secure-access")).Content.ReadAsStringAsync();
+        var waitingHtml = await (await player.Send("/secure-access/manual")).Content.ReadAsStringAsync();
         Assert.Contains("id=\"finishMemberApproval\"", waitingHtml);
         Assert.Contains("data-physical-approved=\"true\"", waitingHtml);
         Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
@@ -847,6 +847,62 @@ public sealed class SecureAccessWebTests
         host.DeleteOnDispose();
     }
 
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task SecurityDashboardRequiresSecureDmOrPhysicalHubAndRevokeTargetsExactSession()
+    {
+        using var host = new Host();
+        using var stranger = host.Client();
+        using var physical = host.Client(physical: true);
+        using var dm = host.Client();
+        var ids = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", ids.Profile, ids.Player, ids.Credential);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            var credential = db.PlayerDeviceCredentials.Single(c => c.Id == ids.Credential);
+            credential.Name = "Testing phone";
+            db.SaveChanges();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access")).StatusCode);
+        var physicalPage = await physical.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, physicalPage.StatusCode);
+        var physicalHtml = await physicalPage.Content.ReadAsStringAsync();
+        Assert.Contains("Security &amp; Trusted Devices", physicalHtml);
+        Assert.Contains("Hub Setup", physicalHtml);
+
+        await dm.Bootstrap();
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Approve", ("id", player.Pending.Id.ToString()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
+        var dmDashboard = await dm.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, dmDashboard.StatusCode);
+        var markup = await dmDashboard.Content.ReadAsStringAsync();
+        Assert.Contains("Fixture player", markup);
+        Assert.Contains("Testing phone", markup);
+        Assert.Contains("Revoke session", markup);
+        Assert.Contains("Manage session for Fixture player", markup);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access")).StatusCode);
+
+        var grant = host.Access.Grants().Single(g => g.Identity.Role == "Player" && g.Identity.Profile == ids.Profile);
+        var unauthorizedCsrf = await player.Token("/secure-access/manual");
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = unauthorizedCsrf
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+
+        var physicalCsrf = await physical.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = physicalCsrf
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        Assert.Empty(host.Access.Grants().Where(g => g.Id == grant.Id));
+        host.DeleteOnDispose();
+    }
+
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {
@@ -924,10 +980,10 @@ public sealed class SecureAccessWebTests
     {
         using var host = new Host(); using var dm = host.Client();
         await dm.Post("BeginDm", ("recovery", "true")); var code = await dm.PhysicalCode();
-        var noCsrf = await dm.Send("/secure-access?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code }));
+        var noCsrf = await dm.Send("/secure-access/manual?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code }));
         Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
         var token = await dm.Token();
-        var noOrigin = await dm.Send("/secure-access?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code, ["__RequestVerificationToken"] = token }), origin: false);
+        var noOrigin = await dm.Send("/secure-access/manual?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code, ["__RequestVerificationToken"] = token }), origin: false);
         Assert.Equal(HttpStatusCode.Forbidden, noOrigin.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Redeem", ("Code", code))).StatusCode);
         await dm.Post("BeginDm"); var expired = await dm.PhysicalCode(); host.Clock.Advance(TimeSpan.FromMinutes(6));
@@ -1220,7 +1276,7 @@ public sealed class SecureAccessWebTests
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
         host.Clock.Advance(TimeSpan.FromHours(12) + TimeSpan.FromSeconds(1));
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
-        Assert.DoesNotContain("Authorized as DM", await (await dm.Send("/secure-access")).Content.ReadAsStringAsync());
+        Assert.DoesNotContain("Authorized as DM", await (await dm.Send("/secure-access/manual")).Content.ReadAsStringAsync());
         using var fresh = host.Client();
         await fresh.Post("BeginDm", ("recovery", "true")); var code = await fresh.PhysicalCode();
         host.Failure.Enabled = true;

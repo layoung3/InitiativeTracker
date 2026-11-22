@@ -53,19 +53,19 @@ class Session:
                 for key,item in parsed.items():self.cookies[key] = item.value
         result = response.status,body if binary else body.decode(),values;connection.close();return result
     def post(self,handler,fields=None,*,origin=None):
-        status,body,_ = self.request('/secure-access');assert status == 200
+        status,body,_ = self.request('/secure-access/manual');assert status == 200
         token = unescape(re.search(r'name="__RequestVerificationToken"[^>]*value="([^"]+)"',body)[1])
-        return self.request('/secure-access?handler='+handler,(fields or {})|{'__RequestVerificationToken':token},origin=origin)
+        return self.request('/secure-access/manual?handler='+handler,(fields or {})|{'__RequestVerificationToken':token},origin=origin)
     def enroll(self):
         assert self.post('BeginDm',{'recovery':'true'})[0] == 302
         status,screen,_ = self.request('/secure-access/physical');assert status == 200
         code = re.search(r'data-physical-code="([^"]+)"',screen)[1]
-        assert code not in self.request('/secure-access')[1]
+        assert code not in self.request('/secure-access/manual')[1]
         assert self.post('Redeem',{'Code':code},origin='https://'+HOST+':5999')[0] == 403
         status,_,headers = self.post('Redeem',{'Code':code});assert status == 302
         secure = [value.lower() for name,value in headers if name.lower() == 'set-cookie' and value.startswith('__Host-InitiativeTracker.SecureAccess=')]
         assert len(secure) == 1 and all(flag in secure[0] for flag in ['secure','httponly','samesite=strict','path=/']) and 'domain=' not in secure[0]
-        assert 'Authorized as DM' in self.request('/secure-access')[1]
+        assert 'Authorized as DM' in self.request('/secure-access/manual')[1]
         assert self.post('Redeem',{'Code':code})[0] == 403
 
 
@@ -152,7 +152,7 @@ def media(session):
     assert upload(b'<svg onload="bad()"/>') == 400
     assert session.request(BANNER,binary=True)[1] == saved
     assert session.request('/api/coordination/enroll',{})[0] == 403
-    _,page,_ = session.request('/secure-access')
+    _,page,_ = session.request('/secure-access/manual')
     grant = re.search(r'name="id" value="([^"]+)"',page)[1]
     assert session.post('Revoke',{'id':grant})[0] == 302
     assert session.request(BANNER)[0] == 403
@@ -196,7 +196,7 @@ def hub():
         expected = f.leaf_fingerprint((ROOT/'first.pem').read_bytes())
         f.wait_for_probe(lambda h,p,g,leaf:probe(g,leaf),HOST,5445,first,expected)
         replay = Session();replay.cookies = dict(old.cookies)
-        assert 'Authorized as DM' not in replay.request('/secure-access')[1]
+        assert 'Authorized as DM' not in replay.request('/secure-access/manual')[1]
         assert replay.request(EDITOR)[0] == 403
         session = Session();session.enroll()
         for address in ['127.0.0.1','::1']:
@@ -224,7 +224,7 @@ def hub():
         else:raise AssertionError('Unacknowledged candidate activated')
         stop_app(process);process = start_app()
         f.wait_for_probe(lambda h,p,g,leaf:probe(g,leaf),HOST,5445,second,f.leaf_fingerprint((ROOT/'second.pem').read_bytes()))
-        assert 'Authorized as DM' in session.request('/secure-access')[1]
+        assert 'Authorized as DM' in session.request('/secure-access/manual')[1]
         assert session.request(BANNER,binary=True)[1] == saved_banner
         # Existing HTTP recovery still responds; spoofing cannot grant secure access.
         connection = http.client.HTTPConnection('127.0.0.1',15491,timeout=3)
@@ -258,7 +258,7 @@ def remote(hotspot=False):
     for address in ([HOTSPOT] if hotspot else [V4,V6]):
         session = Session(address)
         assert session.request('/system/health')[0] == 200
-        assert session.request('/secure-access')[0] == 200
+        assert session.request('/secure-access/manual')[0] == 200
         for method in ['GET','POST']:
             assert session.request('/secure-access/physical',method=method)[0] == 403
         assert session.request('/system/health',authority=HOST+':5445')[0] == 421

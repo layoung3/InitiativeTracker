@@ -96,7 +96,7 @@ def verify_n9(host, context, cookies, auth_request, auth_post):
     assert upload(b'<svg onload="alert(1)"/>')[0] == 400
     assert request(host, context, cookies, banner)[2] == saved
     assert hashlib.sha256(request(host, context, cookies, '/branding/logo')[2]).hexdigest() == '17822fd1b2b7f54f3b084ce19b24d51f50f30e0495529ba8679586145def40b1'
-    status, page = auth_request('/secure-access'); assert status == 200
+    status, page = auth_request('/secure-access/manual'); assert status == 200
     grant_id = re.search(r'name="id" value="([^"]+)"', page)[1]
     assert auth_post('Revoke', {'id': grant_id})[0] == 302
     assert request(host, context, cookies, banner)[0] == 403

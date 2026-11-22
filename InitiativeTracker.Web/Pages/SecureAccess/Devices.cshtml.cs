@@ -26,7 +26,7 @@ public sealed class DevicesModel(SecureAccessService access) : PageModel
     public async Task<IActionResult> OnGetAsync()
     {
         var actor = await Infrastructure.SecureAccess.Current(HttpContext);
-        if (actor is null) return StatusCode(403);
+        if (actor is null || actor.Identity.Role != "Player") return StatusCode(403);
         Grant = actor;
         Browsers = access.Remembered(actor);
         return Page();
@@ -38,6 +38,7 @@ public sealed class DevicesModel(SecureAccessService access) : PageModel
         {
             var actor = await Infrastructure.SecureAccess.Current(HttpContext)
                 ?? throw new SecureAccessDenied();
+            if (actor.Identity.Role != "Player") throw new SecureAccessDenied();
             access.Remember(actor, label);
             Infrastructure.SecureAccess.ExtendRememberedBrowserCookie(HttpContext);
             return RedirectToPage();
@@ -52,6 +53,7 @@ public sealed class DevicesModel(SecureAccessService access) : PageModel
         {
             var actor = await Infrastructure.SecureAccess.Current(HttpContext)
                 ?? throw new SecureAccessDenied();
+            if (actor.Identity.Role != "Player") throw new SecureAccessDenied();
             var ownBrowser = access.Remembered(actor).Any(item =>
                 item.Id == id && item.Browser == actor.Browser && item.Identity == actor.Identity);
             access.RevokeRemembered(actor, id);
