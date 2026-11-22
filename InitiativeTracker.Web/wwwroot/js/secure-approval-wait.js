@@ -20,6 +20,9 @@
         const save = preferenceForm.querySelector('[data-preference-save]');
         const persist = async () => {
             if (savingPreference) return;
+            // Capture the checked value BEFORE disabling the checkbox:
+            // disabled form inputs are omitted by FormData.
+            const choice = new URLSearchParams(new FormData(preferenceForm));
             savingPreference = true;
             checkbox.disabled = true;
             save.disabled = true;
@@ -28,7 +31,7 @@
                 const response = await fetch(preferenceForm.action, {
                     method: 'POST', credentials: 'same-origin', cache: 'no-store',
                     redirect: 'follow', headers: {'Content-Type':'application/x-www-form-urlencoded'},
-                    body: new URLSearchParams(new FormData(preferenceForm))
+                    body: choice
                 });
                 if (!response.ok || new URL(response.url).origin !== location.origin)
                     throw new Error('Preference rejected');
