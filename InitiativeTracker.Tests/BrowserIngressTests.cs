@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Security.Authentication;
 using InitiativeTracker.Web.Infrastructure;
 using Microsoft.AspNetCore.Connections.Features;
@@ -25,11 +26,48 @@ public sealed class BrowserIngressTests
     {
         Assert.Equal(0,level);Assert.Equal(80,option);Assert.Equal(16,buffer.Length);value.CopyTo(buffer,0);return value.Length;
     })!;
+    // Never reserve the production HTTPS listener port from a unit test. WSL
+    // operators commonly keep the local test server bound to 5445 while
+    // rerunning the suite. The kernel assigns this isolated socket fixture a
+    // free port; test-only classification below models the canonical 5445 port.
     private static void Accepted(Action<Socket> test)
     {
-        using var listener = new TcpListener(IPAddress.Loopback,5445);listener.Start();
-        using var client = new Socket(AddressFamily.InterNetwork,SocketType.Stream,ProtocolType.Tcp);
-        client.Connect(listener.LocalEndpoint);using var accepted = listener.AcceptSocket();test(accepted);
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        client.Connect(listener.LocalEndpoint);
+        using var accepted = listener.AcceptSocket();
+        test(accepted);
+    }
+
+    // The production implementation has no public or internal constructor
+    // that lets a request forge socket provenance. The only positive
+    // canonical-port fixtures use a PRIVATE constructor via test reflection;
+    // the source snapshot must first have been captured from a real accepted
+    // loopback socket. No synthetic ingress is ever created by application
+    // handlers or middleware.
+    private static BrowserIngress AtCanonicalBackendPort(Socket accepted, BrowserIngress captured)
+    {
+        var local = (IPEndPoint)accepted.LocalEndPoint!;
+        var peer = (IPEndPoint)accepted.RemoteEndPoint!;
+        Assert.Equal(local.Port, captured.LocalPort);
+        Assert.Equal(local.Address.ToString(), captured.LocalAddress);
+        Assert.Equal(peer.Address.ToString(), captured.PeerAddress);
+        Assert.NotEqual(5445, local.Port);
+        Assert.False(captured.Canonical);
+
+        var constructor = typeof(BrowserIngress).GetConstructor(
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types: [typeof(IPEndPoint), typeof(IPEndPoint), typeof(IPEndPoint)],
+            modifiers: null) ?? throw new InvalidOperationException("BrowserIngress private socket snapshot constructor changed.");
+        var original = captured.OriginalPort is int port
+            ? new IPEndPoint(IPAddress.Parse(captured.OriginalAddress!), port)
+            : null;
+        return (BrowserIngress)constructor.Invoke(new object?[]
+        {
+            new IPEndPoint(local.Address, 5445), peer, original
+        });
     }
     private static DefaultHttpContext Context(BrowserIngress? ingress = null)
     {
@@ -91,7 +129,8 @@ public sealed class BrowserIngressTests
         {
             foreach (var bytes in new[] { Array.Empty<byte>(), Address("127.0.0.1",5445), Address("192.168.1.1",443) })
             {
-                var ingress = Capture(socket,bytes);context.Features.Set(ingress);
+                var ingress = AtCanonicalBackendPort(socket, Capture(socket, bytes));
+                context.Features.Set(ingress);
                 Assert.False(ingress.Canonical);Assert.False(ingress.Physical);Assert.False(store.MatchesCanonicalTransport(context));
             }
         });
@@ -102,7 +141,9 @@ public sealed class BrowserIngressTests
         using var store = Store();Assert.Equal("https://"+Host,store.Origin);
         Accepted(socket =>
         {
-            var bytes = Address("127.0.0.1",443);var ingress = Capture(socket,bytes);Array.Clear(bytes);
+            var bytes = Address("127.0.0.1", 443);
+            var ingress = AtCanonicalBackendPort(socket, Capture(socket, bytes));
+            Array.Clear(bytes);
             Assert.True(ingress.Canonical);Assert.True(ingress.Physical);
             var context = Context(ingress);Assert.True(store.MatchesCanonicalTransport(context));
             context.Request.Host = new(Host,5445);Assert.False(store.MatchesCanonicalTransport(context));
@@ -118,7 +159,8 @@ public sealed class BrowserIngressTests
     {
         using var store = Store();Accepted(socket =>
         {
-            var ingress = Capture(socket,Address("127.0.0.1",5445));var context = Context(ingress);
+            var ingress = AtCanonicalBackendPort(socket, Capture(socket, Address("127.0.0.1", 5445)));
+            var context = Context(ingress);
             foreach (var path in new[] { "/secure-access/physical","/media","/appearance","/system/https-status/","/SYSTEM/https-status","/system/health" })
             { context.Request.Path = path;Assert.False(store.MatchesStatusProbeTransport(context)); }
             context.Request.Path = "/system/https-status";
