@@ -88,7 +88,9 @@ public sealed class SecureN9IntegrationTests
         var state = host.App.Services.GetRequiredService<EncounterStateService>(); state.AddPlayerCharacter(id);
         var combatant = state.CurrentEncounter.Combatants.Single(); state.SetCombatantVisibility(combatant.Id, true, true);
         using var legacy = host.Client(); legacy.Legacy("DM");
-        var token = await legacy.Token("/dm");
+        // Deliberately legacy-only DM: HTTPS DM GET now redirects to secure
+        // approval, so obtain the CSRF token from the public manual page.
+        var token = await legacy.Token("/secure-access/manual");
         var form = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["combatantId"] = combatant.Id.ToString(), ["isHiddenFromPublic"] = "false" };
         Assert.Equal(HttpStatusCode.Forbidden, (await legacy.Send("/dm/?handler=SetVisibility", new FormUrlEncodedContent(form))).StatusCode);
         Assert.True(state.CurrentEncounter.Combatants.Single().IsHiddenFromPublic);

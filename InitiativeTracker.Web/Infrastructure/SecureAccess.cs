@@ -169,6 +169,27 @@ public static class SecureAccess
                 { context.Response.StatusCode = 403; return; }
             }
             if (context.Request.Path.StartsWithSegments("/dm/players") || context.Request.Path.StartsWithSegments("/dm/profiles") || context.Request.Path.StartsWithSegments("/dm/devices")) Headers(context);
+            // A trusted-HTTPS DM page must never fall back to the ordinary
+            // login cookie after its secure grant expires or is revoked.
+            // Keep the separately gated legacy-HTTP compatibility surface
+            // unchanged until an explicitly approved production cutover.
+            if (origin.TrustedRequest(context) && context.User.IsInRole("DM") &&
+                context.Request.Path.StartsWithSegments("/dm") &&
+                !context.Request.Path.StartsWithSegments("/dm/login"))
+            {
+                Headers(context);
+                var dmGrant = await Current(context);
+                if (dmGrant?.Identity.Role != "DM")
+                {
+                    // A stale browser can explicitly retry approval. Merely
+                    // navigating to /dm must not silently start a new request.
+                    if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+                        context.Response.Redirect("/secure-access/wait");
+                    else
+                        context.Response.StatusCode = 403;
+                    return;
+                }
+            }
             var needsPrivate = PrivateRoute(context.Request);
             var needsAdmin = AdminMutation(context.Request);
             if (needsPrivate || needsAdmin)

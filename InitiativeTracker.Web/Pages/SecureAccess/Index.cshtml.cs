@@ -18,7 +18,6 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
 {
     public bool IsPhysical { get; private set; }
     public bool IsDm { get; private set; }
-    public string BackUrl => IsPhysical ? "/setup" : "/dm/devices";
     public IReadOnlyList<SecurityDeviceRow> Sessions { get; private set; } = [];
     public IReadOnlyList<SecurityDeviceRow> RememberedDevices { get; private set; } = [];
     public IReadOnlyList<SecureEnrollment> Requests { get; private set; } = [];
@@ -89,9 +88,12 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
         try
         {
             var actor = await Authorized();
+            var selfRevoked = actor?.Id == id;
             if (IsPhysical) access.RevokePhysicalSession(id);
             else access.Revoke(actor!, id);
-            return RedirectToPage();
+            // The requesting browser must not land back on its own now-revoked
+            // administrative session. Retry requires an explicit new approval.
+            return selfRevoked ? LocalRedirect("/secure-access/wait") : RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
@@ -102,9 +104,12 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
         try
         {
             var actor = await Authorized();
+            var selfForgotten = actor is not null &&
+                (IsPhysical ? access.PhysicalRemembered() : access.Remembered(actor))
+                    .Any(item => item.Id == id && item.Browser == actor.Browser && item.Identity == actor.Identity);
             if (IsPhysical) access.RevokePhysicalRemembered(id);
             else access.RevokeRemembered(actor!, id);
-            return RedirectToPage();
+            return selfForgotten ? LocalRedirect("/secure-access/wait") : RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }

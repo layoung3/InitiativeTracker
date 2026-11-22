@@ -903,6 +903,131 @@ public sealed class SecureAccessWebTests
         host.DeleteOnDispose();
     }
 
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task CoLocatedPhysicalDmHasDmNavigationWhileUnauthenticatedHubHasSetupNavigation()
+    {
+        using var host = new Host();
+        using var local = host.Client(physical: true);
+        var hub = await local.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, hub.StatusCode);
+        var hubHtml = await hub.Content.ReadAsStringAsync();
+        Assert.Contains("href=\"/setup\">Hub Setup", hubHtml);
+        Assert.DoesNotContain("Back to DM Controls", hubHtml);
+
+        await local.Bootstrap();
+        Assert.Equal(HttpStatusCode.OK, (await local.Send("/dm")).StatusCode);
+        var dm = await local.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, dm.StatusCode);
+        var html = await dm.Content.ReadAsStringAsync();
+        Assert.Contains("href=\"/dm\">Back to DM Controls", html);
+        Assert.Contains("href=\"/dm/devices\">Connected Devices", html);
+        Assert.Contains("DM + Hub", html);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task RevokingOwnDmSessionOnPhysicalHostBlocksDmNavigationUntilExplicitApproval()
+    {
+        using var host = new Host();
+        using var dm = host.Client(physical: true);
+        await dm.Bootstrap();
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/dm")).StatusCode);
+        var grant = Assert.Single(host.Access.Grants());
+        var token = await dm.Token("/secure-access");
+        var revoke = await dm.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = token
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
+        Assert.Equal("/secure-access/wait", revoke.Headers.Location?.ToString());
+        Assert.Empty(host.Access.Grants());
+        foreach (var route in new[] { "/dm", "/dm/devices", "/dm/join", "/dm/players" })
+        {
+            var blocked = await dm.Send(route);
+            Assert.Equal(HttpStatusCode.Redirect, blocked.StatusCode);
+            Assert.Equal("/secure-access/wait", blocked.Headers.Location?.ToString());
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/dm?handler=StartCombat",
+            new FormUrlEncodedContent([]))).StatusCode);
+        var waiting = await dm.Send("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.OK, waiting.StatusCode);
+        Assert.Contains("Approval not completed", await waiting.Content.ReadAsStringAsync());
+        Assert.Empty(host.Access.PhysicalRequests());
+        // Physical loopback recovery remains independently available.
+        var hub = await dm.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, hub.StatusCode);
+        Assert.Contains("href=\"/setup\">Hub Setup", await hub.Content.ReadAsStringAsync());
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task ForgettingOwnRememberedDmBrowserAlsoBlocksLegacyDmPage()
+    {
+        using var host = new Host();
+        using var dm = host.Client(physical: true);
+        await dm.Bootstrap();
+        var grant = Assert.Single(host.Access.Grants());
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await dm.Post("Remember", ("label", "Local test browser"))).StatusCode);
+        var trust = Assert.Single(host.Access.Remembered(grant));
+        var token = await dm.Token("/secure-access");
+        var forgotten = await dm.Send("/secure-access?handler=Forget",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = trust.Id.ToString(), ["__RequestVerificationToken"] = token
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, forgotten.StatusCode);
+        Assert.Equal("/secure-access/wait", forgotten.Headers.Location?.ToString());
+        Assert.Empty(host.Access.Grants());
+        Assert.Empty(host.Access.PhysicalRemembered());
+        var blocked = await dm.Send("/dm");
+        Assert.Equal(HttpStatusCode.Redirect, blocked.StatusCode);
+        Assert.Equal("/secure-access/wait", blocked.Headers.Location?.ToString());
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task RevokedRemoteDmCannotUseLegacyCookieAndOtherDmRetainsAccess()
+    {
+        using var host = new Host();
+        using var first = host.Client(); await first.Bootstrap();
+        using var second = host.Client(); second.Legacy("DM");
+        await second.Bootstrap(recovery: false);
+        Assert.Equal(HttpStatusCode.OK, (await second.Send("/dm")).StatusCode);
+        var secondGrant = Assert.Single(host.Access.Grants().Where(g => g.Browser == second.Browser));
+        var token = await first.Token("/secure-access");
+        var revoke = await first.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = secondGrant.Id.ToString(), ["__RequestVerificationToken"] = token
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await first.Send("/dm")).StatusCode);
+        var blocked = await second.Send("/dm");
+        Assert.Equal(HttpStatusCode.Redirect, blocked.StatusCode);
+        Assert.Equal("/secure-access/wait", blocked.Headers.Location?.ToString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await second.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task LegacyDmCookieOnTrustedHttpsRequiresSecureGrantButHttpCompatibilityRemains()
+    {
+        using var host = new Host();
+        using var https = host.Client(); https.Legacy("DM");
+        var blocked = await https.Send("/dm");
+        Assert.Equal(HttpStatusCode.Redirect, blocked.StatusCode);
+        Assert.Equal("/secure-access/wait", blocked.Headers.Location?.ToString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await https.Send("/dm?handler=StartCombat",
+            new FormUrlEncodedContent([]))).StatusCode);
+        using var http = host.Client(http: true); http.Legacy("DM");
+        Assert.Equal(HttpStatusCode.OK, (await http.Send("/dm")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
     public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
     {
@@ -1095,7 +1220,9 @@ public sealed class SecureAccessWebTests
         using (var db = host.Factory.CreateDbContext()) { db.PlayerDeviceCredentials.Single(c => c.Id == owner.Credential).TokenHash = originalHash; db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
         using var legacyDm = host.Client(); legacyDm.Legacy("DM");
-        var token = await legacyDm.Token("/dm/players");
+        // An ordinary DM cookie no longer opens HTTPS DM pages. Obtain a
+        // legitimate antiforgery token elsewhere to exercise the POST gate.
+        var token = await legacyDm.Token("/secure-access/manual");
         var reset = await legacyDm.Send("/dm/players?handler=ResetRecoveryKey", new FormUrlEncodedContent(new Dictionary<string, string> { ["profileId"] = owner.Profile.ToString(), ["__RequestVerificationToken"] = token }));
         Assert.Equal(HttpStatusCode.Forbidden, reset.StatusCode);
         host.DeleteOnDispose();
@@ -1247,7 +1374,7 @@ public sealed class SecureAccessWebTests
     public async Task LegacyAdminRoutesCannotUseCapturedCookieAsSensitiveAuthority(string page, string handler)
     {
         using var host = new Host(); using var legacy = host.Client(); legacy.Legacy("DM");
-        var token = await legacy.Token(page);
+        var token = await legacy.Token("/secure-access/manual");
         Assert.Equal(HttpStatusCode.Forbidden, (await legacy.Send(page + "/?handler=" + handler,
             new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["profileId"] = Guid.NewGuid().ToString(), ["id"] = Guid.NewGuid().ToString() }))).StatusCode);
         host.DeleteOnDispose();

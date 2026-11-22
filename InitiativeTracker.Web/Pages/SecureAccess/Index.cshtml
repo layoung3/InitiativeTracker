@@ -19,14 +19,22 @@
             {
                 <a class="btn btn-outline-primary" href="/secure-access/physical">Pending hub approvals</a>
             }
-            <a class="btn btn-outline-secondary" href="@Model.BackUrl">@(Model.IsPhysical ? "Hub Setup" : "Connected Devices")</a>
+            @if (Model.IsDm)
+            {
+                <a class="btn btn-primary" href="/dm">Back to DM Controls</a>
+                <a class="btn btn-outline-secondary" href="/dm/devices">Connected Devices</a>
+            }
+            else if (Model.IsPhysical)
+            {
+                <a class="btn btn-outline-secondary" href="/setup">Hub Setup</a>
+            }
         </div>
     </header>
 
     <div class="security-metrics" aria-label="Security summary">
         <div class="card"><div class="card-body"><strong>@Model.Sessions.Count</strong><span>Active sessions</span></div></div>
         <div class="card"><div class="card-body"><strong>@Model.RememberedDevices.Count</strong><span>Remembered browsers</span></div></div>
-        <div class="card"><div class="card-body"><strong>@(Model.IsPhysical ? "Hub" : "DM")</strong><span>Management access</span></div></div>
+        <div class="card"><div class="card-body"><strong>@(Model.IsDm ? (Model.IsPhysical ? "DM + Hub" : "DM") : "Hub")</strong><span>Management access</span></div></div>
     </div>
 
     <nav class="security-tabs" aria-label="Security sections">
