@@ -141,8 +141,8 @@ test('normal DM login and player QR journey wait for hub approval automatically'
         await dm.goto(base + '/secure-access/manual');
         await dm.getByText('This browser is remembered. You can revoke it below.').waitFor();
         await dm.goto(base + '/dm/devices');
-        await dm.getByRole('link', {name:'Remembered Browsers'}).click();
-        await dm.getByRole('heading', {name:'Remembered browsers'}).waitFor();
+        await dm.getByRole('link', {name:'Security & devices'}).click();
+        await dm.getByRole('heading', {name:'Security & Trusted Devices'}).waitFor();
         await dm.getByText('DM browser', {exact:true}).waitFor();
 
         async function joinNew(page, name) {
