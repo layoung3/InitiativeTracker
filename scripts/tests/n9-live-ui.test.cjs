@@ -143,7 +143,7 @@ test('normal DM login and player QR journey wait for hub approval automatically'
         await dm.goto(base + '/dm/devices');
         await dm.getByRole('link', {name:'Security & devices'}).click();
         await dm.getByRole('heading', {name:'Security & Trusted Devices'}).waitFor();
-        await dm.getByText('DM browser', {exact:true}).waitFor();
+        await dm.locator('#rememberedBrowsers').getByText('DM browser', {exact:true}).first().waitFor();
 
         async function joinNew(page, name) {
             await page.goto(base + '/join');
