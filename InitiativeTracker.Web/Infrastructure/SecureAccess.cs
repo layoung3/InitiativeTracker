@@ -21,6 +21,11 @@ public static class SecureAccess
     public const string Scheme = "SecureFeature";
     public const string Cookie = "__Host-InitiativeTracker.SecureAccess";
     public const string BrowserCookie = "__Host-InitiativeTracker.SecureBrowser";
+    // FreshLoginClaim is set only by verified primary sign-in. Elevated
+    // ordinary cookies instead carry GrantedLoginClaim and cannot reuse
+    // their own remembered trust after active-session revocation.
+    public const string FreshLoginClaim = "tracker_fresh_primary_login";
+    public const string GrantedLoginClaim = "tracker_elevated_grant";
     private static readonly string[] IdentityClaims = [ClaimTypes.Role, "session_id", "player_profile_id", "player_id", "player_device_id", "device_id"];
 
     public static void Configure(WebApplicationBuilder builder, string dataDirectory)
@@ -63,8 +68,25 @@ public static class SecureAccess
         if (!create || !context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>().TrustedRequest(context)) return null;
         value = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         context.Response.Cookies.Append(BrowserCookie, value, new CookieOptions
-        { Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/", IsEssential = true, MaxAge = TimeSpan.FromHours(12) });
+        { Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/", IsEssential = true, MaxAge = TimeSpan.FromDays(30) });
         return SecureAccessService.Hash(value);
+    }
+    // Upgrade the cookie from a previously installed 12-hour browser binding to
+    // the approved 30-day lifetime only after an explicit persisted opt-in.
+    // The raw token is read from the HTTPS request and sent only as a host-only
+    // Secure/HttpOnly response cookie; no server state stores its plaintext.
+    public static void ExtendRememberedBrowserCookie(HttpContext context)
+    {
+        var origin = context.RequestServices.GetRequiredService<ITrustedBrowserOrigin>();
+        if (!origin.TrustedRequest(context) ||
+            !context.Request.Cookies.TryGetValue(BrowserCookie, out var raw) ||
+            raw.Length != 64 || !raw.All(Uri.IsHexDigit))
+            throw new SecureAccessDenied();
+        context.Response.Cookies.Append(BrowserCookie, raw, new CookieOptions
+        {
+            Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict,
+            Path = "/", IsEssential = true, MaxAge = TimeSpan.FromDays(30)
+        });
     }
     public static SecureGrant? Ticket(HttpContext context, ClaimsPrincipal? principal)
     {
@@ -92,9 +114,16 @@ public static class SecureAccess
         var properties = new AuthenticationProperties { IsPersistent = true, ExpiresUtc = grant.Expires, AllowRefresh = false };
         // Fresh physical/approved authority also supplies the ordinary principal needed by
         // existing gameplay handlers, without changing any other browser's credentials.
-        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-            SecureAccessService.Principal(grant.Identity, CookieAuthenticationDefaults.AuthenticationScheme), properties);
+        var ordinary = SecureAccessService.Principal(grant.Identity, CookieAuthenticationDefaults.AuthenticationScheme);
+        ((ClaimsIdentity)ordinary.Identity!).AddClaim(new(GrantedLoginClaim, grant.Id.ToString()));
+        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ordinary, properties);
         await context.SignInAsync(Scheme, secure, properties);
+    }
+    // Do not remove the separate 30-day remembered-browser token.
+    public static async Task SignOutActive(HttpContext context)
+    {
+        await context.SignOutAsync(Scheme);
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     }
     public static void Headers(HttpContext context)
     {
@@ -120,7 +149,7 @@ public static class SecureAccess
             return handler is not ("ENDTURN" or "ADJUSTHP" or "SETHP" or "SETTEMPORARYHP" or "TOGGLEINSPIRATION" or "SETEXHAUSTION" or
                 "TOGGLECONDITION" or "ADDCUSTOMCONDITION" or "REMOVECONDITION" or "ADJUSTSPELLSLOT" or "RESTOREALLSPELLSLOTS" or
                 "CASTSPELL" or "ENDCONCENTRATION" or "TOGGLESPELLPREPARED" or "TOGGLEINVENTORYITEMEQUIPPED" or "ADJUSTINVENTORYITEMQUANTITY");
-        return IsPage(request, "/Player/Index", "/player") && handler is "CREATECHARACTER" or "ADDCHARACTER" or "REGENERATERECOVERYKEY";
+        return IsPage(request, "/Player/Index", "/player") && handler is "CREATECHARACTER" or "ADDCHARACTER" or "REGENERATERECOVERYKEY" or "RENAMEPROFILE";
     }
     private static bool AdminMutation(HttpRequest request) => !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) &&
         (request.Path.StartsWithSegments("/dm/players") || request.Path.StartsWithSegments("/dm/profiles") || request.Path.StartsWithSegments("/dm/devices") ||
@@ -152,6 +181,45 @@ public static class SecureAccess
                 { context.Response.StatusCode = 403; return; }
             }
             if (context.Request.Path.StartsWithSegments("/dm/players") || context.Request.Path.StartsWithSegments("/dm/profiles") || context.Request.Path.StartsWithSegments("/dm/devices")) Headers(context);
+            // A trusted-HTTPS DM page must never fall back to the ordinary
+            // login cookie after its secure grant expires or is revoked.
+            // Keep the separately gated legacy-HTTP compatibility surface
+            // unchanged until an explicitly approved production cutover.
+            if (origin.TrustedRequest(context) && context.User.IsInRole("DM") &&
+                context.Request.Path.StartsWithSegments("/dm") &&
+                !context.Request.Path.StartsWithSegments("/dm/login"))
+            {
+                Headers(context);
+                var dmGrant = await Current(context);
+                if (dmGrant?.Identity.Role != "DM")
+                {
+                    // A stale browser can explicitly retry approval. Merely
+                    // navigating to /dm must not silently start a new request.
+                    if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+                        context.Response.Redirect("/secure-access/wait");
+                    else
+                        context.Response.StatusCode = 403;
+                    return;
+                }
+            }
+            // A stale elevated player/display cookie must not retain page
+            // or new SignalR handshake access after its secure grant ends.
+            // Existing HTTP compatibility remains separately gated.
+            if (origin.TrustedRequest(context) &&
+                context.User.HasClaim(c => c.Type == GrantedLoginClaim) &&
+                (context.Request.Path.StartsWithSegments("/player") ||
+                 context.Request.Path.StartsWithSegments("/display") ||
+                 context.Request.Path.StartsWithSegments("/hubs/encounter")) &&
+                await Current(context) is null)
+            {
+                Headers(context);
+                if ((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
+                    !context.Request.Path.StartsWithSegments("/hubs/encounter"))
+                    context.Response.Redirect("/secure-access/wait");
+                else
+                    context.Response.StatusCode = 403;
+                return;
+            }
             var needsPrivate = PrivateRoute(context.Request);
             var needsAdmin = AdminMutation(context.Request);
             if (needsPrivate || needsAdmin)

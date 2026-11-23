@@ -297,6 +297,22 @@ public sealed class N7WebTests : IDisposable
     }
 
     [Fact]
+    public async Task DmEncounterContextAppearsBelowControlsWithoutDuplicateStatus()
+    {
+        SignIn("DM");
+        var response = await client.GetAsync("/dm");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        var header = html.IndexOf("class=\"dm-header", StringComparison.Ordinal);
+        var status = html.IndexOf("class=\"dm-turn-context", StringComparison.Ordinal);
+        Assert.True(header >= 0 && status > header, "Encounter status must follow the DM Controls header.");
+        Assert.Single(Regex.Matches(html, "class=\"dm-turn-context"));
+        Assert.Contains("Encounter Setup", html);
+        Assert.DoesNotContain("dm-encounter-summary", html);
+        Assert.DoesNotContain("Security and trusted devices", html);
+    }
+
+    [Fact]
     public async Task SetupRejectsNonLoopbackRequests()
     {
         // TestServer has no loopback remote address; no secret material should render.

@@ -124,10 +124,12 @@ switching from hostname to IP can require pairing again even for the same hub.
 Revocation, session changes, expiry, cleared cookies or restored old data can also
 require pairing again. Pairing is persistent, not irrevocable.
 
-The local Setup display QR currently uses `/display/connect?token=...`, a
-session-token shortcut; it does not create a registered device ID. Use the
-`/display/pair` approval flow for managed satellites. Do not save the Setup token
-in autostart, bookmarks, screenshots or this documentation.
+The local Setup display QR still uses `/display/connect?token=...` as the
+invitation URL, but a valid token now opens `/display/pair` for explicit DM
+approval instead of issuing an unregistered Display cookie. Once paired, the
+display has a trusted device ID. It still needs separate trusted-HTTPS secure
+approval before viewing private media. Do not save the Setup token in autostart,
+bookmarks, screenshots or this documentation.
 
 Only after separately approved fresh-device startup/reboot acceptance, test the next desktop session/boot. Expected: desktop autologin,
 fullscreen display and the same trusted device, without typing a pairing code.

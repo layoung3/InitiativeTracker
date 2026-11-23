@@ -1,5 +1,6 @@
 ﻿@page "/setup"
 @model InitiativeTracker.Web.Pages.Setup.IndexModel
+@inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
 @{
     ViewData["Title"] = "Tracker Setup";
 }
@@ -9,7 +10,13 @@
 <div class="setup-dashboard">
     <header class="setup-heading">
         <div><partial name="_Brand" /><h1 class="h5 mt-3">Hub setup and quick access</h1></div>
-        <a href="/display" class="btn btn-primary">Open Display</a>
+        <div class="setup-heading-actions">
+            @if (SecureOrigin.Physical(ViewContext.HttpContext))
+            {
+                <a href="/secure-access" class="btn btn-outline-primary">Security &amp; devices</a>
+            }
+            <a href="/display" class="btn btn-primary">Open Display</a>
+        </div>
     </header>
     <div class="setup-grid">
         <section class="card"><div class="card-body">
@@ -41,7 +48,7 @@
             <h2>Connect a display</h2>
             <img src="@Model.DisplayQrDataUri" alt="Connect a display device" class="setup-qr" />
             <p>Scan on a satellite, laptop or display device.</p>
-            <a href="@Model.DisplayPairingUrl" class="btn btn-outline-primary">Display Pairing</a>
+            <a href="@Model.LocalDisplayPairingUrl" class="btn btn-outline-primary">Display Pairing</a>
         </div></section>
     </div>
     <section class="card setup-network"><div class="card-body">
@@ -51,13 +58,8 @@
             <p>On the same network, scan to review status or join external Wi-Fi. DM login required.</p>
             <p class="small text-break mb-0">@Model.NetworkPageUrl</p>
         </div>
-        <a href="/dm/network" class="btn btn-outline-primary">Open Network Status</a>
+        <a href="/setup/network-status" class="btn btn-outline-primary">Open Network Status</a>
     </div></section>
 </div>
 
-@inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
-@if (SecureOrigin.Enabled) {
-    <section class="card p-3 my-3"><h2>Secure authorization</h2>
-    <p>Open the trusted HTTPS authorization screen on this hub. Codes are displayed only there, after local loopback resolution is configured.</p>
-    <a class="btn btn-primary" href="@(SecureOrigin.Origin + "/secure-access/physical")">Open secure physical screen</a></section>
-}
+

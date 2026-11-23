@@ -1,4 +1,5 @@
 using InitiativeTracker.Web.Data;
+using InitiativeTracker.Web.Infrastructure;
 using InitiativeTracker.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,19 +19,20 @@ public class IndexModel : PageModel
     private readonly GameSessionService
         _gameSession;
 
-    private readonly PlayerRegistryService
-        _playerRegistry;
+    private readonly PlayerRegistryService _playerRegistry;
+    private readonly ITrustedBrowserOrigin _secureOrigin;
 
-    public IndexModel(
-        GameSessionService gameSession,
-        PlayerRegistryService playerRegistry)
+    public IndexModel(GameSessionService gameSession, PlayerRegistryService playerRegistry,
+        ITrustedBrowserOrigin secureOrigin)
     {
-        _gameSession =
-            gameSession;
-
-        _playerRegistry =
-            playerRegistry;
+        _gameSession = gameSession;
+        _playerRegistry = playerRegistry;
+        _secureOrigin = secureOrigin;
     }
+
+    // New profiles must see their one-time recovery key before requesting approval.
+    public string ContinueUrl => _secureOrigin.TrustedRequest(HttpContext)
+        ? "/secure-access/wait?start=true" : "/player";
 
     [BindProperty]
     public string PlayerName { get; set; } =
@@ -243,8 +245,9 @@ public class IndexModel : PageModel
         }
 
 
-        return RedirectToPage(
-            "/Player/Index");
+        return _secureOrigin.TrustedRequest(HttpContext)
+            ? RedirectToPage("/SecureAccess/Wait", new { start = true })
+            : RedirectToPage("/Player/Index");
     }
 
 

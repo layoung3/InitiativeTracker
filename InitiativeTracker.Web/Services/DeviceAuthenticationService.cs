@@ -1,4 +1,5 @@
 ﻿using InitiativeTracker.Web.Data;
+using InitiativeTracker.Web.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using System.Security.Claims;
@@ -26,7 +27,10 @@ public static class DeviceAuthenticationService
 
             new(
                 "session_id",
-                session.SessionId.ToString())
+                session.SessionId.ToString()),
+            // New only after a successful DM PIN, player join/recovery or
+            // approved display pair; secure elevation deliberately drops it.
+            new(SecureAccess.FreshLoginClaim, Guid.NewGuid().ToString("N"))
             };
 
         if (deviceId.HasValue)

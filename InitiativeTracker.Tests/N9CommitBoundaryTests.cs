@@ -123,8 +123,8 @@ public sealed class N9CommitBoundaryTests
                 fixture.PreviousName = db.PresentationSettings.Single().ApplicationName;
             }
             fixture.PreviousFiles = Directory.GetFiles(fixture.Store.DirectoryPath).ToDictionary(path => Path.GetFileName(path)!, File.ReadAllBytes);
-            fixture.DmToken = await dm.Token("/secure-access");
-            fixture.PlayerToken = await player.Token("/secure-access");
+            fixture.DmToken = await dm.Token("/secure-access/manual");
+            fixture.PlayerToken = await player.Token("/secure-access/manual");
             fixture.DmGrant = host.Access.Grants().Single(grant => grant.Browser == dm.Browser).Id;
             fixture.PlayerGrant = host.Access.Grants().Single(grant => grant.Browser == player.Browser).Id;
             return fixture;

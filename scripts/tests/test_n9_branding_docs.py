@@ -27,6 +27,15 @@ def procedure():
     exec(compile(code, str(GUIDE), 'exec'), namespace)
     return namespace
 
+def pinned_source(path):
+    # Branding maintenance is deliberately pinned to the historical N9
+    # component set. Tests must exercise those bytes, not whichever newer
+    # kiosk implementation happens to exist in the development checkout.
+    pin = procedure()['PIN']
+    return subprocess.run(
+        ['git', '-c', 'safe.directory=' + str(ROOT), 'show', pin + ':' + path],
+        cwd=ROOT, check=True, capture_output=True).stdout
+
 class BrandingDocumentationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='n9-brand-docs-')
@@ -48,7 +57,9 @@ class BrandingDocumentationTests(unittest.TestCase):
         files={'initiativetracker-hub-launch':ROOT/'hub-updater/runtime/initiativetracker-hub-launch'} if role=='hub' else {'kiosk.py':ROOT/'scripts/installation/kiosk.py','waiting.html':ROOT/'scripts/installation/templates/waiting.html'}
         if supervised: files['kiosk.py']=ROOT/'scripts/installation/kiosk.py'
         for name,source in files.items():
-            shutil.copyfile(source,local/name); (local/name).chmod(0o644 if name=='waiting.html' else 0o755)
+            relative = source.relative_to(ROOT).as_posix()
+            (local/name).write_bytes(pinned_source(relative))
+            (local/name).chmod(0o644 if name=='waiting.html' else 0o755)
         auto=self.home/'.config/labwc/autostart';auto.parent.mkdir(parents=True,mode=0o700)
         config=self.home/f'.config/initiativetracker-{role}/kiosk.json'
         if role=='satellite' or supervised:
@@ -140,7 +151,7 @@ class BrandingDocumentationTests(unittest.TestCase):
         finally:os.umask(previous)
     def test_pin_and_all_asset_component_hashes_match_merged_master(self):
         for key,path in [('PNG','InitiativeTracker.Web/wwwroot/images/colophon.png'),('LAUNCH','hub-updater/runtime/initiativetracker-hub-launch'),('KIOSK','scripts/installation/kiosk.py'),('WAIT','scripts/installation/templates/waiting.html')]:
-            self.assertEqual(self.api[key],hashlib.sha256((ROOT/path).read_bytes()).hexdigest())
+            self.assertEqual(self.api[key],hashlib.sha256(pinned_source(path)).hexdigest())
         self.assertEqual('d9470510eba7af584d5c8f8ba05250d275979a62',self.api['PIN'])
     def test_existing_and_absent_assets_round_trip_for_both_roles_and_supervised_hub(self):
         for role,supervised,exists in [('hub',False,True),('hub',True,False),('satellite',False,True),('satellite',False,False)]:

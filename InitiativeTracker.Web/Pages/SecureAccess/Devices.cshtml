@@ -1,0 +1,77 @@
+@page "/secure-access/devices"
+@model InitiativeTracker.Web.Pages.SecureAccess.DevicesModel
+@inject InitiativeTracker.Web.Services.BrandingService Branding
+@{
+    ViewData["Title"] = "Remembered browsers";
+}
+<div class="container py-4" style="max-width:740px">
+    <div class="mb-4"><partial name="_Brand" /></div>
+    <h1 class="h3">Remembered browsers</h1>
+    <p class="text-body-secondary">
+        Secure approval lasts up to 12 hours. You may separately remember a browser
+        for 30 days on a device you control, tied to this game, role, and browser.
+        Remembered approval ends if the game session or relevant credentials change.
+    </p>
+    @if (Model.Grant is { } grant)
+    {
+        var current = Model.Browsers.FirstOrDefault(item => item.Browser == grant.Browser &&
+            item.Identity == grant.Identity);
+        <section class="card mb-4" aria-label="Current browser trust">
+            <div class="card-body">
+                <h2 class="h5">This browser</h2>
+                @if (current is not null)
+                {
+                    <p role="status">Remembered until @current.Expires.ToLocalTime().ToString("g").</p>
+                }
+                else if (grant.Restored)
+                {
+                    <p role="status">This session was restored from remembered trust.
+                        Extending trust requires a fresh approval.</p>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="Remember" class="d-grid gap-2">
+                        <label for="rememberLabel">Name this browser</label>
+                        <input id="rememberLabel" class="form-control" name="label"
+                               value="My browser" maxlength="48" required autocomplete="off" />
+                        <button class="btn btn-outline-primary" type="submit">
+                            Remember this browser for 30 days
+                        </button>
+                    </form>
+                }
+            </div>
+        </section>
+
+        <section class="card" aria-label="Remembered browser list">
+            <div class="card-body">
+                <h2 class="h5">Approved browsers</h2>
+                @if (Model.Browsers.Count == 0)
+                {
+                    <p class="text-body-secondary">No browsers are remembered.</p>
+                }
+                @foreach (var item in Model.Browsers)
+                {
+                    <div class="border-top py-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                        <div>
+                            <strong>@item.Label</strong>
+                            @if (item.Browser == grant.Browser && item.Identity == grant.Identity)
+                            {
+                                <span class="small text-body-secondary">· This browser</span>
+                            }
+                            <div class="small text-body-secondary">
+                                @item.Identity.Role · Expires @item.Expires.ToLocalTime().ToString("g")
+                            </div>
+                        </div>
+                        <form method="post" asp-page-handler="Forget"
+                              onsubmit="return confirm('Forget this approved browser? It will need approval again.');">
+                            <input type="hidden" name="id" value="@item.Id" />
+                            <button class="btn btn-outline-danger btn-sm" type="submit">Forget</button>
+                        </form>
+                    </div>
+                }
+            </div>
+        </section>
+        <a class="btn btn-link mt-3" href="@Model.ReturnUrl">Back to @(grant.Identity.Role == "DM" ? "Connected Devices" :
+            grant.Identity.Role == "Player" ? "My Characters" : "Display")</a>
+    }
+</div>

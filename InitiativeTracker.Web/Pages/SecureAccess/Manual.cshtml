@@ -1,0 +1,83 @@
+@page "/secure-access/manual"
+@model InitiativeTracker.Web.Pages.SecureAccess.ManualModel
+@{ Layout = null; }
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Advanced manual authorization</title>
+<style>body{font:1rem system-ui;background:#111827;color:#eee;margin:2rem auto;padding:1rem;max-width:48rem}input,button{font:inherit;padding:.7rem;margin:.3rem;max-width:90%}a{color:#8cf}form{margin:1rem 0}section{padding:1rem;border:1px solid #567;margin:1rem 0;overflow-wrap:anywhere}</style></head><body>
+<h1>Secure access</h1>
+<p>Existing gameplay login and pairing continue separately. Private images and sensitive management require fresh authorization.</p>
+@if (Model.Grant is { } grant) {
+<section><h2>Authorized as @grant.Identity.Role</h2><p>Expires @grant.Expires.ToString("u"). Browser access is restricted to this hub and game session.</p>
+<form method="post" asp-page-handler="Revoke"><input type="hidden" name="id" value="@grant.Id"><button>Revoke this secure session</button></form></section>
+<section aria-label="Remembered browser management">
+<h2>Remembered browsers</h2>
+<p>Secure sessions last up to 12 hours. You can explicitly remember this browser for 30 days to restore access across weekly games, provided its original game session, role and credentials remain valid. A remembered browser is a sensitive sign-in credential: use this only on a device you control.</p>
+@if (grant.Restored)
+{
+<p role="status">This session was restored from remembered trust. Its 30-day trust cannot be extended without a fresh physical or DM approval.</p>
+}
+else if (Model.TrustedBrowsers.Any(item => item.Browser == grant.Browser && item.Identity == grant.Identity))
+{
+<p role="status">This browser is remembered. You can revoke it below.</p>
+}
+else
+{
+<form method="post" asp-page-handler="Remember">
+    <label>Browser label <input name="label" value="My browser" maxlength="48" required autocomplete="off"></label>
+    <button type="submit">Remember this browser for 30 days</button>
+</form>
+}
+@if (Model.TrustedBrowsers.Count == 0) { <p>No remembered browsers.</p> }
+@foreach (var item in Model.TrustedBrowsers)
+{
+<form method="post" asp-page-handler="ForgetRemembered">
+<input type="hidden" name="id" value="@item.Id">
+<span><strong>@item.Label</strong> · @item.Identity.Role · @item.Identity.Profile @item.Identity.Display · expires @item.Expires.ToString("u")</span>
+<button type="submit">Forget browser</button>
+</form>
+}
+<p>Forgetting a browser also revokes its active secure sessions. DM authorization or device recovery invalidates remembered approvals when the relevant identities change.</p>
+</section>
+}
+@if (!Model.Initialized) { <p>Secure approval state is not initialized or is unavailable. A fresh physical recovery can create a new approval state; existing gameplay data is retained.</p> }
+<section><h2>DM authorization or recovery</h2>
+<p>Request authorization, then compare the browser reference on the physical hub and tap Approve or Deny. The hub must use its trusted HTTPS physical connection for one-tap approval. A manual code remains available as a fallback; no code is placed in a URL or QR image.</p>
+<form method="post" asp-page-handler="BeginDm"><label><input type="checkbox" name="recovery" value="true"> Initialize or recover: revoke all previous secure approvals</label><button>Request physical DM proof</button></form>
+@if (Model.Pending is { } pending && pending.Purpose.StartsWith("dm-")) {
+<p data-browser-reference="@pending.Reference">Browser reference: <strong>@pending.Reference</strong>. Request expires @pending.Expires.ToString("u").</p>
+<p>On the physical hub, compare this browser reference and tap <strong>Approve browser</strong> or <strong>Deny request</strong>. This browser will finish automatically after approval.</p>
+<form method="post" asp-page-handler="FinishPhysical" id="finishPhysicalApproval" data-physical-approved="@(pending.PhysicalApproved ? "true" : "false")">
+    <button type="submit">Complete physical approval</button>
+</form>
+<details><summary>Manual code fallback</summary>
+<form method="post" asp-page-handler="Redeem"><label>Code from hub screen <input type="password" name="Code" autocomplete="off" maxlength="32" required></label><button>Authorize this browser</button></form></details>
+}
+</section>
+@if (Model.CanEnrollMember) {
+<section><h2>Request approval for this player or display</h2><p>First join or pair normally over trusted HTTPS, then request secure approval. Compare your browser reference and exact player/display identity with the physical hub. A securely authorized DM can also approve this exact request.</p>
+<form method="post" asp-page-handler="BeginMember"><button>Request secure approval</button></form>
+@if (Model.Pending is { } memberPending && memberPending.Purpose.StartsWith("enroll-")) {
+<p data-browser-reference="@memberPending.Reference">Browser reference <strong>@memberPending.Reference</strong>; identity @memberPending.Identity.Profile @memberPending.Identity.Display.</p>
+<p>@(memberPending.PhysicalApproved ? "Physical hub approved. Completing in this exact browser." :
+    memberPending.Approver.HasValue ? "Secure DM approved. Completing in this browser." : "Waiting for physical hub or secure DM approval.")</p>
+<form method="post" asp-page-handler="Finish" id="finishMemberApproval"
+      data-physical-approved="@(memberPending.PhysicalApproved || memberPending.Approver.HasValue ? "true" : "false")">
+    <button>Complete approved enrollment</button>
+</form>
+}
+</section>
+}
+@if (Model.Pending is not null) { <form method="post" asp-page-handler="Cancel"><button>Cancel requests and revoke this browser's secure sessions</button></form> }
+@if (Model.Grant?.Identity.Role == "DM") {
+<section><h2>Approve players and display browsers</h2><p>Verify the requesting person's screen and exact profile/display identity. A familiar name or old pairing token is not sufficient. This approval never enrolls a satellite agent or grants network administration.</p>
+@foreach (var request in Model.Requests) {
+<form method="post" asp-page-handler="Approve"><input type="hidden" name="id" value="@request.Id"><span>@request.Reference · @request.Identity.Role · @request.Identity.Profile @request.Identity.Display</span><button>Approve exact request</button></form>
+}
+<h2>Revoke secure sessions</h2>
+@foreach (var item in Model.Grants) {
+<form method="post" asp-page-handler="Revoke"><input type="hidden" name="id" value="@item.Id"><span>@item.Identity.Role · @item.Identity.Profile @item.Identity.Display · @item.Expires.ToString("u")</span><button>Revoke</button></form>
+}
+</section>
+}
+<p><a href="/secure-access">Refresh status</a> · <a href="/">Gameplay</a></p>
+<script src="/js/physical-approval.js" defer></script>
+</body></html>

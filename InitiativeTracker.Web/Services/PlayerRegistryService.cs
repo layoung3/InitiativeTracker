@@ -651,6 +651,30 @@ public class PlayerRegistryService
     }
 
 
+    // The account display name belongs to the profile, not a particular
+    // browser connection. Update active connection names so the DM's joined
+    // player list and future sign-ins agree with the profile.
+    public void RenameProfile(Guid playerProfileId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Player name is required.", nameof(name));
+        var normalized = name.Trim();
+        if (normalized.Length > 40 || normalized.Any(char.IsControl))
+            throw new ArgumentException("Use a player name of 40 characters or fewer without control characters.", nameof(name));
+
+        lock (_lock)
+        {
+            using var db = _dbContextFactory.CreateDbContext();
+            var profile = db.PlayerProfiles.SingleOrDefault(x => x.Id == playerProfileId)
+                ?? throw new ArgumentException("Player profile was not found.", nameof(playerProfileId));
+            profile.Name = normalized;
+            profile.UpdatedAtUtc = DateTime.UtcNow;
+            foreach (var connection in db.PlayerConnections.Where(x => x.PlayerProfileId == playerProfileId && x.IsActive))
+                connection.Name = normalized;
+            db.SaveChanges();
+        }
+    }
+
     public void RenameDevice(
         Guid playerProfileId,
         Guid credentialId,

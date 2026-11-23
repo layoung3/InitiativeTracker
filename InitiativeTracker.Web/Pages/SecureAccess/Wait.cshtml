@@ -1,0 +1,115 @@
+@page "/secure-access/wait"
+@model InitiativeTracker.Web.Pages.SecureAccess.WaitModel
+@inject InitiativeTracker.Web.Services.BrandingService Branding
+@{
+    Layout = null;
+    var ready = Model.Pending is { PhysicalApproved: true } ||
+        Model.Pending?.Approver.HasValue == true;
+    var isDm = Model.Role == "DM";
+    var roleName = isDm ? "DM" : Model.Role == "Display" ? "display" : "player";
+}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Waiting for approval - @Branding.ApplicationName</title>
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css" />
+    <link rel="stylesheet" href="/css/branding.css" />
+    <style>
+        body { min-height:100dvh; background:var(--bs-tertiary-bg); }
+        .approval-shell { max-width:560px; margin:0 auto; padding:clamp(1.25rem,5vh,4rem) 1rem; }
+        .approval-card { border-radius:1.25rem; box-shadow:0 12px 36px #0001; }
+        .approval-reference { font:700 1.05rem ui-monospace,monospace; letter-spacing:.02em; overflow-wrap:anywhere; }
+    </style>
+</head>
+<body>
+<main class="approval-shell">
+    <section class="card approval-card" aria-labelledby="approvalHeading">
+        <div class="card-body p-4 p-md-5">
+            <div class="mb-4"><partial name="_Brand" /></div>
+            @if (!Model.HasIdentity)
+            {
+                <h1 id="approvalHeading" class="h3">Sign in to continue</h1>
+                <p class="text-body-secondary">Join the game or sign in as DM before requesting approval.</p>
+                <div class="d-grid gap-2">
+                    <a class="btn btn-primary" href="/join">Join as a player</a>
+                    <a class="btn btn-outline-primary" href="/dm/login">DM sign in</a>
+                </div>
+            }
+            else if (Model.AutoBegin)
+            {
+                <h1 id="approvalHeading" class="h3">Preparing approval</h1>
+                <p class="text-body-secondary" role="status">Checking secure authorization for this @roleName browser…</p>
+                <form method="post" asp-page-handler="Begin" data-auto-submit="true">
+                    <button type="submit" class="btn btn-primary w-100">Request approval</button>
+                </form>
+            }
+            else if (Model.Pending is { } pending)
+            {
+                <h1 id="approvalHeading" class="h3">@(ready ? "Approval received" : "Waiting for approval on hub")</h1>
+                <p role="status" aria-live="polite">
+                    @(ready ? "Opening your secure session…" :
+                        "Ask the person at the physical hub to approve this browser. They will see the same reference.")
+                </p>
+                <p class="text-body-secondary mb-1">@(isDm ? "DM" : Model.Role) browser reference</p>
+                <p class="approval-reference p-3 bg-body-tertiary rounded" data-browser-reference="@pending.Reference">@pending.Reference</p>
+                @if (pending.Purpose.StartsWith("enroll-", StringComparison.Ordinal))
+                {
+                    <p class="text-body-secondary small" data-request-identity="true">Player profile @pending.Identity.Profile · Display @pending.Identity.Display</p>
+                }
+                <p class="text-body-secondary small">This request expires at @pending.Expires.ToLocalTime().ToString("t"). Approval is valid only for this browser and identity.</p>
+                @if (!ready)
+                {
+                    <form method="post" asp-page-handler="RememberPreference" data-remember-preference="true"
+                          class="border rounded p-3 mb-3">
+                        <input type="hidden" name="id" value="@pending.Id" />
+                        <label class="form-check mb-1">
+                            <input class="form-check-input" type="checkbox" name="remember" value="true"
+                                   checked="@pending.RememberRequested" />
+                            <span class="form-check-label fw-semibold">Remember this browser for 30 days</span>
+                        </label>
+                        <p class="small text-body-secondary mb-1">Optional. Only use on a device you control. Trust stays bound to this hub, game session and identity and can be revoked.</p>
+                        <button type="submit" class="btn btn-outline-secondary btn-sm mt-1" data-preference-save>Save preference</button>
+                        <p role="status" data-preference-status class="small mt-2 mb-0" aria-live="polite"></p>
+                    </form>
+                }
+                @if (ready)
+                {
+                    <form method="post" asp-page-handler="Finish" data-auto-submit="true">
+                        <button type="submit" class="btn btn-primary w-100">Continue</button>
+                    </form>
+                }
+                else
+                {
+                    <div data-await-approval="true" aria-hidden="true"></div>
+                    <p class="small text-body-secondary">The screen will update automatically. No code or extra page is required.</p>
+                }
+            }
+            else
+            {
+                <h1 id="approvalHeading" class="h3">Approval not completed</h1>
+                <p role="status">The request may have been denied, cancelled or expired. No access was granted.</p>
+                <form method="post" asp-page-handler="Begin">
+                    <button type="submit" class="btn btn-primary w-100">Request approval again</button>
+                </form>
+                @if (Model.Role == "DM")
+                {
+                    <a class="btn btn-link w-100" href="/dm/login">Return to DM sign in</a>
+                }
+                else if (Model.Role == "Display")
+                {
+                    <a class="btn btn-link w-100" href="/display/pair">Return to display pairing</a>
+                }
+                else
+                {
+                    <a class="btn btn-link w-100" href="/join">Return to player join</a>
+                }
+            }
+        </div>
+    </section>
+</main>
+<script src="/js/secure-approval-wait.js" defer></script>
+</body>
+</html>

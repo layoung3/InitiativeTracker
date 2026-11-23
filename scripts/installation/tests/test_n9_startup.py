@@ -24,6 +24,112 @@ class N9StartupTests(unittest.TestCase):
         os.umask(original_umask)
         self.addCleanup(os.umask, original_umask)
 
+    def test_hub_health_probe_uses_fixed_loopback_without_proxy_or_satellite_settings(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock()
+        opener = Mock()
+        opener.open.return_value = response
+        with patch.object(kiosk.urllib.request, 'build_opener', return_value=opener), \
+             patch.object(kiosk.json, 'load', return_value={'status': 'healthy', 'product': 'InitiativeTracker'}):
+            self.assertTrue(kiosk.local_hub_reachable())
+        opener.open.assert_called_once_with('http://127.0.0.1:5000/system/health', timeout=4)
+        opener.open.side_effect = OSError('hub offline')
+        with patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
+            self.assertFalse(kiosk.local_hub_reachable())
+
+    def test_https_kiosk_requires_exact_loopback_dns_and_validated_tls_health(self):
+        settings = {'hub_https_origin': 'https://hub.owner-domain.org'}
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock()
+        opener = Mock()
+        opener.open.return_value = response
+        loopback = [(2, 1, 6, '', ('127.0.0.1', 443)), (10, 1, 6, '', ('::1', 443, 0, 0))]
+        with patch.object(kiosk.socket, 'getaddrinfo', return_value=loopback), \
+             patch.object(kiosk.urllib.request, 'build_opener', return_value=opener), \
+             patch.object(kiosk.json, 'load', return_value={'status': 'healthy', 'product': 'InitiativeTracker'}):
+            self.assertEqual(kiosk.hub_target(settings), 'https://hub.owner-domain.org/setup')
+        opener.open.assert_called_once_with('https://hub.owner-domain.org/system/health', timeout=4)
+
+        with patch.object(kiosk.socket, 'getaddrinfo',
+                          return_value=loopback + [(2, 1, 6, '', ('10.0.0.214', 443))]), \
+             patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
+            self.assertEqual(kiosk.hub_target(settings), 'http://127.0.0.1:5000/setup')
+        with patch.object(kiosk.socket, 'getaddrinfo', return_value=loopback), \
+             patch.object(kiosk.urllib.request, 'build_opener', return_value=opener):
+            opener.open.side_effect = OSError('certificate chain rejected')
+            self.assertEqual(kiosk.hub_target(settings), 'http://127.0.0.1:5000/setup')
+
+    def test_https_kiosk_rejects_unapproved_origins_without_dns_or_network(self):
+        unsafe = [
+            'http://hub.owner-domain.org', 'https://hub.owner-domain.org:5445',
+            'https://hub.owner-domain.org:443', 'https://hub.owner-domain.org/path',
+            'https://hub.owner-domain.org?x=1', 'https://user@hub.owner-domain.org',
+            'https://hub.owner-domain.org#section', 'https://127.0.0.1',
+            'https://hub.local', 'https://hub.owner-domain.org.',
+        ]
+        with patch.object(kiosk.socket, 'getaddrinfo') as dns, \
+             patch.object(kiosk.urllib.request, 'build_opener') as network:
+            for origin in unsafe:
+                with self.subTest(origin=origin):
+                    self.assertEqual(kiosk.hub_target({'hub_https_origin': origin}),
+                                     'http://127.0.0.1:5000/setup')
+            dns.assert_not_called()
+            network.assert_not_called()
+
+    def test_hub_recovery_uses_same_profile_and_never_reruns_updater(self):
+        home = Path('/home/table-player')
+        first = kiosk.command({'role': 'hub'}, home)
+        resume = kiosk.hub_resume_command(home)
+        self.assertEqual(first, [str(home / '.local/lib/initiativetracker-hub/initiativetracker-hub-launch')])
+        self.assertEqual(resume[0], '/usr/bin/chromium')
+        self.assertIn('--kiosk', resume)
+        self.assertIn('--user-data-dir=' + str(home / '.config/initiativetracker-hub/chromium'), resume)
+        self.assertEqual(resume[-1], 'http://127.0.0.1:5000/setup')
+        for forbidden in ['--ignore-certificate-errors', '--no-sandbox', 'initiativetracker-check-update']:
+            self.assertNotIn(forbidden, resume)
+
+    def test_hub_watchdog_recovers_only_after_sustained_outage_and_restored_health(self):
+        child = Mock()
+        child.poll.return_value = None
+        with patch.object(kiosk, 'local_hub_reachable', side_effect=[True, False, False, False, True]) as probe, \
+             patch.object(kiosk.time, 'sleep') as sleep:
+            self.assertTrue(kiosk.watch_hub_child(child, {'role': 'hub'}))
+        self.assertEqual(5, probe.call_count)
+        self.assertEqual(5, sleep.call_count)
+
+    def test_hub_https_failure_restores_local_setup_without_trust_bypass(self):
+        child = Mock()
+        child.poll.return_value = None
+        settings = {'role': 'hub', 'hub_https_origin': 'https://hub.owner-domain.org'}
+        secure = 'https://hub.owner-domain.org/setup'
+        with patch.object(kiosk, 'local_hub_reachable', return_value=True) as http, \
+             patch.object(kiosk, 'verified_hub_https', side_effect=[None, None, None]) as tls, \
+             patch.object(kiosk.time, 'sleep') as sleep:
+            self.assertTrue(kiosk.watch_hub_child(child, settings, secure))
+        self.assertEqual(http.call_count, 3)
+        self.assertEqual(tls.call_count, 3)
+        self.assertEqual(sleep.call_count, 3)
+
+    def test_hub_https_transient_failure_does_not_restart_chromium(self):
+        child = Mock()
+        child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
+        secure = 'https://hub.owner-domain.org/setup'
+        with patch.object(kiosk, 'local_hub_reachable', return_value=True), \
+             patch.object(kiosk, 'verified_hub_https', side_effect=[None, secure, None, secure]), \
+             patch.object(kiosk.time, 'sleep'):
+            self.assertFalse(kiosk.watch_hub_child(child, {'role': 'hub'}, secure))
+
+    def test_hub_watchdog_does_not_restart_on_transient_failure(self):
+        child = Mock()
+        child.poll.side_effect = [None, None, None, None, None, None, None, None, 0]
+        with patch.object(kiosk, 'local_hub_reachable', side_effect=[False, True, False, True]) as probe, \
+             patch.object(kiosk.time, 'sleep') as sleep:
+            self.assertFalse(kiosk.watch_hub_child(child, {'role': 'hub'}))
+        self.assertEqual(4, probe.call_count)
+        self.assertEqual(4, sleep.call_count)
+
     def test_waiting_profile_is_separate_and_local_for_alternate_home(self):
         home = Path('/srv/tables/desktop user')
         wait = kiosk.waiting_command(home)
@@ -90,7 +196,7 @@ class N9StartupTests(unittest.TestCase):
             self.assertFalse(kiosk.reachable(settings))
         self.assertTrue(all(c.args[0].startswith('https://hub.example/') for c in opener.open.call_args_list))
 
-    def launcher(self, failing=False, updater_exit=0):
+    def launcher(self, failing=False, updater_exit=0, secure=False):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
@@ -110,6 +216,15 @@ class N9StartupTests(unittest.TestCase):
         text = text.replace('/usr/bin/chromium', str(root / 'chromium'))
         launch = root / 'launch'
         launch.write_text(text)
+        if secure:
+            config = root / 'alternate-home/.config/initiativetracker-hub'
+            component = root / 'alternate-home/.local/lib/initiativetracker-hub'
+            config.mkdir(parents=True, exist_ok=True)
+            component.mkdir(parents=True, exist_ok=True)
+            (config / 'kiosk.json').write_text('{"role":"hub","hub_https_origin":"https://hub.owner-domain.org"}')
+            # Stub only the already-validated selector; separate unit tests
+            # exercise real DNS/TLS checks, including their failure paths.
+            (component / 'kiosk.py').write_text("print('https://hub.owner-domain.org/setup')\n")
         environment = dict(os.environ, HOME=str(root / 'alternate-home'),
                            PATH=str(root) + ':/usr/bin:/bin', N9_EVENTS=str(log))
         result = subprocess.run(['/bin/bash', '-p', str(launch)], env=environment,
@@ -124,6 +239,15 @@ class N9StartupTests(unittest.TestCase):
         browser = next(x for x in lines if x.startswith('chromium'))
         self.assertIn('--user-data-dir=' + home + '/.config/initiativetracker-hub/chromium', browser)
         self.assertTrue(browser.endswith('http://127.0.0.1:5000/setup'))
+
+    def test_launcher_opt_in_https_preserves_updater_order_and_browser_profile(self):
+        result, lines, home = self.launcher(secure=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        phases = [x.split()[0] for x in lines if x.split()[0] in ('health', 'updater', 'chromium')]
+        self.assertEqual(phases, ['health', 'updater', 'health', 'chromium'])
+        browser = next(x for x in lines if x.startswith('chromium'))
+        self.assertIn('--user-data-dir=' + home + '/.config/initiativetracker-hub/chromium', browser)
+        self.assertTrue(browser.endswith('https://hub.owner-domain.org/setup'))
 
     def test_launcher_health_failure_exits_before_updater_or_chromium(self):
         result, lines, _ = self.launcher(failing=True)

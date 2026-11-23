@@ -1,4 +1,5 @@
 ﻿@page "/player"
+@inject InitiativeTracker.Web.Infrastructure.ITrustedBrowserOrigin SecureOrigin
 @model InitiativeTracker.Web.Pages.Player.IndexModel
 
 @{
@@ -84,6 +85,12 @@
             {
                 <div class="alert alert-danger">
                     @accountError
+                </div>
+            }
+            @if (TempData["AccountNotice"] is string accountNotice)
+            {
+                <div class="alert alert-success" role="status">
+                    @accountNotice
                 </div>
             }
 
@@ -862,6 +869,20 @@
 
         <hr />
 
+
+        @if (SecureOrigin.TrustedRequest(ViewContext.HttpContext))
+        {
+            <section class="mb-4">
+                <h3 class="h6">Remembered Browser Approvals</h3>
+                <p class="small text-body-secondary">
+                    Review or revoke optional 30-day approval for this game's browser sessions.
+                </p>
+                <a href="/secure-access/devices" class="btn btn-outline-secondary w-100">
+                    Manage Remembered Browsers
+                </a>
+            </section>
+            <hr />
+        }
 
         <section>
 

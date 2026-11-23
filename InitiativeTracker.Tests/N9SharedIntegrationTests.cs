@@ -182,12 +182,16 @@ public sealed class N9SharedIntegrationTests
         var owner = AddPlayer(host); var id = Character(host, owner.Profile);
         using var player = host.Client(); player.Legacy("Player", owner.Profile, owner.Player, owner.Credential); await Enroll(player, dm);
         var routes = new[] { ("editor", player, Editor(id)), ("character", player, $"/player/character/{id}"),
-            ("branding", dm, Editor(Guid.Empty, "application")), ("secure-access", player, "/secure-access") };
+            ("branding", dm, Editor(Guid.Empty, "application")), ("secure-access", player, "/secure-access/manual") };
         foreach (var (name, member, path) in routes)
         {
             var response = await member.Send(path); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var html = await response.Content.ReadAsStringAsync();
-            Assert.Contains(name == "secure-access" ? "Authorized as Player" : "Secure authorization", html);
+            // Normal pages never display the advanced device/security link.
+            // The trusted-HTTPS physical overlay is independently rendered by the layout.
+            Assert.DoesNotContain("Security and trusted devices", html);
+            Assert.DoesNotContain("Private feature authorization", html);
+            if (name == "secure-access") Assert.Contains("Authorized as Player", html);
             if (directory is not null) { Directory.CreateDirectory(directory); await File.WriteAllTextAsync(Path.Combine(directory, name + ".html"), html); }
         }
         host.DeleteOnDispose();

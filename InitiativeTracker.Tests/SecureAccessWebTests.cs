@@ -150,7 +150,7 @@ public sealed class SecureAccessWebTests
             }
             return response;
         }
-        public async Task<string> Token(string page = "/secure-access")
+        public async Task<string> Token(string page = "/secure-access/manual")
         {
             var response = await Send(page);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -162,8 +162,8 @@ public sealed class SecureAccessWebTests
             return await PostToken(handler, token, values);
         }
         public Task<HttpResponseMessage> PostToken(string handler, string token, params (string Key, string Value)[] values) =>
-            Send("/secure-access?handler=" + handler, new FormUrlEncodedContent(values.Select(p => new KeyValuePair<string, string>(p.Key, p.Value)).Append(new("__RequestVerificationToken", token))));
-        public void Legacy(string role, Guid? profile = null, Guid? player = null, Guid? credential = null, Guid? display = null)
+            Send("/secure-access/manual?handler=" + handler, new FormUrlEncodedContent(values.Select(p => new KeyValuePair<string, string>(p.Key, p.Value)).Append(new("__RequestVerificationToken", token))));
+        public void Legacy(string role, Guid? profile = null, Guid? player = null, Guid? credential = null, Guid? display = null, bool fresh = false)
         {
             var session = Host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.SessionId;
             var claims = new List<Claim> { new(ClaimTypes.Role, role), new("session_id", session.ToString()) };
@@ -171,6 +171,7 @@ public sealed class SecureAccessWebTests
             if (player.HasValue) claims.Add(new("player_id", player.ToString()!));
             if (credential.HasValue) claims.Add(new("player_device_id", credential.ToString()!));
             if (display.HasValue) claims.Add(new("device_id", display.ToString()!));
+            if (fresh) claims.Add(new(SecureAccess.FreshLoginClaim, Guid.NewGuid().ToString("N")));
             var scheme = CookieAuthenticationDefaults.AuthenticationScheme;
             var options = Host.App.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(scheme);
             Cookies[options.Cookie.Name!] = options.TicketDataFormat.Protect(new AuthenticationTicket(new(new ClaimsIdentity(claims, scheme)), new AuthenticationProperties(), scheme));
@@ -189,7 +190,7 @@ public sealed class SecureAccessWebTests
         {
             Assert.Equal(HttpStatusCode.Redirect, (await Post("BeginDm", ("recovery", recovery.ToString()))).StatusCode);
             var code = await PhysicalCode(); Assert.Equal(16, code.Length);
-            Assert.DoesNotContain(code, await (await Send("/secure-access")).Content.ReadAsStringAsync());
+            Assert.DoesNotContain(code, await (await Send("/secure-access/manual")).Content.ReadAsStringAsync());
             Assert.Equal(HttpStatusCode.Redirect, (await Post("Redeem", ("Code", code))).StatusCode);
         }
         public void Dispose() => Client.Dispose();
@@ -208,6 +209,999 @@ public sealed class SecureAccessWebTests
         var id = member.Pending.Id;
         Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Approve", ("id", id.ToString()))).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await member.Post("Finish")).StatusCode);
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalNetworkReadoutRejectsRemoteClientsAndHasNoMutationHandler()
+    {
+        using var host = new Host();
+        using var remote = host.Client();
+        using var physical = host.Client(physical: true, http: true);
+        Assert.Equal(HttpStatusCode.NotFound, (await remote.Send("/setup/network-status")).StatusCode);
+        var read = await physical.Send("/setup/network-status");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        var html = await read.Content.ReadAsStringAsync();
+        Assert.Contains("Read-only information on the physical hub", html);
+        Assert.Contains("/setup", html);
+        Assert.DoesNotContain("WifiPassword", html);
+        Assert.DoesNotContain("Switch to private", html);
+        var mutation = await physical.Send("/setup/network-status?handler=BeginHotspot", new FormUrlEncodedContent([]));
+        Assert.False(mutation.IsSuccessStatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalApprovalOverlayIsAvailableOnlyOnTrustedLocalHttps()
+    {
+        using var host = new Host();
+        using var physical = host.Client(physical: true);
+        using var legacy = host.Client(physical: true, http: true);
+        using var remote = host.Client();
+        var secure = await physical.Send("/setup");
+        Assert.Equal(HttpStatusCode.OK, secure.StatusCode);
+        var secureHtml = await secure.Content.ReadAsStringAsync();
+        Assert.Contains("physicalApprovalOverlay", secureHtml);
+
+        var http = await legacy.Send("/setup");
+        Assert.Equal(HttpStatusCode.OK, http.StatusCode);
+        var httpHtml = await http.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("physicalApprovalOverlay", httpHtml);
+        Assert.Equal(HttpStatusCode.NotFound, (await remote.Send("/setup")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task OneTapPhysicalApproveDenyAndBrowserCompletionRespectHttpsCsrfAndIdentity()
+    {
+        using var host = new Host();
+        using var requester = host.Client();
+        using var physical = host.Client(physical: true);
+        using var remote = host.Client();
+        await remote.Token(); // Independent secure browser.
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm", ("recovery", "true"))).StatusCode);
+        var pending = requester.Pending;
+        var screen = await physical.Send("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.OK, screen.StatusCode);
+        var markup = await screen.Content.ReadAsStringAsync();
+        Assert.Contains("Approve browser", markup);
+        Assert.Contains("Deny request", markup);
+        Assert.Contains(pending.Reference, markup);
+        Assert.Contains("revokes all previous secure approvals", markup);
+        var token = await physical.Token("/secure-access/physical");
+        // A physical HTTPS request without the Razor antiforgery token cannot
+        // make a decision, even when the exact request id is known.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await physical.Send("/secure-access/physical?handler=Approve",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = pending.Id.ToString()
+                }))).StatusCode);
+        var approval = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["id"] = pending.Id.ToString(),
+            ["__RequestVerificationToken"] = token
+        });
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await remote.Send("/secure-access/physical?handler=Approve", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await physical.Send("/secure-access/physical?handler=Approve", approval)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await physical.Send("/secure-access/physical?handler=Approve",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
+                }))).StatusCode);
+        var requesterHtml = await (await requester.Send("/secure-access/manual")).Content.ReadAsStringAsync();
+        Assert.Contains("data-physical-approved=\"true\"", requesterHtml);
+        Assert.Equal(HttpStatusCode.Forbidden, (await remote.Post("FinishPhysical")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("FinishPhysical")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await requester.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await requester.Post("FinishPhysical")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm")).StatusCode);
+        var denied = requester.Pending.Id;
+        var denyToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await physical.Send("/secure-access/physical?handler=Deny",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = denied.ToString(), ["__RequestVerificationToken"] = denyToken
+                }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await requester.Post("FinishPhysical")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedDmRestoresAcrossWeeklyRestartAndForgetSurvivesAnotherRestart()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "secure-remember-dm-" + Guid.NewGuid());
+        var clock = new Clock();
+        string browserCookie;
+        Guid rememberedId;
+        using (var first = new Host(directory, clock))
+        {
+            using var dm = first.Client(); await dm.Bootstrap();
+            var result = await dm.Post("Remember", ("label", "DM tablet"));
+            Assert.Equal(HttpStatusCode.Redirect, result.StatusCode);
+            var refreshed = result.Headers.GetValues("Set-Cookie").Single(x =>
+                x.StartsWith(SecureAccess.BrowserCookie + "=", StringComparison.Ordinal));
+            Assert.Contains("max-age=2592000", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("httponly", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("secure", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("samesite=strict", refreshed, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("domain=", refreshed, StringComparison.OrdinalIgnoreCase);
+            browserCookie = dm.Cookies[SecureAccess.BrowserCookie];
+            var trust = first.Access.Remembered(first.Access.Grants().Single()).Single();
+            Assert.Equal("DM tablet", trust.Label);
+            Assert.Equal("DM", trust.Identity.Role);
+            Assert.True(trust.Expires <= clock.GetUtcNow().AddDays(30));
+            rememberedId = trust.Id;
+        }
+        clock.Advance(TimeSpan.FromDays(8));
+        using (var second = new Host(directory, clock))
+        {
+            using var returned = second.Client();
+            returned.Cookies[SecureAccess.BrowserCookie] = browserCookie;
+            Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+            var response = await returned.Send("/secure-access/manual");
+            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access/manual")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await returned.Post("Remember", ("label", "Extend without proof"))).StatusCode);
+            var page = await (await returned.Send("/secure-access/manual")).Content.ReadAsStringAsync();
+            Assert.Contains("DM tablet", page);
+            Assert.Contains("Forget browser", page);
+            Assert.Equal(HttpStatusCode.Redirect, (await returned.Post("ForgetRemembered",
+                ("id", rememberedId.ToString()))).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+        }
+        using (var third = new Host(directory, clock))
+        {
+            using var returned = third.Client();
+            returned.Cookies[SecureAccess.BrowserCookie] = browserCookie;
+            Assert.Equal(HttpStatusCode.OK, (await returned.Send("/secure-access/manual")).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+        }
+        Directory.Delete(directory, true);
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedBrowserIsOptInAndDeniedOnHttpOrAfterAbsoluteExpiry()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var browserCookie = dm.Cookies[SecureAccess.BrowserCookie];
+        host.Clock.Advance(TimeSpan.FromHours(13));
+        using var notRemembered = host.Client();
+        notRemembered.Cookies[SecureAccess.BrowserCookie] = browserCookie;
+        Assert.Equal(HttpStatusCode.OK, (await notRemembered.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await notRemembered.Send("/media/fixture")).StatusCode);
+
+        // A separate fresh physical authorization is required to opt in.
+        using var fresh = host.Client(); await fresh.Bootstrap();
+        Assert.Equal(HttpStatusCode.Redirect, (await fresh.Post("Remember", ("label", "Table DM"))).StatusCode);
+        var trusted = fresh.Cookies[SecureAccess.BrowserCookie];
+        using var http = host.Client(http: true);
+        http.Cookies[SecureAccess.BrowserCookie] = trusted;
+        Assert.Equal((HttpStatusCode)426, (await http.Send("/secure-access/manual")).StatusCode);
+        host.Clock.Advance(TimeSpan.FromDays(31));
+        using var expired = host.Client();
+        expired.Cookies[SecureAccess.BrowserCookie] = trusted;
+        Assert.Equal(HttpStatusCode.OK, (await expired.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await expired.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RevokedPlayerSessionPreservesRememberedTrustButRequiresFreshLogin()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var owner = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        await Enroll(player, dm);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Remember", ("label", "Test handset"))).StatusCode);
+        var browser = player.Cookies[SecureAccess.BrowserCookie];
+        var grantId = host.Access.Grants().Single(g => g.Identity.Role == "Player").Id;
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Revoke", ("id", grantId.ToString()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        var retained = Assert.Single(host.Access.PhysicalRemembered());
+        Assert.True(retained.RequiresFreshLogin);
+        Assert.Equal("Test handset", retained.Label);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/secure-access/wait")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        using var replay = host.Client();
+        replay.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
+
+        // Test-fixture fresh player authentication (real DM PIN flow is
+        // separately covered below).
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential, fresh: true);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/secure-access/wait?start=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+        Assert.Equal(retained.Id, Assert.Single(host.Access.PhysicalRemembered()).Id);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedPlayerCannotEscalateRolesAndCredentialChangeRevokesTrust()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var owner = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        await Enroll(player, dm);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Remember", ("label", "Player phone"))).StatusCode);
+        var browser = player.Cookies[SecureAccess.BrowserCookie];
+        host.Clock.Advance(TimeSpan.FromDays(8));
+        using var otherRole = host.Client();
+        otherRole.Cookies[SecureAccess.BrowserCookie] = browser;
+        otherRole.Legacy("DM");
+        Assert.Equal(HttpStatusCode.OK, (await otherRole.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await otherRole.Send("/media/fixture")).StatusCode);
+
+        using var restored = host.Client();
+        restored.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.Redirect, (await restored.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await restored.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await restored.Send("/media/fixture")).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.PlayerDeviceCredentials.Single(c => c.Id == owner.Credential).TokenHash = "rotated-credential";
+            db.SaveChanges();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await restored.Send("/media/fixture")).StatusCode);
+        using var replay = host.Client();
+        replay.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.OK, (await replay.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await replay.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task RememberedDisplayLosesPrivateAccessWhenDeviceIsUntrusted()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        var id = Guid.NewGuid();
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.RegisteredDevices.Add(new RegisteredDevice {
+                Id = id, Name = "Weekly table screen", DeviceType = "Display",
+                IsTrusted = true, PairedAtUtc = DateTime.UtcNow
+            });
+            db.SaveChanges();
+        }
+        using var display = host.Client(); display.Legacy("Display", display: id);
+        await Enroll(display, dm);
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("Remember", ("label", "Table screen"))).StatusCode);
+        var browser = display.Cookies[SecureAccess.BrowserCookie];
+        host.Clock.Advance(TimeSpan.FromDays(8));
+        using var returned = host.Client();
+        returned.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.Redirect, (await returned.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await returned.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await returned.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.RegisteredDevices.Single(d => d.Id == id).IsTrusted = false;
+            db.SaveChanges();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await returned.Send("/media/fixture")).StatusCode);
+        using var afterRevocation = host.Client();
+        afterRevocation.Cookies[SecureAccess.BrowserCookie] = browser;
+        Assert.Equal(HttpStatusCode.OK, (await afterRevocation.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await afterRevocation.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalOneTapApprovesPlayerAndDisplayWithoutIssuingGrantsToOtherBrowsers()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        using var physical = host.Client(physical: true);
+        var owner = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        var pending = player.Pending;
+        var screen = await physical.Send("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.OK, screen.StatusCode);
+        var html = await screen.Content.ReadAsStringAsync();
+        Assert.Contains("Player authorization", html);
+        Assert.Contains(pending.Reference, html);
+        Assert.Contains(owner.Profile.ToString(), html);
+        Assert.DoesNotContain("data-physical-code=", html);
+        var token = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.True(player.Pending.PhysicalApproved);
+        using var other = host.Client();
+        other.Legacy("Player", owner.Profile, owner.Player, owner.Credential);
+        await other.Token();
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Post("Finish")).StatusCode);
+        var waitingHtml = await (await player.Send("/secure-access/manual")).Content.ReadAsStringAsync();
+        Assert.Contains("id=\"finishMemberApproval\"", waitingHtml);
+        Assert.Contains("data-physical-approved=\"true\"", waitingHtml);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("Finish")).StatusCode);
+
+        // Denial consumes this exact pending request; a stale browser cannot finish.
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        var denied = player.Pending.Id;
+        token = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Deny",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = denied.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Post("Finish")).StatusCode);
+
+        using (var db = host.Factory.CreateDbContext())
+        {
+            db.RegisteredDevices.Add(new RegisteredDevice {
+                Id = Guid.Parse("29dc33a4-5b1d-4c68-8cc9-8a1edfa4329e"),
+                Name = "Table display", DeviceType = "Display", IsTrusted = true,
+                PairedAtUtc = DateTime.UtcNow
+            });
+            db.SaveChanges();
+        }
+        using var display = host.Client();
+        display.Legacy("Display", display: Guid.Parse("29dc33a4-5b1d-4c68-8cc9-8a1edfa4329e"));
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("BeginMember")).StatusCode);
+        var displayPending = display.Pending;
+        html = await (await physical.Send("/secure-access/physical")).Content.ReadAsStringAsync();
+        Assert.Contains("Display authorization", html);
+        Assert.NotNull(displayPending.Identity.Display);
+        Assert.Contains(displayPending.Identity.Display.Value.ToString(), html);
+        token = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = displayPending.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("Finish")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await display.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await display.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task QuickConnectDisplayCanPairWithDmBeforePhysicalSecureEnrollment()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        using var display = host.Client();
+        var token = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DisplayToken;
+        using var invalid = host.Client();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await invalid.Send("/display/connect?token=invalid")).StatusCode);
+        var invitation = await display.Send("/display/connect?token=" + Uri.EscapeDataString(token));
+        Assert.Equal(HttpStatusCode.Redirect, invitation.StatusCode);
+        Assert.Contains("/display/pair", invitation.Headers.Location?.ToString() ?? "",
+            StringComparison.OrdinalIgnoreCase);
+        // QR invitation must never create an unpaired Display authority cookie.
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Send("/display")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await display.Post("BeginMember")).StatusCode);
+        var pairing = await display.Send("/display/pair");
+        Assert.Equal(HttpStatusCode.OK, pairing.StatusCode);
+        Assert.Contains("Pair Display", await pairing.Content.ReadAsStringAsync());
+        Guid pairingId;
+        using (var db = host.Factory.CreateDbContext())
+            pairingId = db.DevicePairingRequests.Single().Id;
+        host.App.Services.GetRequiredService<DeviceRegistryService>().ApprovePairing(pairingId);
+        var status = await display.Send("/display/pair?handler=Status");
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Contains("approved", await status.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("BeginMember")).StatusCode);
+        using var physical = host.Client(physical: true);
+        var verification = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await physical.Send("/secure-access/physical?handler=Approve",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["id"] = display.Pending.Id.ToString(),
+                    ["__RequestVerificationToken"] = verification
+                }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await display.Post("Finish")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await display.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await display.Send("/appearance/fixture", new FormUrlEncodedContent([]))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task NormalTrustedDmLoginShowsWaitingAndPhysicalApprovalWithoutManualSecureAccess()
+    {
+        using var host = new Host();
+        using var dm = host.Client();
+        using var physical = host.Client(physical: true);
+        var pin = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DmPin;
+        var loginToken = await dm.Token("/dm/login");
+        var login = await dm.Send("/dm/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Pin"] = pin, ["__RequestVerificationToken"] = loginToken
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        Assert.Contains("/secure-access/wait", login.Headers.Location?.ToString() ?? "");
+
+        // GET renders an antiforgery form but must not create a request or grant.
+        var waiting = await dm.Send("/secure-access/wait?start=true");
+        Assert.Equal(HttpStatusCode.OK, waiting.StatusCode);
+        var markup = await waiting.Content.ReadAsStringAsync();
+        Assert.Contains("Preparing approval", markup);
+        Assert.Contains("data-auto-submit=\"true\"", markup);
+        Assert.Null(host.Access.ForBrowser(dm.Browser));
+
+        var token = await dm.Token("/secure-access/wait?start=true");
+        var noCsrf = await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent([]));
+        Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        Assert.Null(host.Access.ForBrowser(dm.Browser));
+
+        var begin = await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+        Assert.Equal(HttpStatusCode.Redirect, begin.StatusCode);
+        var pending = dm.Pending;
+        Assert.Equal("dm-recover", pending.Purpose);
+        var pendingHtml = await (await dm.Send("/secure-access/wait")).Content.ReadAsStringAsync();
+        Assert.Contains("Waiting for approval on hub", pendingHtml);
+        Assert.Contains(pending.Reference, pendingHtml);
+
+        var physicalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = physicalToken
+            }))).StatusCode);
+        var finished = await dm.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await dm.Token("/secure-access/wait")
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, finished.StatusCode);
+        Assert.Equal("/dm", finished.Headers.Location?.ToString());
+        Assert.Null(host.Access.ForBrowser(dm.Browser));
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task WaitingRememberPreferenceRequiresCsrfExactBrowserAndApproval()
+    {
+        using var host = new Host();
+        using var physical = host.Client(physical: true);
+        using var dm = host.Client();
+        using var other = host.Client();
+        dm.Legacy("DM");
+        other.Legacy("DM");
+        var token = await dm.Token("/secure-access/wait?start=true");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        var pending = dm.Pending;
+        Assert.False(pending.RememberRequested);
+        Assert.Equal(HttpStatusCode.BadRequest, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true"
+            }))).StatusCode);
+        Assert.False(dm.Pending.RememberRequested);
+
+        await other.Token("/secure-access/wait");
+        var otherToken = await other.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = otherToken
+            }))).StatusCode);
+        Assert.False(dm.Pending.RememberRequested);
+
+        var formToken = await dm.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = Guid.NewGuid().ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+        Assert.False(dm.Pending.RememberRequested);
+
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+        Assert.True(dm.Pending.RememberRequested);
+        var waiting = await (await dm.Send("/secure-access/wait")).Content.ReadAsStringAsync();
+        Assert.Contains("Remember this browser for 30 days", waiting);
+        Assert.Contains("checked=\"checked\"", waiting);
+
+        var physicalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = physicalToken
+            }))).StatusCode);
+        var finishToken = await dm.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = finishToken
+            }))).StatusCode);
+        var grant = host.Access.Grants().Single(g => g.Browser == dm.Browser);
+        Assert.Single(host.Access.Remembered(grant));
+        Assert.Equal("DM browser", host.Access.Remembered(grant)[0].Label);
+        var devicesPage = await dm.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, devicesPage.StatusCode);
+        Assert.Contains("DM browser", await devicesPage.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/secure-access")).StatusCode);
+        // Elevation rotates the ordinary authentication ticket; a token
+        // issued before that rotation is deliberately rejected by antiforgery.
+        Assert.Equal(HttpStatusCode.BadRequest, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+        // Even with a freshly issued valid CSRF token, a completed approval
+        // cannot change its remembered-browser opt-in.
+        var completedToken = await dm.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = completedToken
+            }))).StatusCode);
+
+        // Missing opt-in means no persistent trust for this other browser.
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await other.Token("/secure-access/wait")
+            }))).StatusCode);
+        var noConsent = other.Pending;
+        var token2 = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = noConsent.Id.ToString(), ["__RequestVerificationToken"] = token2
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await other.Token("/secure-access/wait")
+            }))).StatusCode);
+        var otherGrant = host.Access.Grants().Single(g => g.Browser == other.Browser);
+        Assert.DoesNotContain(host.Access.Remembered(otherGrant), b => b.Browser == other.Browser);
+        var forgetToken = await dm.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access?handler=Forget",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = host.Access.Remembered(grant).Single().Id.ToString(),
+                ["__RequestVerificationToken"] = forgetToken
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        Assert.DoesNotContain(host.Access.Grants(), g => g.Browser == dm.Browser);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires Linux HTTPS secure-grant persistence.")]
+    public async Task ApprovedPlayerCanRenameOnlyItsOwnProfileWithoutInvalidatingSecureTrust()
+    {
+        using var host = new Host();
+        using var dm = host.Client();
+        await dm.Bootstrap();
+        var ids = AddPlayer(host);
+        var otherIds = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", ids.Profile, ids.Player, ids.Credential);
+        await player.Token();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await player.Send("/player?handler=RenameProfile",
+                new FormUrlEncodedContent(new Dictionary<string, string> {
+                    ["playerName"] = "New Name",
+                    ["__RequestVerificationToken"] = await player.Token("/player")
+                }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Approve", ("id", player.Pending.Id.ToString()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
+        var renameToken = await player.Token("/player");
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/player?handler=RenameProfile",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["playerName"] = "  Better Player Name  ",
+                ["__RequestVerificationToken"] = renameToken
+            }))).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            Assert.Equal("Better Player Name", db.PlayerProfiles.Single(p => p.Id == ids.Profile).Name);
+            Assert.Equal("Better Player Name", db.PlayerConnections.Single(p => p.Id == ids.Player).Name);
+            Assert.NotEqual("Better Player Name", db.PlayerProfiles.Single(p => p.Id == otherIds.Profile).Name);
+        }
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+        var badToken = await player.Token("/player");
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/player?handler=RenameProfile",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["playerName"] = new string('x', 41),
+                ["__RequestVerificationToken"] = badToken
+            }))).StatusCode);
+        using (var db = host.Factory.CreateDbContext())
+            Assert.Equal("Better Player Name", db.PlayerProfiles.Single(p => p.Id == ids.Profile).Name);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PlayerWaitingDenialDoesNotAutomaticallyStartAnotherRequest()
+    {
+        using var host = new Host();
+        using var dm = host.Client(); await dm.Bootstrap();
+        using var physical = host.Client(physical: true);
+        var playerId = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", playerId.Profile, playerId.Player, playerId.Credential);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/secure-access/wait?start=true")).StatusCode);
+        await player.Token("/secure-access/wait?start=true");
+        Assert.Null(host.Access.ForBrowser(player.Browser));
+
+        var token = await player.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        var pending = player.Pending;
+        Assert.Equal("enroll-player", pending.Purpose);
+
+        var physicalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Deny",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = physicalToken
+            }))).StatusCode);
+        var denied = await (await player.Send("/secure-access/wait")).Content.ReadAsStringAsync();
+        Assert.Contains("Approval not completed", denied);
+        Assert.Contains("href=\"/join\">Return to player join</a>", denied);
+        Assert.Null(host.Access.ForBrowser(player.Browser));
+        Assert.Null(host.Access.ForBrowser(player.Browser)); // Poll/reload is read-only.
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = await player.Token("/secure-access/wait")
+            }))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task SecurityDashboardRequiresSecureDmOrPhysicalHubAndRevokeTargetsExactSession()
+    {
+        using var host = new Host();
+        using var stranger = host.Client();
+        using var physical = host.Client(physical: true);
+        using var dm = host.Client();
+        var ids = AddPlayer(host);
+        using var player = host.Client();
+        player.Legacy("Player", ids.Profile, ids.Player, ids.Credential);
+        using (var db = host.Factory.CreateDbContext())
+        {
+            var credential = db.PlayerDeviceCredentials.Single(c => c.Id == ids.Credential);
+            credential.Name = "Testing phone";
+            db.SaveChanges();
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.Send("/secure-access")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access")).StatusCode);
+        var physicalPage = await physical.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, physicalPage.StatusCode);
+        var physicalHtml = await physicalPage.Content.ReadAsStringAsync();
+        Assert.Contains("Security &amp; Trusted Devices", physicalHtml);
+        Assert.Contains("Hub Setup", physicalHtml);
+
+        await dm.Bootstrap();
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("BeginMember")).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Approve", ("id", player.Pending.Id.ToString()))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await player.Post("Finish")).StatusCode);
+        var dmDashboard = await dm.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, dmDashboard.StatusCode);
+        var markup = await dmDashboard.Content.ReadAsStringAsync();
+        Assert.Contains("Fixture player", markup);
+        Assert.Contains("Testing phone", markup);
+        Assert.Contains("Revoke session", markup);
+        Assert.Contains("Manage session for Fixture player", markup);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access")).StatusCode);
+
+        var grant = host.Access.Grants().Single(g => g.Identity.Role == "Player" && g.Identity.Profile == ids.Profile);
+        var unauthorizedCsrf = await player.Token("/secure-access/manual");
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = unauthorizedCsrf
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await player.Send("/media/fixture")).StatusCode);
+
+        var physicalCsrf = await physical.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = physicalCsrf
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
+        Assert.DoesNotContain(host.Access.Grants(), g => g.Id == grant.Id);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task CoLocatedPhysicalDmHasDmNavigationWhileUnauthenticatedHubHasSetupNavigation()
+    {
+        using var host = new Host();
+        using var local = host.Client(physical: true);
+        var hub = await local.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, hub.StatusCode);
+        var hubHtml = await hub.Content.ReadAsStringAsync();
+        Assert.Contains("href=\"/setup\">Hub Setup", hubHtml);
+        Assert.DoesNotContain("Back to DM Controls", hubHtml);
+
+        await local.Bootstrap();
+        Assert.Equal(HttpStatusCode.OK, (await local.Send("/dm")).StatusCode);
+        var dm = await local.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, dm.StatusCode);
+        var html = await dm.Content.ReadAsStringAsync();
+        Assert.Contains("href=\"/dm\">Back to DM Controls", html);
+        Assert.Contains("href=\"/dm/devices\">Connected Devices", html);
+        Assert.Contains("DM + Hub", WebUtility.HtmlDecode(html));
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task RevokingOwnDmSessionOnPhysicalHostSignsOutUntilFreshLogin()
+    {
+        using var host = new Host();
+        using var dm = host.Client(physical: true);
+        await dm.Bootstrap();
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/dm")).StatusCode);
+        var grant = Assert.Single(host.Access.Grants());
+        var token = await dm.Token("/secure-access");
+        var revoke = await dm.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = grant.Id.ToString(), ["__RequestVerificationToken"] = token
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
+        Assert.Equal("/dm/login", revoke.Headers.Location?.ToString());
+        Assert.Empty(host.Access.Grants());
+        foreach (var route in new[] { "/dm", "/dm/devices", "/dm/join", "/dm/players" })
+            Assert.NotEqual(HttpStatusCode.OK, (await dm.Send(route)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        Assert.NotEqual(HttpStatusCode.OK, (await dm.Send("/dm?handler=StartCombat",
+            new FormUrlEncodedContent([]))).StatusCode);
+        var login = await dm.Send("/dm/login");
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        Assert.Contains("DM Access", await login.Content.ReadAsStringAsync());
+        Assert.Empty(host.Access.PhysicalRequests());
+        // Physical loopback recovery remains independently available.
+        var hub = await dm.Send("/secure-access");
+        Assert.Equal(HttpStatusCode.OK, hub.StatusCode);
+        Assert.Contains("href=\"/setup\">Hub Setup", await hub.Content.ReadAsStringAsync());
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task ForgettingOwnRememberedDmBrowserAlsoBlocksLegacyDmPage()
+    {
+        using var host = new Host();
+        using var dm = host.Client(physical: true);
+        await dm.Bootstrap();
+        var grant = Assert.Single(host.Access.Grants());
+        Assert.Equal(HttpStatusCode.Redirect,
+            (await dm.Post("Remember", ("label", "Local test browser"))).StatusCode);
+        var trust = Assert.Single(host.Access.Remembered(grant));
+        var token = await dm.Token("/secure-access");
+        var forgotten = await dm.Send("/secure-access?handler=Forget",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = trust.Id.ToString(), ["__RequestVerificationToken"] = token
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, forgotten.StatusCode);
+        Assert.Equal("/dm/login", forgotten.Headers.Location?.ToString());
+        Assert.Empty(host.Access.Grants());
+        Assert.Empty(host.Access.PhysicalRemembered());
+        Assert.NotEqual(HttpStatusCode.OK, (await dm.Send("/dm")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/dm/login")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task RevokedRemoteDmCannotUseLegacyCookieAndOtherDmRetainsAccess()
+    {
+        using var host = new Host();
+        using var first = host.Client(); await first.Bootstrap();
+        using var second = host.Client(); second.Legacy("DM");
+        await second.Bootstrap(recovery: false);
+        Assert.Equal(HttpStatusCode.OK, (await second.Send("/dm")).StatusCode);
+        var secondGrant = Assert.Single(host.Access.Grants(), g => g.Browser == second.Browser);
+        var token = await first.Token("/secure-access");
+        var revoke = await first.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["id"] = secondGrant.Id.ToString(), ["__RequestVerificationToken"] = token
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await first.Send("/dm")).StatusCode);
+        var blocked = await second.Send("/dm");
+        Assert.Equal(HttpStatusCode.Redirect, blocked.StatusCode);
+        Assert.Equal("/secure-access/wait", blocked.Headers.Location?.ToString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await second.Send("/media/fixture")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+
+    [LinuxFact("Requires Linux HTTPS and durable remembered trust.")]
+    public async Task RememberedDmRevokeLogsOutAndFreshPinRestoresWithoutHubApproval()
+    {
+        using var host = new Host();
+        using var dm = host.Client(physical: true);
+        using var physical = host.Client(physical: true);
+        var pin = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DmPin;
+
+        var pinToken = await dm.Token("/dm/login");
+        var login = await dm.Send("/dm/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Pin"] = pin, ["__RequestVerificationToken"] = pinToken
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        Assert.Contains("/secure-access/wait", login.Headers.Location?.ToString());
+        var beginToken = await dm.Token("/secure-access/wait?start=true");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=Begin",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = beginToken
+            }))).StatusCode);
+        var pending = dm.Pending;
+        var rememberToken = await dm.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = rememberToken
+            }))).StatusCode);
+        var approvalToken = await physical.Token("/secure-access/physical");
+        Assert.Equal(HttpStatusCode.Redirect, (await physical.Send("/secure-access/physical?handler=Approve",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["__RequestVerificationToken"] = approvalToken
+            }))).StatusCode);
+        var finishToken = await dm.Token("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?handler=Finish",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = finishToken
+            }))).StatusCode);
+
+        var prior = Assert.Single(host.Access.Grants());
+        var trust = Assert.Single(host.Access.Remembered(prior));
+        var expires = trust.Expires;
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/dm")).StatusCode);
+
+        var revokeToken = await dm.Token("/secure-access");
+        var revoke = await dm.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = prior.Id.ToString(), ["__RequestVerificationToken"] = revokeToken
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
+        Assert.Equal("/dm/login", revoke.Headers.Location?.ToString());
+        Assert.Empty(host.Access.Grants());
+        var retained = Assert.Single(host.Access.PhysicalRemembered());
+        Assert.Equal(trust.Id, retained.Id);
+        Assert.True(retained.RequiresFreshLogin);
+        Assert.NotEqual(HttpStatusCode.OK, (await dm.Send("/dm")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/dm/login")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
+        Assert.Empty(host.Access.PhysicalRequests());
+
+        // Re-enter the actual DM PIN. The remembered browser restores secure
+        // authority without another physical approval or resetting 30 days.
+        pinToken = await dm.Token("/dm/login");
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/dm/login",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["Pin"] = pin, ["__RequestVerificationToken"] = pinToken
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await dm.Send("/secure-access/wait?start=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await dm.Send("/dm")).StatusCode);
+        Assert.Empty(host.Access.PhysicalRequests());
+        var restored = Assert.Single(host.Access.Grants());
+        Assert.True(restored.Restored);
+        Assert.NotEqual(prior.Id, restored.Id);
+        Assert.Equal(expires, Assert.Single(host.Access.Remembered(restored)).Expires);
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Post("Remember",
+            ("label", "Do not extend 30 days"))).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and durable remembered trust.")]
+    public async Task RemoteRevokeRetainsTrustButOldDmCookieCannotRestoreIt()
+    {
+        using var host = new Host();
+        using var admin = host.Client(); await admin.Bootstrap();
+        using var other = host.Client(); other.Legacy("DM");
+        await other.Bootstrap(recovery: false);
+        var otherGrant = Assert.Single(host.Access.Grants(), g => g.Browser == other.Browser);
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Post("Remember", ("label", "Remote DM"))).StatusCode);
+        var trust = Assert.Single(host.Access.Remembered(otherGrant));
+        var oldCookies = new Dictionary<string, string>(other.Cookies);
+
+        var token = await admin.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Redirect, (await admin.Send("/secure-access?handler=Revoke",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = otherGrant.Id.ToString(), ["__RequestVerificationToken"] = token
+            }))).StatusCode);
+        var retained = Assert.Single(host.Access.PhysicalRemembered());
+        Assert.Equal(trust.Id, retained.Id);
+        Assert.True(retained.RequiresFreshLogin);
+
+        var stale = await other.Send("/secure-access/wait");
+        Assert.Equal(HttpStatusCode.Redirect, stale.StatusCode);
+        Assert.Equal("/dm/login", stale.Headers.Location?.ToString());
+        Assert.Equal(HttpStatusCode.OK, (await other.Send("/dm/login")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/media/fixture")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.Send("/dm")).StatusCode);
+
+        using var copied = host.Client();
+        foreach (var cookie in oldCookies) copied.Cookies[cookie.Key] = cookie.Value;
+        Assert.Equal(HttpStatusCode.OK, (await copied.Send("/secure-access/manual")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await copied.Send("/media/fixture")).StatusCode);
+
+        var pin = host.App.Services.GetRequiredService<GameSessionService>().CurrentSession.DmPin;
+        var loginToken = await other.Token("/dm/login");
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Send("/dm/login",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["Pin"] = pin, ["__RequestVerificationToken"] = loginToken
+            }))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await other.Send("/secure-access/wait?start=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await other.Send("/dm")).StatusCode);
+        Assert.Empty(host.Access.PhysicalRequests());
+        Assert.Equal(trust.Expires, Assert.Single(host.Access.PhysicalRemembered()).Expires);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires Linux HTTPS and secure-grant durability.")]
+    public async Task LegacyDmCookieOnTrustedHttpsRequiresSecureGrantButHttpCompatibilityRemains()
+    {
+        using var host = new Host();
+        using var https = host.Client(); https.Legacy("DM");
+        var blocked = await https.Send("/dm");
+        Assert.Equal(HttpStatusCode.Redirect, blocked.StatusCode);
+        Assert.Equal("/secure-access/wait", blocked.Headers.Location?.ToString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await https.Send("/dm?handler=StartCombat",
+            new FormUrlEncodedContent([]))).StatusCode);
+        using var http = host.Client(http: true); http.Legacy("DM");
+        Assert.Equal(HttpStatusCode.OK, (await http.Send("/dm")).StatusCode);
+        host.DeleteOnDispose();
+    }
+
+    [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
+    public async Task PhysicalTapConsentIsBrowserBoundExpiringAndSingleUse()
+    {
+        using var host = new Host();
+        using var requester = host.Client();
+        using var stranger = host.Client();
+        await stranger.Token(); // Populate an independent secure browser binding.
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm", ("recovery", "true"))).StatusCode);
+        var id = requester.Pending.Id;
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
+        host.Access.ApprovePhysicalDm(id);
+        Assert.Throws<SecureAccessDenied>(() => host.Access.ApprovePhysicalDm(id));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(stranger.Browser, Origin));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, "https://wrong.example"));
+        var grant = host.Access.FinishPhysicalDm(requester.Browser, Origin);
+        Assert.Equal("DM", grant.Identity.Role);
+        Assert.NotNull(host.Access.Validate(grant.Id, grant.Generation, grant.Epoch, requester.Browser, Origin));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
+
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm")).StatusCode);
+        var denied = requester.Pending.Id;
+        host.Access.DenyPhysicalDm(denied);
+        Assert.Throws<SecureAccessDenied>(() => host.Access.ApprovePhysicalDm(denied));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.FinishPhysicalDm(requester.Browser, Origin));
+
+        Assert.Equal(HttpStatusCode.Redirect, (await requester.Post("BeginDm")).StatusCode);
+        var expired = requester.Pending.Id;
+        host.Clock.Advance(TimeSpan.FromMinutes(6));
+        Assert.Throws<SecureAccessDenied>(() => host.Access.ApprovePhysicalDm(expired));
+        host.DeleteOnDispose();
     }
 
     [LinuxFact("Requires production Linux HTTPS configuration and secure-grant directory fsync.")]
@@ -255,10 +1249,10 @@ public sealed class SecureAccessWebTests
     {
         using var host = new Host(); using var dm = host.Client();
         await dm.Post("BeginDm", ("recovery", "true")); var code = await dm.PhysicalCode();
-        var noCsrf = await dm.Send("/secure-access?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code }));
+        var noCsrf = await dm.Send("/secure-access/manual?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code }));
         Assert.Equal(HttpStatusCode.BadRequest, noCsrf.StatusCode);
         var token = await dm.Token();
-        var noOrigin = await dm.Send("/secure-access?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code, ["__RequestVerificationToken"] = token }), origin: false);
+        var noOrigin = await dm.Send("/secure-access/manual?handler=Redeem", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = code, ["__RequestVerificationToken"] = token }), origin: false);
         Assert.Equal(HttpStatusCode.Forbidden, noOrigin.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await dm.Post("Redeem", ("Code", code))).StatusCode);
         await dm.Post("BeginDm"); var expired = await dm.PhysicalCode(); host.Clock.Advance(TimeSpan.FromMinutes(6));
@@ -370,7 +1364,9 @@ public sealed class SecureAccessWebTests
         using (var db = host.Factory.CreateDbContext()) { db.PlayerDeviceCredentials.Single(c => c.Id == owner.Credential).TokenHash = originalHash; db.SaveChanges(); }
         Assert.Equal(HttpStatusCode.Forbidden, (await player.Send("/media/fixture")).StatusCode);
         using var legacyDm = host.Client(); legacyDm.Legacy("DM");
-        var token = await legacyDm.Token("/dm/players");
+        // An ordinary DM cookie no longer opens HTTPS DM pages. Obtain a
+        // legitimate antiforgery token elsewhere to exercise the POST gate.
+        var token = await legacyDm.Token("/secure-access/manual");
         var reset = await legacyDm.Send("/dm/players?handler=ResetRecoveryKey", new FormUrlEncodedContent(new Dictionary<string, string> { ["profileId"] = owner.Profile.ToString(), ["__RequestVerificationToken"] = token }));
         Assert.Equal(HttpStatusCode.Forbidden, reset.StatusCode);
         host.DeleteOnDispose();
@@ -522,7 +1518,7 @@ public sealed class SecureAccessWebTests
     public async Task LegacyAdminRoutesCannotUseCapturedCookieAsSensitiveAuthority(string page, string handler)
     {
         using var host = new Host(); using var legacy = host.Client(); legacy.Legacy("DM");
-        var token = await legacy.Token(page);
+        var token = await legacy.Token("/secure-access/manual");
         Assert.Equal(HttpStatusCode.Forbidden, (await legacy.Send(page + "/?handler=" + handler,
             new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["profileId"] = Guid.NewGuid().ToString(), ["id"] = Guid.NewGuid().ToString() }))).StatusCode);
         host.DeleteOnDispose();
@@ -551,7 +1547,7 @@ public sealed class SecureAccessWebTests
         using var host = new Host(); using var dm = host.Client(); await dm.Bootstrap();
         host.Clock.Advance(TimeSpan.FromHours(12) + TimeSpan.FromSeconds(1));
         Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/media/fixture")).StatusCode);
-        Assert.DoesNotContain("Authorized as DM", await (await dm.Send("/secure-access")).Content.ReadAsStringAsync());
+        Assert.DoesNotContain("Authorized as DM", await (await dm.Send("/secure-access/manual")).Content.ReadAsStringAsync());
         using var fresh = host.Client();
         await fresh.Post("BeginDm", ("recovery", "true")); var code = await fresh.PhysicalCode();
         host.Failure.Enabled = true;

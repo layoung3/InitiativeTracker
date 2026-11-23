@@ -32,7 +32,13 @@ const {spawnSync}=require('node:child_process');
 const result=spawnSync(process.execPath,['--test','--test-reporter=tap',__dirname+'/n9-443.cjs'],{env:process.env,encoding:'utf8',maxBuffer:2*1024*1024,timeout:240000});
 for(const line of (result.stdout||'').split('\\n'))if(/^(?:ok |not ok |# (?:tests|pass|fail|skipped|duration_ms))/.test(line))console.log(line);
 for(const code of new Set(((result.stdout||'')+(result.stderr||'')).match(/net::ERR_[A-Z_]+/g)||[]))console.log('Browser diagnostic: '+code);
-if(result.status!==0)console.log('Disposable trusted 443 browser fixture failed; private call logs suppressed.');
+// Report source line numbers only, never potentially sensitive failure text,
+// request URLs, browser challenges, cookies or browser call logs.
+if(result.status!==0) {
+  for(const line of new Set([...(result.stdout||'').matchAll(/n9-443\\.cjs:(\\d+):(\\d+)/g)].map(m=>m[1])))
+    console.log('Disposable browser test failed at source line '+line);
+  console.log('Disposable trusted 443 browser fixture failed; private call logs suppressed.');
+}
 process.exit(result.status===0?0:1);
 ''')
 print('Prepared disposable 443 browser fixture; no OS trust store changed')

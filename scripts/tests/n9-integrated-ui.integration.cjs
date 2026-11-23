@@ -36,7 +36,8 @@ for (const width of [390,844,1280]) for (const name of ["editor","character","br
             await page.goto("http://fixture.invalid/integration-page");
             await page.waitForTimeout(250);
             assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-            if (name !== "secure-access") assert.equal(await page.locator("nav[aria-label='Private feature authorization'] a").getAttribute("href"),"https://hub.owner-domain.org:5445/secure-access");
+            // The advanced security navigation is deliberately hidden from normal pages.
+            assert.equal(await page.locator("nav[aria-label='Private feature authorization']").count(), 0);
             if (name === "editor" || name === "branding") {
                 assert.match(await page.locator("body").innerText(),/HTTPS alone is insufficient/);
                 assert.equal(await page.locator(".tracker-media-grid").evaluate(element=>getComputedStyle(element).display),"grid");

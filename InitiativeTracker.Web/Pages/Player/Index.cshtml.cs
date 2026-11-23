@@ -397,6 +397,32 @@ public class IndexModel : PageModel
     }
 
 
+    public async Task<IActionResult> OnPostRenameProfileAsync(string playerName)
+    {
+        if (!TryGetPlayerIdentity(out var playerId, out var profileId, out var credentialId))
+            return Unauthorized();
+
+        var player = _playerRegistry.GetPlayer(playerId);
+        if (player is null || !player.IsActive || player.PlayerProfileId != profileId ||
+            player.PlayerDeviceCredentialId != credentialId ||
+            !_playerRegistry.IsActivePlayerCredential(credentialId, profileId))
+            return Forbid();
+
+        try
+        {
+            _playerRegistry.RenameProfile(profileId, playerName);
+            TempData["AccountNotice"] = "Player name updated.";
+            await _encounterHub.Clients.All.SendAsync("EncounterUpdated",
+                _encounterState.GetDisplayState());
+        }
+        catch (ArgumentException error)
+        {
+            TempData["AccountError"] = error.Message;
+        }
+
+        return RedirectToPage();
+    }
+
     public IActionResult OnPostRenameDevice(
         Guid credentialId,
         string deviceName)

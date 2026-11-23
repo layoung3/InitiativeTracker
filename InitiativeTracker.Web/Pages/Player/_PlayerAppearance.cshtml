@@ -1,4 +1,11 @@
-﻿<div class="offcanvas offcanvas-end player-appearance-panel"
+﻿@inject InitiativeTracker.Web.Services.PlayerRegistryService PlayerRegistry
+@{
+    // This Appearance panel is shared by player, character and editor pages.
+    // Resolve the signed-in player independently of any specific PageModel.
+    var signedInPlayer = Guid.TryParse(ViewContext.HttpContext.User.FindFirst("player_id")?.Value,
+        out var activePlayerId) ? PlayerRegistry.GetPlayer(activePlayerId) : null;
+}
+<div class="offcanvas offcanvas-end player-appearance-panel"
      tabindex="-1"
      id="playerAppearancePanel"
      aria-labelledby="playerAppearancePanelLabel">
@@ -28,7 +35,20 @@
 
 
     <div class="offcanvas-body">
-
+        @if (signedInPlayer is not null)
+        {
+            <section class="mb-4">
+                <h3 class="h6">Player name</h3>
+                <p class="small text-body-secondary">Shown when you join the game and in the DM's player list. Your characters and linked devices stay the same.</p>
+                <form method="post" asp-page="/Player/Index" asp-page-handler="RenameProfile" class="d-grid gap-2">
+                    <label for="playerDisplayName" class="form-label mb-0">Display name</label>
+                    <input id="playerDisplayName" type="text" class="form-control"
+                           name="playerName" value="@signedInPlayer.Name" maxlength="40" required autocomplete="nickname" />
+                    <button type="submit" class="btn btn-outline-primary">Save player name</button>
+                </form>
+            </section>
+            <hr />
+        }
         <fieldset class="player-theme-fieldset">
 
             <legend class="player-theme-legend">
