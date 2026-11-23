@@ -743,10 +743,20 @@ public sealed class SecureAccessWebTests
         Assert.Equal(HttpStatusCode.OK, devicesPage.StatusCode);
         Assert.Contains("DM browser", await devicesPage.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Forbidden, (await other.Send("/secure-access")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+        // Elevation rotates the ordinary authentication ticket; a token
+        // issued before that rotation is deliberately rejected by antiforgery.
+        Assert.Equal(HttpStatusCode.BadRequest, (await dm.Send("/secure-access/wait?handler=RememberPreference",
             new FormUrlEncodedContent(new Dictionary<string, string> {
                 ["id"] = pending.Id.ToString(), ["remember"] = "true",
                 ["__RequestVerificationToken"] = formToken
+            }))).StatusCode);
+        // Even with a freshly issued valid CSRF token, a completed approval
+        // cannot change its remembered-browser opt-in.
+        var completedToken = await dm.Token("/secure-access");
+        Assert.Equal(HttpStatusCode.Forbidden, (await dm.Send("/secure-access/wait?handler=RememberPreference",
+            new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["id"] = pending.Id.ToString(), ["remember"] = "true",
+                ["__RequestVerificationToken"] = completedToken
             }))).StatusCode);
 
         // Missing opt-in means no persistent trust for this other browser.
