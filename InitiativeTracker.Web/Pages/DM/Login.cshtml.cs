@@ -28,11 +28,11 @@ public class LoginModel : PageModel
         {
             if (!_secureOrigin.TrustedRequest(HttpContext))
                 return RedirectToPage("/Dm/Index");
-            if (await SecureAccess.Current(HttpContext) is { Identity.Role: "DM" })
+            if (await Infrastructure.SecureAccess.Current(HttpContext) is { Identity.Role: "DM" })
                 return RedirectToPage("/Dm/Index");
             // Revoked or expired elevated cookies need primary credentials
             // again. A newly verified PIN cookie can continue to approval.
-            if (User.HasClaim(c => c.Type == SecureAccess.FreshLoginClaim))
+            if (User.HasClaim(c => c.Type == Infrastructure.SecureAccess.FreshLoginClaim))
                 return RedirectToPage("/SecureAccess/Wait", new { start = true });
         }
         return Page();
