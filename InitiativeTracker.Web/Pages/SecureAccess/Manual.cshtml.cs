@@ -106,7 +106,17 @@ public sealed class ManualModel(SecureAccessService access, ITrustedBrowserOrigi
         try
         {
             var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
+            var ownBrowser = access.Remembered(actor).Any(b => b.Id == id &&
+                b.Identity == actor.Identity && b.Browser == actor.Browser);
             access.RevokeRemembered(actor, id);
+            if (ownBrowser)
+            {
+                await Infrastructure.SecureAccess.SignOutActive(HttpContext);
+                return LocalRedirect(actor.Identity.Role switch
+                {
+                    "DM" => "/dm/login", "Player" => "/join", "Display" => "/display/pair", _ => "/"
+                });
+            }
             return RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
@@ -115,7 +125,20 @@ public sealed class ManualModel(SecureAccessService access, ITrustedBrowserOrigi
     public IActionResult OnPostCancel() => Attempt(() => access.Cancel(Binding));
     public async Task<IActionResult> OnPostRevokeAsync(Guid id)
     {
-        try { access.Revoke(await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied(), id); return RedirectToPage(); }
+        try
+        {
+            var actor = await Infrastructure.SecureAccess.Current(HttpContext) ?? throw new SecureAccessDenied();
+            access.Revoke(actor, id);
+            if (actor.Id == id)
+            {
+                await Infrastructure.SecureAccess.SignOutActive(HttpContext);
+                return LocalRedirect(actor.Identity.Role switch
+                {
+                    "DM" => "/dm/login", "Player" => "/join", "Display" => "/display/pair", _ => "/"
+                });
+            }
+            return RedirectToPage();
+        }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
     }

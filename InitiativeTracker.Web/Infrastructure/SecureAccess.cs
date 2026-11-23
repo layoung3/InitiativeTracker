@@ -21,6 +21,11 @@ public static class SecureAccess
     public const string Scheme = "SecureFeature";
     public const string Cookie = "__Host-InitiativeTracker.SecureAccess";
     public const string BrowserCookie = "__Host-InitiativeTracker.SecureBrowser";
+    // FreshLoginClaim is set only by verified primary sign-in. Elevated
+    // ordinary cookies instead carry GrantedLoginClaim and cannot reuse
+    // their own remembered trust after active-session revocation.
+    public const string FreshLoginClaim = "tracker_fresh_primary_login";
+    public const string GrantedLoginClaim = "tracker_elevated_grant";
     private static readonly string[] IdentityClaims = [ClaimTypes.Role, "session_id", "player_profile_id", "player_id", "player_device_id", "device_id"];
 
     public static void Configure(WebApplicationBuilder builder, string dataDirectory)
@@ -109,9 +114,16 @@ public static class SecureAccess
         var properties = new AuthenticationProperties { IsPersistent = true, ExpiresUtc = grant.Expires, AllowRefresh = false };
         // Fresh physical/approved authority also supplies the ordinary principal needed by
         // existing gameplay handlers, without changing any other browser's credentials.
-        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-            SecureAccessService.Principal(grant.Identity, CookieAuthenticationDefaults.AuthenticationScheme), properties);
+        var ordinary = SecureAccessService.Principal(grant.Identity, CookieAuthenticationDefaults.AuthenticationScheme);
+        ((ClaimsIdentity)ordinary.Identity!).AddClaim(new(GrantedLoginClaim, grant.Id.ToString()));
+        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ordinary, properties);
         await context.SignInAsync(Scheme, secure, properties);
+    }
+    // Do not remove the separate 30-day remembered-browser token.
+    public static async Task SignOutActive(HttpContext context)
+    {
+        await context.SignOutAsync(Scheme);
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     }
     public static void Headers(HttpContext context)
     {
@@ -189,6 +201,24 @@ public static class SecureAccess
                         context.Response.StatusCode = 403;
                     return;
                 }
+            }
+            // A stale elevated player/display cookie must not retain page
+            // or new SignalR handshake access after its secure grant ends.
+            // Existing HTTP compatibility remains separately gated.
+            if (origin.TrustedRequest(context) &&
+                context.User.HasClaim(c => c.Type == GrantedLoginClaim) &&
+                (context.Request.Path.StartsWithSegments("/player") ||
+                 context.Request.Path.StartsWithSegments("/display") ||
+                 context.Request.Path.StartsWithSegments("/hubs/encounter")) &&
+                await Current(context) is null)
+            {
+                Headers(context);
+                if ((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
+                    !context.Request.Path.StartsWithSegments("/hubs/encounter"))
+                    context.Response.Redirect("/secure-access/wait");
+                else
+                    context.Response.StatusCode = 403;
+                return;
             }
             var needsPrivate = PrivateRoute(context.Request);
             var needsAdmin = AdminMutation(context.Request);

@@ -18,7 +18,8 @@ public sealed record SecureGrant(Guid Id, SecureIdentity Identity, string Browse
 // Remembered-browser state contains only a SHA-256 hash of the host-only,
  // Secure/HttpOnly random browser cookie. It never stores a reusable raw token.
 public sealed record SecureRememberedBrowser(Guid Id, SecureIdentity Identity, string Browser, string Origin,
-    Guid Epoch, int Generation, DateTimeOffset Expires, string Label, bool Revoked = false);
+    Guid Epoch, int Generation, DateTimeOffset Expires, string Label, bool Revoked = false,
+    bool RequiresFreshLogin = false);
 public sealed class SecureGrantState
 {
     public int Format { get; set; } = 1;
@@ -449,6 +450,12 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
                 Save(state);
                 return null;
             }
+            // Session revocation preserves opted-in trust, but a stale
+            // application cookie cannot restore it without a fresh login.
+            if (trust.RequiresFreshLogin &&
+                (legacy.Identity?.IsAuthenticated != true ||
+                 !legacy.HasClaim(c => c.Type == SecureAccess.FreshLoginClaim)))
+                return null;
             if (legacy.Identity?.IsAuthenticated == true && Capture(legacy) != trust.Identity)
                 return null;
             var existing = state!.Grants.FirstOrDefault(g => !g.Revoked && g.Epoch == state.Epoch &&
@@ -459,6 +466,17 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
             var grant = Issue(state, request);
             Save(state);
             return grant;
+        }
+    }
+
+    // Read-only sign-in routing check; this does not grant authority.
+    public bool ReauthenticationRequired(string browser, string origin, SecureIdentity identity)
+    {
+        lock (gate)
+        {
+            return Read()?.RememberedBrowsers.Any(b => !b.Revoked && b.RequiresFreshLogin &&
+                b.Expires > Now && b.Browser == browser && b.Origin == origin &&
+                b.Identity == identity) == true;
         }
     }
 
@@ -632,14 +650,19 @@ public sealed class SecureAccessService(SecureGrantPersistence persistence, IDbC
         if (index < 0) throw new SecureAccessDenied();
         var revoked = state.Grants[index];
         state.Grants[index] = revoked with { Revoked = true, Generation = revoked.Generation + 1 };
-        // A revoked session cannot silently restore itself using remembered trust.
+        // Revoke the 12-hour login, not the 30-day browser opt-in.
+        // The retained approval can only be spent after a fresh normal login.
         for (var i = 0; i < state.RememberedBrowsers.Count; i++)
             if (!state.RememberedBrowsers[i].Revoked &&
                 state.RememberedBrowsers[i].Browser == revoked.Browser &&
                 state.RememberedBrowsers[i].Identity == revoked.Identity)
-                state.RememberedBrowsers[i] = state.RememberedBrowsers[i] with {
-                    Revoked = true, Generation = state.RememberedBrowsers[i].Generation + 1
+                state.RememberedBrowsers[i] = state.RememberedBrowsers[i] with
+                {
+                    RequiresFreshLogin = true,
+                    Generation = state.RememberedBrowsers[i].Generation + 1
                 };
+        foreach (var request in pending.Values.Where(p => p.Browser == revoked.Browser &&
+            p.Identity == revoked.Identity).ToArray()) pending.Remove(request.Id);
         Save(state);
     }
 

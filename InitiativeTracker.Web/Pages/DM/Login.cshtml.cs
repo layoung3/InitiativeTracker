@@ -22,13 +22,19 @@ public class LoginModel : PageModel
     public string Pin { get; set; } =
         string.Empty;
 
-    public IActionResult OnGet()
+    public async Task<IActionResult> OnGetAsync()
     {
         if (User.IsInRole("DM"))
-            return _secureOrigin.TrustedRequest(HttpContext)
-                ? RedirectToPage("/SecureAccess/Wait", new { start = true })
-                : RedirectToPage("/Dm/Index");
-
+        {
+            if (!_secureOrigin.TrustedRequest(HttpContext))
+                return RedirectToPage("/Dm/Index");
+            if (await SecureAccess.Current(HttpContext) is { Identity.Role: "DM" })
+                return RedirectToPage("/Dm/Index");
+            // Revoked or expired elevated cookies need primary credentials
+            // again. A newly verified PIN cookie can continue to approval.
+            if (User.HasClaim(c => c.Type == SecureAccess.FreshLoginClaim))
+                return RedirectToPage("/SecureAccess/Wait", new { start = true });
+        }
         return Page();
     }
 

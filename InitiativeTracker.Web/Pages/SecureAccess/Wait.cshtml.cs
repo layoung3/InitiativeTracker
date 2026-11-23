@@ -26,6 +26,20 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
         _ => "/"
     };
 
+    private static string Login(string role) => role switch
+    {
+        "DM" => "/dm/login",
+        "Player" => "/join",
+        "Display" => "/display/pair",
+        _ => "/"
+    };
+
+    private bool MustLogInAgain(SecureIdentity? identity, string? browser) =>
+        User.HasClaim(c => c.Type == Infrastructure.SecureAccess.GrantedLoginClaim) ||
+        (identity is not null && browser is not null &&
+         access.ReauthenticationRequired(browser, origin.Origin, identity) &&
+         !User.HasClaim(c => c.Type == Infrastructure.SecureAccess.FreshLoginClaim));
+
     public async Task<IActionResult> OnGetAsync(bool start = false)
     {
         // The global SecureAccess guard has already verified trusted HTTPS.
@@ -36,6 +50,12 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
         var legacy = access.Capture(User);
         HasIdentity = legacy is not null;
         Role = legacy?.Role ?? "";
+
+        if (MustLogInAgain(legacy, browser))
+        {
+            await Infrastructure.SecureAccess.SignOutActive(HttpContext);
+            return LocalRedirect(Login(Role));
+        }
 
         if (browser is not null && legacy is not null)
         {
@@ -68,6 +88,11 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
                 return LocalRedirect(Landing(current.Identity.Role));
             var browser = Infrastructure.SecureAccess.Browser(HttpContext, create: true)
                 ?? throw new SecureAccessDenied();
+            if (MustLogInAgain(legacy, browser))
+            {
+                await Infrastructure.SecureAccess.SignOutActive(HttpContext);
+                return LocalRedirect(Login(legacy.Role));
+            }
             if (access.ForBrowser(browser) is { } pending &&
                 pending.Identity == legacy with { Stamp = "" })
                 return RedirectToPage();
@@ -95,6 +120,7 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
             var identity = access.Capture(User) ?? throw new SecureAccessDenied();
             var browser = Infrastructure.SecureAccess.Browser(HttpContext)
                 ?? throw new SecureAccessDenied();
+            if (MustLogInAgain(identity, browser)) throw new SecureAccessDenied();
             access.SetRememberPreference(browser, id, identity, remember);
             return RedirectToPage();
         }
@@ -108,6 +134,7 @@ public sealed class WaitModel(SecureAccessService access, ITrustedBrowserOrigin 
         {
             var browser = Infrastructure.SecureAccess.Browser(HttpContext)
                 ?? throw new SecureAccessDenied();
+            if (MustLogInAgain(access.Capture(User), browser)) throw new SecureAccessDenied();
             var request = access.ForBrowser(browser) ?? throw new SecureAccessDenied();
             var grant = request.Purpose.StartsWith("dm-", StringComparison.Ordinal)
                 ? access.FinishPhysicalDm(browser, origin.Origin)

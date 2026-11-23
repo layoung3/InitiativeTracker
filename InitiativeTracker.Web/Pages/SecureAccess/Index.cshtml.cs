@@ -91,9 +91,18 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
             var selfRevoked = actor?.Id == id;
             if (IsPhysical) access.RevokePhysicalSession(id);
             else access.Revoke(actor!, id);
-            // The requesting browser must not land back on its own now-revoked
-            // administrative session. Retry requires an explicit new approval.
-            return selfRevoked ? LocalRedirect("/secure-access/wait") : RedirectToPage();
+            if (selfRevoked)
+            {
+                await Infrastructure.SecureAccess.SignOutActive(HttpContext);
+                return LocalRedirect(actor!.Identity.Role switch
+                {
+                    "DM" => "/dm/login",
+                    "Player" => "/join",
+                    "Display" => "/display/pair",
+                    _ => "/"
+                });
+            }
+            return RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
@@ -109,7 +118,18 @@ public sealed class IndexModel(SecureAccessService access, ITrustedBrowserOrigin
                     .Any(item => item.Id == id && item.Browser == actor.Browser && item.Identity == actor.Identity);
             if (IsPhysical) access.RevokePhysicalRemembered(id);
             else access.RevokeRemembered(actor!, id);
-            return selfForgotten ? LocalRedirect("/secure-access/wait") : RedirectToPage();
+            if (selfForgotten)
+            {
+                await Infrastructure.SecureAccess.SignOutActive(HttpContext);
+                return LocalRedirect(actor!.Identity.Role switch
+                {
+                    "DM" => "/dm/login",
+                    "Player" => "/join",
+                    "Display" => "/display/pair",
+                    _ => "/"
+                });
+            }
+            return RedirectToPage();
         }
         catch (SecureAccessDenied) { return StatusCode(403); }
         catch (SecureAccessUnavailable) { return StatusCode(503); }
